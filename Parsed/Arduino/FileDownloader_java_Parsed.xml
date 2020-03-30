@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/cc/arduino/utils/network/FileDownloader.java"><comment type="block">/*
+ * This file is part of Arduino.
+ *
+ * Copyright 2014 Arduino LLC (http://www.arduino.cc/)
+ *
+ * Arduino is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As a special exception, you may use this file as part of a free software
+ * library without restriction.  Specifically, if other files instantiate
+ * templates or use macros or inline functions from this file, or you compile
+ * this file and link it with other files to produce an executable, this
+ * file does not by itself cause the resulting executable to be covered by
+ * the GNU General Public License.  This exception does not however
+ * invalidate any other reasons why the executable file might be covered by
+ * the GNU General Public License.
+ */</comment>
+
+<package>package <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>utils</name><operator>.</operator><name>network</name></name>;</package>
+
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>commons</name><operator>.</operator><name>compress</name><operator>.</operator><name>utils</name><operator>.</operator><name>IOUtils</name></name>;</import>
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>logging</name><operator>.</operator><name>log4j</name><operator>.</operator><name>LogManager</name></name>;</import>
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>logging</name><operator>.</operator><name>log4j</name><operator>.</operator><name>Logger</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>FileUtils</name></name>;</import>
+
+<import>import <name><name>javax</name><operator>.</operator><name>script</name><operator>.</operator><name>ScriptException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>InputStream</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>RandomAccessFile</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>net</name><operator>.</operator><name>HttpURLConnection</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>net</name><operator>.</operator><name>SocketTimeoutException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>net</name><operator>.</operator><name>URISyntaxException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>net</name><operator>.</operator><name>URL</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>file</name><operator>.</operator><name>Files</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>file</name><operator>.</operator><name>Paths</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Arrays</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Observable</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Optional</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>FileDownloader</name> <super_list><extends>extends <super><name>Observable</name></super></extends></super_list> <block>{
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <name>Logger</name></type> <name>log</name> <init>= <expr><call><name><name>LogManager</name><operator>.</operator><name>getLogger</name></name><argument_list>(<argument><expr><name><name>FileDownloader</name><operator>.</operator><name>class</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+  <enum><specifier>public</specifier> enum <name>Status</name> <block>{
+    <decl><name>CONNECTING</name></decl>, <comment type="line">//</comment>
+    <decl><name>CONNECTION_TIMEOUT_ERROR</name></decl>, <comment type="line">//</comment>
+    <decl><name>DOWNLOADING</name></decl>, <comment type="line">//</comment>
+    <decl><name>COMPLETE</name></decl>, <comment type="line">//</comment>
+    <decl><name>CANCELLED</name></decl>, <comment type="line">//</comment>
+    <decl><name>ERROR</name></decl>, <comment type="line">//</comment>
+  }</block></enum>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Status</name></type> <name>status</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>long</name></type> <name>initialSize</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Long</name></type> <name>downloadSize</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>long</name></type> <name>downloaded</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>URL</name></type> <name>downloadUrl</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>File</name></type> <name>outputFile</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>boolean</name></type> <name>allowCache</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Exception</name></type> <name>error</name></decl>;</decl_stmt>
+
+  <constructor><specifier>public</specifier> <name>FileDownloader</name><parameter_list>(<parameter><decl><type><name>URL</name></type> <name>url</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>file</name></decl></parameter>, <parameter><decl><type><name>boolean</name></type> <name>allowCache</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>downloadUrl</name></name> <operator>=</operator> <name>url</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>outputFile</name></name> <operator>=</operator> <name>file</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>allowCache</name></name> <operator>=</operator> <name>allowCache</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>downloaded</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>initialSize</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>public</specifier> <name>long</name></type> <name>getInitialSize</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>initialSize</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>Long</name></type> <name>getDownloadSize</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>downloadSize</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>setDownloadSize</name><parameter_list>(<parameter><decl><type><name>Long</name></type> <name>downloadSize</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>downloadSize</name></name> <operator>=</operator> <name>downloadSize</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>setChanged</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>notifyObservers</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>long</name></type> <name>getDownloaded</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>downloaded</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>setDownloaded</name><parameter_list>(<parameter><decl><type><name>long</name></type> <name>downloaded</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>downloaded</name></name> <operator>=</operator> <name>downloaded</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>setChanged</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>notifyObservers</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>float</name></type> <name>getProgress</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>downloadSize</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>downloadSize</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><literal type="number">100</literal></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><operator>(</operator><operator>(</operator><name>float</name><operator>)</operator> <name>downloaded</name> <operator>/</operator> <name>downloadSize</name><operator>)</operator> <operator>*</operator> <literal type="number">100</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>Status</name></type> <name>getStatus</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>status</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>setStatus</name><parameter_list>(<parameter><decl><type><name>Status</name></type> <name>status</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>status</name></name> <operator>=</operator> <name>status</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>setChanged</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>notifyObservers</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>download</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>noResume</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>InterruptedException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><literal type="string">"file"</literal><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><call><name><name>downloadUrl</name><operator>.</operator><name>getProtocol</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>saveLocalFile</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name>downloadFile</name><argument_list>(<argument><expr><name>noResume</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>saveLocalFile</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>Files</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><call><name><name>outputFile</name><operator>.</operator><name>toPath</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>Files</name><operator>.</operator><name>readAllBytes</name></name><argument_list>(<argument><expr><call><name><name>Paths</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><call><name><name>downloadUrl</name><operator>.</operator><name>getPath</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>COMPLETE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>ERROR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name>setError</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <specifier>static</specifier> <name>void</name></type> <name>invalidateFiles</name><parameter_list>(<parameter><decl><type><name>URL</name><modifier>...</modifier></type> <name>filesUrl</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// For each file delete the file cached if exist</comment>
+    <expr_stmt><expr><call><name><name>Arrays</name><operator>.</operator><name>stream</name></name><argument_list>(<argument><expr><name>filesUrl</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>forEach</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>url</name></decl></parameter></parameter_list> -&gt; <block>{<block_content>
+      <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name><name>FileDownloaderCache</name><operator>.</operator><name>getFileCached</name></name><argument_list>(<argument><expr><name>url</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>ifPresent</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>fileCached</name></decl></parameter></parameter_list> -&gt; <block>{<block_content>
+          <try>try <block>{<block_content>
+            <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>info</name></name><argument_list>(<argument><expr><literal type="string">"Invalidate this file {} that comes from {}"</literal></expr></argument>, <argument><expr><call><name><name>fileCached</name><operator>.</operator><name>getLocalPath</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>fileCached</name><operator>.</operator><name>getRemoteURL</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>fileCached</name><operator>.</operator><name>invalidateCache</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>warn</name></name><argument_list>(<argument><expr><literal type="string">"Fail to invalidate cache"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></catch></try>
+        </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>URISyntaxException</name></type> | <type><name>NoSuchMethodException</name></type> | <type><name>ScriptException</name></type> | <type><name>IOException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>warn</name></name><argument_list>(<argument><expr><literal type="string">"Fail to get the file cached during the file invalidation"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>downloadFile</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>noResume</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>InterruptedException</name></expr></argument></throws> <block>{<block_content>
+
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>CONNECTING</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <decl_stmt><decl><type><specifier>final</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name><name>FileDownloaderCache</name><operator>.</operator><name>FileCached</name></name></argument>&gt;</argument_list></name></type> <name>fileCachedOpt</name> <init>= <expr><call><name><name>FileDownloaderCache</name><operator>.</operator><name>getFileCached</name></name><argument_list>(<argument><expr><name>downloadUrl</name></expr></argument>, <argument><expr><name>allowCache</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>fileCachedOpt</name><operator>.</operator><name>isPresent</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><specifier>final</specifier> <name><name>FileDownloaderCache</name><operator>.</operator><name>FileCached</name></name></type> <name>fileCached</name> <init>= <expr><call><name><name>fileCachedOpt</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><specifier>final</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name>File</name></argument>&gt;</argument_list></name></type> <name>fileFromCache</name> <init>= <expr><call><name>getFileCached</name><argument_list>(<argument><expr><name>fileCached</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>fileCached</name><operator>.</operator><name>isNotChange</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>fileFromCache</name><operator>.</operator><name>isPresent</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <comment type="line">// Copy the cached file in the destination file</comment>
+          <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>info</name></name><argument_list>(<argument><expr><literal type="string">"The file will be taken from the cache {}"</literal></expr></argument>, <argument><expr><name>fileFromCache</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name><name>FileUtils</name><operator>.</operator><name>copyFile</name></name><argument_list>(<argument><expr><call><name><name>fileFromCache</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>outputFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+          <expr_stmt><expr><call><name>openConnectionAndFillTheFile</name><argument_list>(<argument><expr><name>noResume</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+          <expr_stmt><expr><call><name><name>fileCached</name><operator>.</operator><name>updateCacheFile</name></name><argument_list>(<argument><expr><name>outputFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>openConnectionAndFillTheFile</name><argument_list>(<argument><expr><name>noResume</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>COMPLETE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>InterruptedException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>CANCELLED</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <comment type="line">// lets InterruptedException go up to the caller</comment>
+      <throw>throw <expr><name>e</name></expr>;</throw>
+
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>SocketTimeoutException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>CONNECTION_TIMEOUT_ERROR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name>setError</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>error</name></name><argument_list>(<argument><expr><literal type="string">"The request went in socket timeout"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>ERROR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name>setError</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>error</name></name><argument_list>(<argument><expr><literal type="string">"The request stop"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name>File</name></argument>&gt;</argument_list></name></type> <name>getFileCached</name><parameter_list>(<parameter><decl><type><name><name>FileDownloaderCache</name><operator>.</operator><name>FileCached</name></name></type> <name>fileCached</name></decl></parameter>)</parameter_list> <block>{<block_content>
+
+    <try>try <block>{<block_content>
+      <decl_stmt><decl><type><specifier>final</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name>File</name></argument>&gt;</argument_list></name></type> <name>fileFromCache</name> <init>=
+        <expr><call><name><name>fileCached</name><operator>.</operator><name>getFileFromCache</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>fileFromCache</name><operator>.</operator><name>isPresent</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>info</name></name><argument_list>(<argument><expr><literal type="string">"No need to download using cached file: {}"</literal></expr></argument>, <argument><expr><name>fileCached</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>fileFromCache</name></expr>;</return>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>info</name></name><argument_list>(
+          <argument><expr><literal type="string">"The file in the cache is not in the path or the md5 validation failed: path={}, file exist={}, md5 validation={}"</literal></expr></argument>,
+          <argument><expr><call><name><name>fileCached</name><operator>.</operator><name>getLocalPath</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>fileCached</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>fileCached</name><operator>.</operator><name>md5Check</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>warn</name></name><argument_list>(
+        <argument><expr><literal type="string">"Cannot get the file from the cache, will be downloaded a new one "</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+    <expr_stmt><expr><call><name><name>log</name><operator>.</operator><name>info</name></name><argument_list>(<argument><expr><literal type="string">"The file is change {}"</literal></expr></argument>, <argument><expr><name>fileCached</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>Optional</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>openConnectionAndFillTheFile</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>noResume</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><name>initialSize</name> <operator>=</operator> <call><name><name>outputFile</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>noResume</name> <operator>&amp;&amp;</operator> <name>initialSize</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <comment type="line">// delete file and restart downloading</comment>
+      <expr_stmt><expr><call><name><name>Files</name><operator>.</operator><name>deleteIfExists</name></name><argument_list>(<argument><expr><call><name><name>outputFile</name><operator>.</operator><name>toPath</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>initialSize</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><specifier>final</specifier> <name>HttpURLConnection</name></type> <name>connection</name> <init>= <expr><operator>new</operator> <call><name>HttpConnectionManager</name><argument_list>(<argument><expr><name>downloadUrl</name></expr></argument>)</argument_list></call>
+      <operator>.</operator><call><name>makeConnection</name><argument_list>(<argument><expr><lambda><parameter_list>(<parameter><decl><name>c</name></decl></parameter>)</parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name>setDownloaded</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>final</specifier> <name>int</name></type> <name>resp</name> <init>= <expr><call><name><name>connection</name><operator>.</operator><name>getResponseCode</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>resp</name> <operator>&lt;</operator> <literal type="number">200</literal> <operator>||</operator> <name>resp</name> <operator>&gt;=</operator> <literal type="number">300</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>Files</name><operator>.</operator><name>deleteIfExists</name></name><argument_list>(<argument><expr><call><name><name>outputFile</name><operator>.</operator><name>toPath</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <throw>throw <expr><operator>new</operator> <call><name>IOException</name><argument_list>(<argument><expr><literal type="string">"Received invalid http status code from server: "</literal> <operator>+</operator> <name>resp</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>RandomAccessFile</name></type> <name>randomAccessOutputFile</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <comment type="line">// Open file and seek to the end of it</comment>
+      <expr_stmt><expr><name>randomAccessOutputFile</name> <operator>=</operator> <operator>new</operator> <call><name>RandomAccessFile</name><argument_list>(<argument><expr><name>outputFile</name></expr></argument>, <argument><expr><literal type="string">"rw"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>randomAccessOutputFile</name><operator>.</operator><name>seek</name></name><argument_list>(<argument><expr><name>initialSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name>readStreamCopyTo</name><argument_list>(<argument><expr><name>randomAccessOutputFile</name></expr></argument>, <argument><expr><name>connection</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <finally>finally <block>{<block_content>
+      <expr_stmt><expr><call><name><name>IOUtils</name><operator>.</operator><name>closeQuietly</name></name><argument_list>(<argument><expr><name>randomAccessOutputFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></finally></try>
+
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>readStreamCopyTo</name><parameter_list>(<parameter><decl><type><name>RandomAccessFile</name></type> <name>randomAccessOutputFile</name></decl></parameter>, <parameter><decl><type><name>HttpURLConnection</name></type> <name>connection</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>InputStream</name></type> <name>stream</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <comment type="line">// Check for valid content length.</comment>
+      <decl_stmt><decl><type><name>long</name></type> <name>len</name> <init>= <expr><call><name><name>connection</name><operator>.</operator><name>getContentLength</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>len</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>setDownloadSize</name><argument_list>(<argument><expr><name>len</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><call><name>setStatus</name><argument_list>(<argument><expr><name><name>Status</name><operator>.</operator><name>DOWNLOADING</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <expr_stmt><expr><name>stream</name> <operator>=</operator> <call><name><name>connection</name><operator>.</operator><name>getInputStream</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+      <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>buffer</name> <init>= <expr><operator>new</operator> <name><name>byte</name><index>[<expr><literal type="number">10240</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+      <while>while <condition>(<expr><name>status</name> <operator>==</operator> <name><name>Status</name><operator>.</operator><name>DOWNLOADING</name></name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>read</name> <init>= <expr><call><name><name>stream</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>read</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+          <break>break;</break></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><call><name><name>randomAccessOutputFile</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>read</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>setDownloaded</name><argument_list>(<argument><expr><call><name>getDownloaded</name><argument_list>()</argument_list></call> <operator>+</operator> <name>read</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>Thread</name><operator>.</operator><name>interrupted</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>randomAccessOutputFile</name><operator>.</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          <throw>throw <expr><operator>new</operator> <call><name>InterruptedException</name><argument_list>()</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></while>
+
+      <if_stmt><if>if <condition>(<expr><call><name>getDownloadSize</name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name>getDownloaded</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <call><name>getDownloadSize</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+          <throw>throw <expr><operator>new</operator> <call><name>Exception</name><argument_list>(<argument><expr><literal type="string">"Incomplete download"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block> <finally>finally <block>{<block_content>
+      <expr_stmt><expr><call><name><name>IOUtils</name><operator>.</operator><name>closeQuietly</name></name><argument_list>(<argument><expr><name>stream</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></finally></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>setError</name><parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name>error</name> <operator>=</operator> <name>e</name></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>Exception</name></type> <name>getError</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>error</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isCompleted</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>status</name> <operator>==</operator> <name><name>Status</name><operator>.</operator><name>COMPLETE</name></name></expr>;</return>
+  </block_content>}</block></function>
+}</block></class>
+</unit>
