@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/app/src/processing/app/tools/Archiver.java"><comment type="block">/* -*- mode: java; c-basic-offset: 2; indent-tabs-mode: nil -*- */</comment>
+
+<comment type="block">/*
+  Archiver - plugin tool for archiving sketches
+  Part of the Processing project - http://processing.org
+
+  Copyright (c) 2004-06 Ben Fry and Casey Reas
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software Foundation,
+  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/</comment>
+
+<package>package <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>tools</name></name>;</package>
+
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>commons</name><operator>.</operator><name>compress</name><operator>.</operator><name>utils</name><operator>.</operator><name>IOUtils</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>Base</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>Editor</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>SketchController</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>FileOutputStream</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>text</name><operator>.</operator><name>NumberFormat</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>text</name><operator>.</operator><name>SimpleDateFormat</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Date</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>zip</name><operator>.</operator><name>ZipEntry</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>zip</name><operator>.</operator><name>ZipOutputStream</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+
+<class><specifier>public</specifier> class <name>Archiver</name> <super_list><implements>implements <super><name>Tool</name></super></implements></super_list> <block>{
+  <decl_stmt><decl><type><name>Editor</name></type> <name>editor</name></decl>;</decl_stmt>
+
+  <comment type="line">// someday these will be settable</comment>
+  <decl_stmt><decl><type><name>boolean</name></type> <name>useDate</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>int</name></type> <name>digits</name> <init>= <expr><literal type="number">3</literal></expr></init></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><name>NumberFormat</name></type> <name>numberFormat</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>SimpleDateFormat</name></type> <name>dateFormat</name></decl>;</decl_stmt>
+
+
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getMenuTitle</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Archive Sketch"</literal></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+  
+  
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>init</name><parameter_list>(<parameter><decl><type><name>Editor</name></type> <name>editor</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>editor</name></name> <operator>=</operator> <name>editor</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>numberFormat</name> <operator>=</operator> <call><name><name>NumberFormat</name><operator>.</operator><name>getInstance</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>numberFormat</name><operator>.</operator><name>setGroupingUsed</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// no commas</comment>
+    <expr_stmt><expr><call><name><name>numberFormat</name><operator>.</operator><name>setMinimumIntegerDigits</name></name><argument_list>(<argument><expr><name>digits</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>dateFormat</name> <operator>=</operator> <operator>new</operator> <call><name>SimpleDateFormat</name><argument_list>(<argument><expr><literal type="string">"yyMMdd"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>run</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>SketchController</name></type> <name>sketch</name> <init>= <expr><call><name><name>editor</name><operator>.</operator><name>getSketchController</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    
+    <comment type="line">// first save the sketch so that things don't archive strangely</comment>
+    <decl_stmt><decl><type><name>boolean</name></type> <name>success</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><name>success</name> <operator>=</operator> <call><name><name>sketch</name><operator>.</operator><name>save</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>success</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>Base</name><operator>.</operator><name>showWarning</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Couldn't archive sketch"</literal></expr></argument>)</argument_list></call></expr></argument>,
+                       <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Archiving the sketch has been canceled because\nthe sketch couldn't save properly."</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="null">null</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>File</name></type> <name>location</name> <init>= <expr><call><name><name>sketch</name><operator>.</operator><name>getSketch</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getFolder</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>name</name> <init>= <expr><call><name><name>location</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>File</name></type> <name>parent</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><call><name><name>location</name><operator>.</operator><name>getParent</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">//System.out.println("loc " + location);</comment>
+    <comment type="line">//System.out.println("par " + parent);</comment>
+
+    <decl_stmt><decl><type><name>File</name></type> <name>newbie</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>namely</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>index</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <do>do <block>{<block_content>
+      <comment type="line">// only use the date if the sketch name isn't the default name</comment>
+      <expr_stmt><expr><name>useDate</name> <operator>=</operator> <operator>!</operator><call><name><name>name</name><operator>.</operator><name>startsWith</name></name><argument_list>(<argument><expr><literal type="string">"sketch_"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <if_stmt><if>if <condition>(<expr><name>useDate</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>String</name></type> <name>purty</name> <init>= <expr><call><name><name>dateFormat</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Date</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>String</name></type> <name>stamp</name> <init>= <expr><name>purty</name> <operator>+</operator> <operator>(</operator><operator>(</operator><name>char</name><operator>)</operator> <operator>(</operator><literal type="char">'a'</literal> <operator>+</operator> <name>index</name><operator>)</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>namely</name> <operator>=</operator> <name>name</name> <operator>+</operator> <literal type="string">"-"</literal> <operator>+</operator> <name>stamp</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>newbie</name> <operator>=</operator> <operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>parent</name></expr></argument>, <argument><expr><name>namely</name> <operator>+</operator> <literal type="string">".zip"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <decl_stmt><decl><type><name>String</name></type> <name>diggie</name> <init>= <expr><call><name><name>numberFormat</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><name>index</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>namely</name> <operator>=</operator> <name>name</name> <operator>+</operator> <literal type="string">"-"</literal> <operator>+</operator> <name>diggie</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>newbie</name> <operator>=</operator> <operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>parent</name></expr></argument>, <argument><expr><name>namely</name> <operator>+</operator> <literal type="string">".zip"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+      <expr_stmt><expr><name>index</name><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block> while <condition>(<expr><call><name><name>newbie</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr>)</condition>;</do>
+
+    <comment type="line">// open up a prompt for where to save this fella</comment>
+    <decl_stmt><decl><type><name>FileDialog</name></type> <name>fd</name> <init>= <expr><operator>new</operator> <call><name>FileDialog</name><argument_list>(<argument><expr><name>editor</name></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Archive sketch as:"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>FileDialog</name><operator>.</operator><name>SAVE</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>fd</name><operator>.</operator><name>setDirectory</name></name><argument_list>(<argument><expr><call><name><name>parent</name><operator>.</operator><name>getAbsolutePath</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>fd</name><operator>.</operator><name>setFile</name></name><argument_list>(<argument><expr><call><name><name>newbie</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>fd</name><operator>.</operator><name>setVisible</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>String</name></type> <name>directory</name> <init>= <expr><call><name><name>fd</name><operator>.</operator><name>getDirectory</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>filename</name> <init>= <expr><call><name><name>fd</name><operator>.</operator><name>getFile</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// only write the file if not canceled</comment>
+    <if_stmt><if>if <condition>(<expr><name>filename</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>newbie</name> <operator>=</operator> <operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>directory</name></expr></argument>, <argument><expr><name>filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <decl_stmt><decl><type><name>ZipOutputStream</name></type> <name>zos</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+      <try>try <block>{<block_content>
+        <comment type="line">//System.out.println(newbie);</comment>
+        <expr_stmt><expr><name>zos</name> <operator>=</operator> <operator>new</operator> <call><name>ZipOutputStream</name><argument_list>(<argument><expr><operator>new</operator> <call><name>FileOutputStream</name><argument_list>(<argument><expr><name>newbie</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// recursively fill the zip file</comment>
+        <expr_stmt><expr><call><name>buildZip</name><argument_list>(<argument><expr><name>location</name></expr></argument>, <argument><expr><name>name</name></expr></argument>, <argument><expr><name>zos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// close up the jar file</comment>
+        <expr_stmt><expr><call><name><name>zos</name><operator>.</operator><name>flush</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>editor</name><operator>.</operator><name>statusNotice</name></name><argument_list>(<argument><expr><literal type="string">"Created archive "</literal> <operator>+</operator> <call><name><name>newbie</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>IOException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></catch> <finally>finally <block>{<block_content>
+        <expr_stmt><expr><call><name><name>IOUtils</name><operator>.</operator><name>closeQuietly</name></name><argument_list>(<argument><expr><name>zos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></finally></try>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>editor</name><operator>.</operator><name>statusNotice</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Archive sketch canceled."</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>buildZip</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>dir</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>sofar</name></decl></parameter>,
+                       <parameter><decl><type><name>ZipOutputStream</name></type> <name>zos</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name><name>files</name><index>[]</index></name> <init>= <expr><call><name><name>dir</name><operator>.</operator><name>list</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>files</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>IOException</name><argument_list>(<argument><expr><literal type="string">"Unable to list files from "</literal> <operator>+</operator> <name>dir</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name><name>files</name><operator>.</operator><name>length</name></name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name><name>files</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"."</literal></expr></argument>)</argument_list></call> <operator>||</operator>
+          <name><name>files</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">".."</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+
+      <decl_stmt><decl><type><name>File</name></type> <name>sub</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>dir</name></expr></argument>, <argument><expr><name><name>files</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>String</name></type> <name>nowfar</name> <init>= <expr><ternary><condition><expr><operator>(</operator><name>sofar</name> <operator>==</operator> <literal type="null">null</literal><operator>)</operator></expr> ?</condition><then>
+        <expr><name><name>files</name><index>[<expr><name>i</name></expr>]</index></name></expr> </then><else>: <expr><operator>(</operator><name>sofar</name> <operator>+</operator> <literal type="string">"/"</literal> <operator>+</operator> <name><name>files</name><index>[<expr><name>i</name></expr>]</index></name><operator>)</operator></expr></else></ternary></expr></init></decl>;</decl_stmt>
+
+      <if_stmt><if>if <condition>(<expr><call><name><name>sub</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// directories are empty entries and have / at the end</comment>
+        <decl_stmt><decl><type><name>ZipEntry</name></type> <name>entry</name> <init>= <expr><operator>new</operator> <call><name>ZipEntry</name><argument_list>(<argument><expr><name>nowfar</name> <operator>+</operator> <literal type="string">"/"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">//System.out.println(entry);</comment>
+        <expr_stmt><expr><call><name><name>zos</name><operator>.</operator><name>putNextEntry</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>zos</name><operator>.</operator><name>closeEntry</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>buildZip</name><argument_list>(<argument><expr><name>sub</name></expr></argument>, <argument><expr><name>nowfar</name></expr></argument>, <argument><expr><name>zos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <decl_stmt><decl><type><name>ZipEntry</name></type> <name>entry</name> <init>= <expr><operator>new</operator> <call><name>ZipEntry</name><argument_list>(<argument><expr><name>nowfar</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>entry</name><operator>.</operator><name>setTime</name></name><argument_list>(<argument><expr><call><name><name>sub</name><operator>.</operator><name>lastModified</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>zos</name><operator>.</operator><name>putNextEntry</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>zos</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><call><name><name>Base</name><operator>.</operator><name>loadBytesRaw</name></name><argument_list>(<argument><expr><name>sub</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>zos</name><operator>.</operator><name>closeEntry</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+}</block></class>
+
+
+    <comment type="block">/*
+    int index = 0;
+    SimpleDateFormat formatter = new SimpleDateFormat("yyMMdd");
+    String purty = formatter.format(new Date());
+    do {
+      newbieName = "sketch_" + purty + ((char) ('a' + index));
+      newbieDir = new File(newbieParentDir, newbieName);
+      index++;
+    } while (newbieDir.exists());
+    */</comment>
+</unit>

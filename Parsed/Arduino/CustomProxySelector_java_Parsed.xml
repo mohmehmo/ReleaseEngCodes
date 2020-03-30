@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/cc/arduino/net/CustomProxySelector.java"><comment type="block">/*
+ * This file is part of Arduino.
+ *
+ * Arduino is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As a special exception, you may use this file as part of a free software
+ * library without restriction.  Specifically, if other files instantiate
+ * templates or use macros or inline functions from this file, or you compile
+ * this file and link it with other files to produce an executable, this
+ * file does not by itself cause the resulting executable to be covered by
+ * the GNU General Public License.  This exception does not however
+ * invalidate any other reasons why the executable file might be covered by
+ * the GNU General Public License.
+ *
+ * Copyright 2015 Arduino LLC (http://www.arduino.cc/)
+ */</comment>
+
+<package>package <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>net</name></name>;</package>
+
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>Constants</name></name>;</import>
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>commons</name><operator>.</operator><name>compress</name><operator>.</operator><name>utils</name><operator>.</operator><name>IOUtils</name></name>;</import>
+
+<import>import <name><name>javax</name><operator>.</operator><name>script</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>net</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>charset</name><operator>.</operator><name>Charset</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Map</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>stream</name><operator>.</operator><name>Stream</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>CustomProxySelector</name> <block>{
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name><name>Map</name><argument_list type="generic">&lt;<argument><name>String</name></argument>, <argument><name>String</name></argument>&gt;</argument_list></name></type> <name>preferences</name></decl>;</decl_stmt>
+
+  <constructor><specifier>public</specifier> <name>CustomProxySelector</name><parameter_list>(<parameter><decl><type><name><name>Map</name><argument_list type="generic">&lt;<argument><name>String</name></argument>, <argument><name>String</name></argument>&gt;</argument_list></name></type> <name>preferences</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>preferences</name></name> <operator>=</operator> <name>preferences</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>clearPreviousAuthenticator</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>public</specifier> <name>Proxy</name></type> <name>getProxyFor</name><parameter_list>(<parameter><decl><type><name>URI</name></type> <name>uri</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument>, <argument><expr><name>ScriptException</name></expr></argument>, <argument><expr><name>NoSuchMethodException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>proxyType</name> <init>= <expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_TYPE</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>proxyType</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>proxyType</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>proxyType</name> <operator>=</operator> <name><name>Constants</name><operator>.</operator><name>PROXY_TYPE_AUTO</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>Constants</name><operator>.</operator><name>PROXY_TYPE_NONE</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><name>proxyType</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return <expr><name><name>Proxy</name><operator>.</operator><name>NO_PROXY</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>Constants</name><operator>.</operator><name>PROXY_TYPE_AUTO</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><name>proxyType</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name>String</name></type> <name>pac</name> <init>= <expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_PAC_URL</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>pac</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>pac</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name><name>ProxySelector</name><operator>.</operator><name>getDefault</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>select</name><argument_list>(<argument><expr><name>uri</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>get</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return>
+      </block_content>}</block></if></if_stmt>
+
+      <return>return <expr><call><name>pacProxy</name><argument_list>(<argument><expr><name>pac</name></expr></argument>, <argument><expr><name>uri</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>Constants</name><operator>.</operator><name>PROXY_TYPE_MANUAL</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><name>proxyType</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return <expr><call><name>manualProxy</name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <throw>throw <expr><operator>new</operator> <call><name>IllegalStateException</name><argument_list>(<argument><expr><literal type="string">"Unable to understand proxy settings"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>Proxy</name></type> <name>pacProxy</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>pac</name></decl></parameter>, <parameter><decl><type><name>URI</name></type> <name>uri</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument>, <argument><expr><name>ScriptException</name></expr></argument>, <argument><expr><name>NoSuchMethodException</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name>setAuthenticator</name><argument_list>(<argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_AUTO_USERNAME</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_AUTO_PASSWORD</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>URLConnection</name></type> <name>urlConnection</name> <init>= <expr><operator>new</operator> <call><name>URL</name><argument_list>(<argument><expr><name>pac</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>openConnection</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>urlConnection</name><operator>.</operator><name>connect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>urlConnection</name> <operator>instanceof</operator> <name>HttpURLConnection</name></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name>int</name></type> <name>responseCode</name> <init>= <expr><operator>(</operator><operator>(</operator><name>HttpURLConnection</name><operator>)</operator> <name>urlConnection</name><operator>)</operator><operator>.</operator><call><name>getResponseCode</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>responseCode</name> <operator>!=</operator> <literal type="number">200</literal></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>IOException</name><argument_list>(<argument><expr><literal type="string">"Unable to fetch PAC file at "</literal> <operator>+</operator> <name>pac</name> <operator>+</operator> <literal type="string">". Response code is "</literal> <operator>+</operator> <name>responseCode</name></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>pacScript</name> <init>= <expr><operator>new</operator> <call><name>String</name><argument_list>(<argument><expr><call><name><name>IOUtils</name><operator>.</operator><name>toByteArray</name></name><argument_list>(<argument><expr><call><name><name>urlConnection</name><operator>.</operator><name>getInputStream</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>Charset</name><operator>.</operator><name>forName</name></name><argument_list>(<argument><expr><literal type="string">"ASCII"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>ScriptEngine</name></type> <name>nashorn</name> <init>= <expr><operator>new</operator> <call><name>ScriptEngineManager</name><argument_list>()</argument_list></call><operator>.</operator><call><name>getEngineByName</name><argument_list>(<argument><expr><literal type="string">"nashorn"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>nashorn</name><operator>.</operator><name>getBindings</name></name><argument_list>(<argument><expr><name><name>ScriptContext</name><operator>.</operator><name>ENGINE_SCOPE</name></name></expr></argument>)</argument_list></call><operator>.</operator><call><name>put</name><argument_list>(<argument><expr><literal type="string">"pac"</literal></expr></argument>, <argument><expr><operator>new</operator> <call><name>PACSupportMethods</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>Stream</name><operator>.</operator><name>of</name></name><argument_list>(<argument><expr><literal type="string">"isPlainHostName(host)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"dnsDomainIs(host, domain)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"localHostOrDomainIs(host, hostdom)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"isResolvable(host)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"isInNet(host, pattern, mask)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"dnsResolve(host)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"myIpAddress()"</literal></expr></argument>,
+      <argument><expr><literal type="string">"dnsDomainLevels(host)"</literal></expr></argument>,
+      <argument><expr><literal type="string">"shExpMatch(str, shexp)"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>forEach</name><argument_list>(<argument><expr><lambda><parameter_list>(<parameter><decl><name>fn</name></decl></parameter>)</parameter_list> -&gt; <block>{<block_content>
+      <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name><name>nashorn</name><operator>.</operator><name>eval</name></name><argument_list>(<argument><expr><literal type="string">"function "</literal> <operator>+</operator> <name>fn</name> <operator>+</operator> <literal type="string">" { return pac."</literal> <operator>+</operator> <name>fn</name> <operator>+</operator> <literal type="string">"; }"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>ScriptException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>RuntimeException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>nashorn</name><operator>.</operator><name>eval</name></name><argument_list>(<argument><expr><name>pacScript</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>proxyConfigs</name> <init>= <expr><call><name>callFindProxyForURL</name><argument_list>(<argument><expr><name>uri</name></expr></argument>, <argument><expr><name>nashorn</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><call><name>makeProxyFrom</name><argument_list>(<argument><expr><name>proxyConfigs</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>String</name></type> <name>callFindProxyForURL</name><parameter_list>(<parameter><decl><type><name>URI</name></type> <name>uri</name></decl></parameter>, <parameter><decl><type><name>ScriptEngine</name></type> <name>nashorn</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>ScriptException</name></expr></argument>, <argument><expr><name>NoSuchMethodException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>Invocable</name></type> <name>script</name> <init>= <expr><operator>(</operator><name>Invocable</name><operator>)</operator> <name>nashorn</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>URL</name></type> <name>url</name> <init>= <expr><call><name>toUrl</name><argument_list>(<argument><expr><name>uri</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><operator>(</operator><name>String</name><operator>)</operator> <call><name><name>script</name><operator>.</operator><name>invokeFunction</name></name><argument_list>(<argument><expr><literal type="string">"FindProxyForURL"</literal></expr></argument>, <argument><expr><call><name><name>url</name><operator>.</operator><name>toExternalForm</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>url</name><operator>.</operator><name>getHost</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>Proxy</name></type> <name>makeProxyFrom</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>proxyConfigs</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>proxyConfig</name> <init>= <expr><call><name><name>proxyConfigs</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">";"</literal></expr></argument>)</argument_list></call><index>[<expr><literal type="number">0</literal></expr>]</index></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>proxyConfig</name><operator>.</operator><name>startsWith</name></name><argument_list>(<argument><expr><literal type="string">"DIRECT"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return <expr><name><name>Proxy</name><operator>.</operator><name>NO_PROXY</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>Proxy</name><operator>.</operator><name>Type</name></name></type> <name>type</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>proxyConfig</name><operator>.</operator><name>startsWith</name></name><argument_list>(<argument><expr><literal type="string">"PROXY"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>type</name> <operator>=</operator> <name><name>Proxy</name><operator>.</operator><name>Type</name><operator>.</operator><name>HTTP</name></name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>proxyConfig</name> <operator>=</operator> <call><name><name>proxyConfig</name><operator>.</operator><name>replace</name></name><argument_list>(<argument><expr><literal type="string">"PROXY "</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><name>type</name> <operator>=</operator> <name><name>Proxy</name><operator>.</operator><name>Type</name><operator>.</operator><name>SOCKS</name></name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>proxyConfig</name> <operator>=</operator> <call><name><name>proxyConfig</name><operator>.</operator><name>replace</name></name><argument_list>(<argument><expr><literal type="string">"SOCKS "</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>hostPort</name> <init>= <expr><call><name><name>proxyConfig</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><operator>new</operator> <call><name>Proxy</name><argument_list>(<argument><expr><name>type</name></expr></argument>, <argument><expr><operator>new</operator> <call><name>InetSocketAddress</name><argument_list>(<argument><expr><name><name>hostPort</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><call><name><name>Integer</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><name><name>hostPort</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>URL</name></type> <name>toUrl</name><parameter_list>(<parameter><decl><type><name>URI</name></type> <name>uri</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <return>return <expr><call><name><name>uri</name><operator>.</operator><name>toURL</name></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>MalformedURLException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RuntimeException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>Proxy</name></type> <name>manualProxy</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>setAuthenticator</name><argument_list>(<argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_MANUAL_USERNAME</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_MANUAL_PASSWORD</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>Proxy</name><operator>.</operator><name>Type</name></name></type> <name>type</name> <init>= <expr><call><name><name>Proxy</name><operator>.</operator><name>Type</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_MANUAL_TYPE</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><operator>new</operator> <call><name>Proxy</name><argument_list>(<argument><expr><name>type</name></expr></argument>, <argument><expr><operator>new</operator> <call><name>InetSocketAddress</name><argument_list>(<argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_MANUAL_HOSTNAME</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>Integer</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><call><name><name>preferences</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>PREF_PROXY_MANUAL_PORT</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>clearPreviousAuthenticator</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>Authenticator</name><operator>.</operator><name>setDefault</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>setAuthenticator</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>username</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>password</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>username</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>username</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>actualPassword</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>password</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>actualPassword</name> <operator>=</operator> <literal type="string">""</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><name>actualPassword</name> <operator>=</operator> <name>password</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><call><name><name>Authenticator</name><operator>.</operator><name>setDefault</name></name><argument_list>(
+      <argument><expr><operator>new</operator> <class><super><name>Authenticator</name></super><argument_list>()</argument_list> <block>{
+        <function><annotation>@<name>Override</name></annotation>
+        <type><specifier>public</specifier> <name>PasswordAuthentication</name></type> <name>getPasswordAuthentication</name><parameter_list>()</parameter_list> <block>{<block_content>
+          <return>return <expr><operator>new</operator> <call><name>PasswordAuthentication</name><argument_list>(<argument><expr><name>username</name></expr></argument>, <argument><expr><call><name><name>actualPassword</name><operator>.</operator><name>toCharArray</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></function>
+      }</block></class></expr></argument>
+    )</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+}</block></class>
+</unit>

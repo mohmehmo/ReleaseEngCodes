@@ -1,0 +1,366 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/processing/app/helpers/CommandlineParser.java"><package>package <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name></name>;</package>
+
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>BaseNoGui</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>PreferencesData</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetBoard</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPackage</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPlatform</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>legacy</name><operator>.</operator><name>PApplet</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>*</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>CommandlineParser</name> <block>{
+
+  <enum><specifier>private</specifier> enum <name>ACTION</name> <block>{
+    <decl><name>GUI</name></decl>, <decl><name>NOOP</name></decl>, <decl><name>VERIFY</name><argument_list>(<argument><expr><literal type="string">"--verify"</literal></expr></argument>)</argument_list></decl>, <decl><name>UPLOAD</name><argument_list>(<argument><expr><literal type="string">"--upload"</literal></expr></argument>)</argument_list></decl>, <decl><name>GET_PREF</name><argument_list>(<argument><expr><literal type="string">"--get-pref"</literal></expr></argument>)</argument_list></decl>, <decl><name>INSTALL_BOARD</name><argument_list>(<argument><expr><literal type="string">"--install-boards"</literal></expr></argument>)</argument_list></decl>, <decl><name>INSTALL_LIBRARY</name><argument_list>(<argument><expr><literal type="string">"--install-library"</literal></expr></argument>)</argument_list></decl>, <decl><name>VERSION</name><argument_list>(<argument><expr><literal type="string">"--version"</literal></expr></argument>)</argument_list></decl>;
+
+    <decl_stmt><decl><type><specifier>final</specifier> <name>String</name></type> <name>value</name></decl>;</decl_stmt>
+
+    <constructor><name>ACTION</name><parameter_list>()</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><name><name>this</name><operator>.</operator><name>value</name></name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+
+    <constructor><name>ACTION</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>value</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><name><name>this</name><operator>.</operator><name>value</name></name> <operator>=</operator> <name>value</name></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+  }</block></enum>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name><name>String</name><index>[]</index></name></type> <name>args</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name><name>Map</name><argument_list type="generic">&lt;<argument><name>String</name></argument>, <argument><name>ACTION</name></argument>&gt;</argument_list></name></type> <name>actions</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>ACTION</name></type> <name>action</name> <init>= <expr><name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>doVerboseBuild</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>doVerboseUpload</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>doUseProgrammer</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>preserveTempFiles</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>noUploadPort</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>forceSavePrefs</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>String</name></type> <name>getPref</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>String</name></type> <name>boardToInstall</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>String</name></type> <name>libraryToInstall</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>uploadPort</name> <init>= <expr><call><name><name>Optional</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>filenames</name> <init>= <expr><operator>new</operator> <call><name><name>LinkedList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+  <constructor><specifier>public</specifier> <name>CommandlineParser</name><parameter_list>(<parameter><decl><type><name><name>String</name><index>[]</index></name></type> <name>args</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>args</name></name> <operator>=</operator> <name>args</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>actions</name> <operator>=</operator> <operator>new</operator> <call><name><name>HashMap</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>actions</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"--verify"</literal></expr></argument>, <argument><expr><name><name>ACTION</name><operator>.</operator><name>VERIFY</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>actions</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"--upload"</literal></expr></argument>, <argument><expr><name><name>ACTION</name><operator>.</operator><name>UPLOAD</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>actions</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"--get-pref"</literal></expr></argument>, <argument><expr><name><name>ACTION</name><operator>.</operator><name>GET_PREF</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>actions</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"--install-boards"</literal></expr></argument>, <argument><expr><name><name>ACTION</name><operator>.</operator><name>INSTALL_BOARD</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>actions</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"--install-library"</literal></expr></argument>, <argument><expr><name><name>ACTION</name><operator>.</operator><name>INSTALL_LIBRARY</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>actions</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"--version"</literal></expr></argument>, <argument><expr><name><name>ACTION</name><operator>.</operator><name>VERSION</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>parseArgumentsPhase1</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name>ACTION</name></type> <name>a</name> <init>= <expr><call><name><name>actions</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>a</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>!=</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name> <operator>&amp;&amp;</operator> <name>action</name> <operator>!=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>)</condition> <block>{<block_content>
+          <decl_stmt><decl><type><name><name>Set</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>strings</name> <init>= <expr><call><name><name>actions</name><operator>.</operator><name>keySet</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+          <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>valid</name> <init>= <expr><call><name><name>strings</name><operator>.</operator><name>toArray</name></name><argument_list>(<argument><expr><operator>new</operator> <name><name>String</name><index>[<expr><call><name><name>strings</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+          <decl_stmt><decl><type><name>String</name></type> <name>mess</name> <init>= <expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Can only pass one of: {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>PApplet</name><operator>.</operator><name>join</name></name><argument_list>(<argument><expr><name>valid</name></expr></argument>, <argument><expr><literal type="string">", "</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><name>mess</name></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>a</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GET_PREF</name></name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+          <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&lt;</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>getPref</name> <operator>=</operator> <name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>a</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>INSTALL_BOARD</name></name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+          <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>a</name><operator>.</operator><name>value</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <expr_stmt><expr><name>boardToInstall</name> <operator>=</operator> <name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>a</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>INSTALL_LIBRARY</name></name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+          <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>a</name><operator>.</operator><name>value</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <expr_stmt><expr><name>libraryToInstall</name> <operator>=</operator> <name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>action</name> <operator>=</operator> <name>a</name></expr>;</expr_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>startsWith</name><argument_list>(<argument><expr><literal type="string">"-psn"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">//discard</comment>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--verbose"</literal></expr></argument>)</argument_list></call> <operator>||</operator> <name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"-v"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>doVerboseBuild</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>doVerboseUpload</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--preserve-temp-files"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>preserveTempFiles</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--verbose-build"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>doVerboseBuild</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--verbose-upload"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>doVerboseUpload</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--useprogrammer"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>doUseProgrammer</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--nouploadport"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>noUploadPort</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--board"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for --board"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--port"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for --port"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>uploadPort</name> <operator>=</operator> <call><name><name>Optional</name><operator>.</operator><name>of</name></name><argument_list>(<argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--curdir"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"--curdir no longer supported"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--buildpath"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><literal type="string">"Argument required for --buildpath"</literal></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <decl_stmt><decl><type><name>File</name></type> <name>buildFolder</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>buildFolder</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><literal type="string">"The build path doesn't exist"</literal></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>buildFolder</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><literal type="string">"The build path is not a folder"</literal></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><literal type="string">"build.path"</literal></expr></argument>, <argument><expr><call><name><name>buildFolder</name><operator>.</operator><name>getAbsolutePath</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--pref"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for --pref"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name>processPrefArgument</name><argument_list>(<argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--save-prefs"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>forceSavePrefs</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--preferences-file"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for --preferences-file"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <comment type="line">// Argument should be already processed by Base.main(...)</comment>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>startsWith</name><argument_list>(<argument><expr><literal type="string">"--"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"unknown option: {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+      <expr_stmt><expr><call><name><name>filenames</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name>checkAction</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>parseArgumentsPhase2</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"--board"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;=</operator> <name><name>args</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Argument required for --board"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>processBoardArgument</name><argument_list>(<argument><expr><name><name>args</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>action</name> <operator>=</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>checkAction</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>UPLOAD</name></name> <operator>||</operator> <name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>VERIFY</name></name><operator>)</operator> <operator>&amp;&amp;</operator> <call><name><name>filenames</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Must specify exactly one sketch file"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name> <operator>||</operator> <name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GET_PREF</name></name><operator>)</operator> <operator>&amp;&amp;</operator> <call><name><name>filenames</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Cannot specify any sketch files"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>action</name> <operator>!=</operator> <name><name>ACTION</name><operator>.</operator><name>UPLOAD</name></name> <operator>&amp;&amp;</operator> <name>action</name> <operator>!=</operator> <name><name>ACTION</name><operator>.</operator><name>VERIFY</name></name><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><name>doVerboseBuild</name> <operator>||</operator> <name>doVerboseUpload</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"--verbose, --verbose-upload and --verbose-build can only be used together with --verify or --upload"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>processBoardArgument</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>selectBoard</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// No board selected? Nothing to do</comment>
+    <if_stmt><if>if <condition>(<expr><name>selectBoard</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>selectBoard</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name><name>split</name><operator>.</operator><name>length</name></name> <operator>&lt;</operator> <literal type="number">3</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid board name, it should be of the form \"package:arch:board\" or \"package:arch:board:options\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>selectBoard</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>TargetPackage</name></type> <name>targetPackage</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getTargetPackage</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>targetPackage</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Unknown package"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name> <init>= <expr><call><name><name>targetPackage</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>targetPlatform</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Unknown architecture"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>TargetBoard</name></type> <name>targetBoard</name> <init>= <expr><call><name><name>targetPlatform</name><operator>.</operator><name>getBoard</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>targetBoard</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <operator>!</operator><call><name><name>targetBoard</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Unknown board"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>split</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>selectBoard</name></name><argument_list>(<argument><expr><name>targetBoard</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>onBoardOrPortChange</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name><name>split</name><operator>.</operator><name>length</name></name> <operator>&gt;</operator> <literal type="number">3</literal></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>options</name> <init>= <expr><name><name>split</name><index>[<expr><literal type="number">3</literal></expr>]</index></name><operator>.</operator><call><name>split</name><argument_list>(<argument><expr><literal type="string">","</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <for>for <control>(<init><decl><type><name>String</name></type> <name>option</name> <range>: <expr><name>options</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>keyValue</name> <init>= <expr><call><name><name>option</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">"="</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name><name>keyValue</name><operator>.</operator><name>length</name></name> <operator>!=</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid option, should be of the form \"name=value\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>option</name></expr></argument>, <argument><expr><call><name><name>targetBoard</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <decl_stmt><decl><type><name>String</name></type> <name>key</name> <init>= <expr><name><name>keyValue</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>trim</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>String</name></type> <name>value</name> <init>= <expr><name><name>keyValue</name><index>[<expr><literal type="number">1</literal></expr>]</index></name><operator>.</operator><call><name>trim</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>targetBoard</name><operator>.</operator><name>hasMenu</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid option for board \"{1}\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>key</name></expr></argument>, <argument><expr><call><name><name>targetBoard</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>targetBoard</name><operator>.</operator><name>getMenuLabel</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid value for option \"{1}\" for board \"{2}\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>value</name></expr></argument>, <argument><expr><name>key</name></expr></argument>, <argument><expr><call><name><name>targetBoard</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><literal type="string">"custom_"</literal> <operator>+</operator> <name>key</name></expr></argument>, <argument><expr><call><name><name>targetBoard</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"_"</literal> <operator>+</operator> <name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>processPrefArgument</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>arg</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>arg</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">"="</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>split</name><operator>.</operator><name>length</name></name> <operator>!=</operator> <literal type="number">2</literal> <operator>||</operator> <name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>isEmpty</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>showError</name></name><argument_list>(<argument><expr><literal type="null">null</literal></expr></argument>, <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid argument to --pref, should be of the form \"pref=value\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>arg</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><literal type="string">"runtime.build_properties_custom."</literal> <operator>+</operator> <name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isDoVerboseBuild</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>doVerboseBuild</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isDoVerboseUpload</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>doVerboseUpload</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isForceSavePrefs</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>forceSavePrefs</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getGetPref</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>getPref</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>getFilenames</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>filenames</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isGetPrefMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GET_PREF</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isGuiMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>GUI</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isNoOpMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>NOOP</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isUploadMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>UPLOAD</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>isVerifyMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>VERIFY</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isVerifyOrUploadMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>isVerifyMode</name><argument_list>()</argument_list></call> <operator>||</operator> <call><name>isUploadMode</name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isDoUseProgrammer</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>doUseProgrammer</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isNoUploadPort</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>noUploadPort</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isInstallBoard</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>INSTALL_BOARD</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isInstallLibrary</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>INSTALL_LIBRARY</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isVersionMode</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>action</name> <operator>==</operator> <name><name>ACTION</name><operator>.</operator><name>VERSION</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getBoardToInstall</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name><name>this</name><operator>.</operator><name>boardToInstall</name></name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getLibraryToInstall</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>libraryToInstall</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isPreserveTempFiles</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>preserveTempFiles</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>getUploadPort</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>uploadPort</name></expr>;</return>
+  </block_content>}</block></function>
+}</block></class>
+</unit>

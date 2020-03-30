@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/cc/arduino/contributions/packages/ContributionsIndexer.java"><comment type="block">/*
+ * This file is part of Arduino.
+ *
+ * Copyright 2014 Arduino LLC (http://www.arduino.cc/)
+ *
+ * Arduino is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As a special exception, you may use this file as part of a free software
+ * library without restriction.  Specifically, if other files instantiate
+ * templates or use macros or inline functions from this file, or you compile
+ * this file and link it with other files to produce an executable, this
+ * file does not by itself cause the resulting executable to be covered by
+ * the GNU General Public License.  This exception does not however
+ * invalidate any other reasons why the executable file might be covered by
+ * the GNU General Public License.
+ */</comment>
+
+<package>package <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>contributions</name><operator>.</operator><name>packages</name></name>;</package>
+
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>Constants</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>contributions</name><operator>.</operator><name>DownloadableContribution</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>contributions</name><operator>.</operator><name>SignatureVerifier</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>core</name><operator>.</operator><name>JsonProcessingException</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>databind</name><operator>.</operator><name>DeserializationFeature</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>databind</name><operator>.</operator><name>ObjectMapper</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>module</name><operator>.</operator><name>mrbean</name><operator>.</operator><name>MrBeanModule</name></name>;</import>
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>commons</name><operator>.</operator><name>compress</name><operator>.</operator><name>utils</name><operator>.</operator><name>IOUtils</name></name>;</import>
+
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>BaseNoGui</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>Platform</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>PreferencesData</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPackage</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPlatform</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPlatformException</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>FileUtils</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>PreferencesMap</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>FileInputStream</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>InputStream</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>stream</name><operator>.</operator><name>Collectors</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>format</name></name>;</import>
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>filefilters</name><operator>.</operator><name>OnlyDirs</name><operator>.</operator><name>ONLY_DIRS</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>ContributionsIndexer</name> <block>{
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>File</name></type> <name>packagesFolder</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>File</name></type> <name>stagingFolder</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>File</name></type> <name>preferencesFolder</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>File</name></type> <name>builtInHardwareFolder</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>Platform</name></type> <name>platform</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>SignatureVerifier</name></type> <name>signatureVerifier</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>ContributionsIndex</name></type> <name>index</name></decl>;</decl_stmt>
+
+  <constructor><specifier>public</specifier> <name>ContributionsIndexer</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>preferencesFolder</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>builtInHardwareFolder</name></decl></parameter>, <parameter><decl><type><name>Platform</name></type> <name>platform</name></decl></parameter>, <parameter><decl><type><name>SignatureVerifier</name></type> <name>signatureVerifier</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>preferencesFolder</name></name> <operator>=</operator> <name>preferencesFolder</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>builtInHardwareFolder</name></name> <operator>=</operator> <name>builtInHardwareFolder</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>platform</name></name> <operator>=</operator> <name>platform</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>signatureVerifier</name></name> <operator>=</operator> <name>signatureVerifier</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>index</name> <operator>=</operator> <operator>new</operator> <call><name>EmptyContributionIndex</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>packagesFolder</name> <operator>=</operator> <operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>preferencesFolder</name></expr></argument>, <argument><expr><literal type="string">"packages"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>stagingFolder</name> <operator>=</operator> <operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>preferencesFolder</name></expr></argument>, <argument><expr><literal type="string">"staging"</literal> <operator>+</operator> <name><name>File</name><operator>.</operator><name>separator</name></name> <operator>+</operator> <literal type="string">"packages"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>parseIndex</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <comment type="line">// Read bundled index...</comment>
+    <decl_stmt><decl><type><name>File</name></type> <name>bundledIndexFile</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>builtInHardwareFolder</name></expr></argument>, <argument><expr><name><name>Constants</name><operator>.</operator><name>BUNDLED_INDEX_FILE_NAME</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>mergeContributions</name><argument_list>(<argument><expr><name>bundledIndexFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// ...and overlay the default index if present</comment>
+    <decl_stmt><decl><type><name>File</name></type> <name>defaultIndexFile</name> <init>= <expr><call><name>getIndexFile</name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>DEFAULT_INDEX_FILE_NAME</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>defaultIndexFile</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <comment type="line">// Check main index signature</comment>
+      <if_stmt><if>if <condition>(<expr><call><name><name>signatureVerifier</name><operator>.</operator><name>isSigned</name></name><argument_list>(<argument><expr><name>defaultIndexFile</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>mergeContributions</name><argument_list>(<argument><expr><name>defaultIndexFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>PreferencesData</name><operator>.</operator><name>areInsecurePackagesAllowed</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Warning: forced trusting untrusted contributions"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>mergeContributions</name><argument_list>(<argument><expr><name>defaultIndexFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>BaseNoGui</name>
+            <operator>.</operator><name>showWarning</name></name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>DEFAULT_INDEX_FILE_NAME</name></name></expr></argument>,
+                              <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"A package index has an invalid signature and needs to be updated.\n"</literal>
+                                 <operator>+</operator> <literal type="string">"Please open the Board Manager from the menu\n"</literal>
+                                 <operator>+</operator> <literal type="string">"\n"</literal> <comment type="line">//</comment>
+                                 <operator>+</operator> <literal type="string">"      Tools -&gt; Board -&gt; Board Manager\n"</literal>
+                                 <operator>+</operator> <literal type="string">"\nto update it"</literal></expr></argument>)</argument_list></call></expr></argument>,
+                              <argument><expr><literal type="null">null</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Set main and bundled indexes as trusted</comment>
+    <expr_stmt><expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>forEach</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>pack</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>pack</name><operator>.</operator><name>setTrusted</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Overlay 3rd party indexes</comment>
+    <decl_stmt><decl><type><name><name>File</name><index>[]</index></name></type> <name>indexFiles</name> <init>= <expr><call><name><name>preferencesFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>TestPackageIndexFilenameFilter</name><argument_list>(<argument><expr><operator>new</operator> <call><name>PackageIndexFilenameFilter</name><argument_list>(<argument><expr><name><name>Constants</name><operator>.</operator><name>DEFAULT_INDEX_FILE_NAME</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>indexFiles</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <for>for <control>(<init><decl><type><name>File</name></type> <name>indexFile</name> <range>: <expr><name>indexFiles</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><call><name>mergeContributions</name><argument_list>(<argument><expr><name>indexFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>JsonProcessingException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Skipping contributed index file {0}, parsing error occured:"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>indexFile</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></catch></try>
+      </block_content>}</block></for>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error reading package indexes folder: {0}\n(maybe a permission problem?)"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>preferencesFolder</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <comment type="line">// Fill tools and toolsDependency cross references</comment>
+    <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedPackage</name></argument>&gt;</argument_list></name></type> <name>packages</name> <init>= <expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>Collection</name><argument_list type="generic">&lt;<argument><name>ContributedPackage</name></argument>&gt;</argument_list></name></type> <name>packagesWithTools</name> <init>= <expr><call><name><name>packages</name><operator>.</operator><name>stream</name></name><argument_list>()</argument_list></call>
+      <operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>input</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>input</name><operator>.</operator><name>getTools</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>getTools</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>isEmpty</name><argument_list>()</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call>
+      <operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>toList</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>ContributedPackage</name></type> <name>pack</name> <range>: <expr><name>packages</name></expr></range></decl></init>)</control> <block>{<block_content>
+      <comment type="line">// Fill references to package in tools</comment>
+      <for>for <control>(<init><decl><type><name>ContributedTool</name></type> <name>tool</name> <range>: <expr><call><name><name>pack</name><operator>.</operator><name>getTools</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tool</name><operator>.</operator><name>setPackage</name></name><argument_list>(<argument><expr><name>pack</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></for>
+
+      <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>plat</name> <range>: <expr><call><name><name>pack</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <comment type="line">// Set a reference to parent packages</comment>
+        <expr_stmt><expr><call><name><name>plat</name><operator>.</operator><name>setParentPackage</name></name><argument_list>(<argument><expr><name>pack</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Resolve tools dependencies (works also as a check for file integrity)</comment>
+        <expr_stmt><expr><call><name><name>plat</name><operator>.</operator><name>resolveToolsDependencies</name></name><argument_list>(<argument><expr><name>packagesWithTools</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></for>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>index</name><operator>.</operator><name>fillCategories</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>mergeContributions</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>indexFile</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>indexFile</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>ContributionsIndex</name></type> <name>contributionsIndex</name> <init>= <expr><call><name>parseIndex</name><argument_list>(<argument><expr><name>indexFile</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>boolean</name></type> <name>signed</name> <init>= <expr><call><name><name>signatureVerifier</name><operator>.</operator><name>isSigned</name></name><argument_list>(<argument><expr><name>indexFile</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>boolean</name></type> <name>trustall</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>areInsecurePackagesAllowed</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>ContributedPackage</name></type> <name>contributedPackage</name> <range>: <expr><call><name><name>contributionsIndex</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>contributedPackage</name><operator>.</operator><name>setTrusted</name></name><argument_list>(<argument><expr><name>signed</name> <operator>||</operator> <name>trustall</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>contributedPackage</name><operator>.</operator><name>isTrusted</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>contributedPlatform</name> <range>: <expr><call><name><name>contributedPackage</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>contributedPlatform</name><operator>.</operator><name>setCategory</name></name><argument_list>(<argument><expr><literal type="string">"Contributed"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+      </block_content>}</block></if></if_stmt>
+
+      <decl_stmt><decl><type><name>ContributedPackage</name></type> <name>targetPackage</name> <init>= <expr><call><name><name>index</name><operator>.</operator><name>getPackage</name></name><argument_list>(<argument><expr><call><name><name>contributedPackage</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+      <if_stmt><if>if <condition>(<expr><name>targetPackage</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>add</name><argument_list>(<argument><expr><name>contributedPackage</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>contributedPackage</name><operator>.</operator><name>isTrusted</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><call><name>isPackageNameProtected</name><argument_list>(<argument><expr><name>contributedPackage</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <if_stmt><if>if <condition>(<expr><call><name>isPackageNameProtected</name><argument_list>(<argument><expr><name>contributedPackage</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <name>trustall</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Warning: forced trusting untrusted contributions"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedPlatform</name></argument>&gt;</argument_list></name></type> <name>platforms</name> <init>= <expr><call><name><name>contributedPackage</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+          <if_stmt><if>if <condition>(<expr><name>platforms</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>platforms</name> <operator>=</operator> <operator>new</operator> <call><name><name>LinkedList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>contributedPlatform</name> <range>: <expr><name>platforms</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>ContributedPlatform</name></type> <name>plat</name> <init>= <expr><call><name><name>targetPackage</name><operator>.</operator><name>findPlatform</name></name><argument_list>(<argument><expr><call><name><name>contributedPlatform</name><operator>.</operator><name>getArchitecture</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>contributedPlatform</name><operator>.</operator><name>getVersion</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>plat</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+              <expr_stmt><expr><call><name><name>targetPackage</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>remove</name><argument_list>(<argument><expr><name>plat</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>targetPackage</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>add</name><argument_list>(<argument><expr><name>contributedPlatform</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></for>
+          <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedTool</name></argument>&gt;</argument_list></name></type> <name>tools</name> <init>= <expr><call><name><name>contributedPackage</name><operator>.</operator><name>getTools</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+          <if_stmt><if>if <condition>(<expr><name>tools</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>tools</name> <operator>=</operator> <operator>new</operator> <call><name><name>LinkedList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <for>for <control>(<init><decl><type><name>ContributedTool</name></type> <name>contributedTool</name> <range>: <expr><name>tools</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>ContributedTool</name></type> <name>tool</name> <init>= <expr><call><name><name>targetPackage</name><operator>.</operator><name>findTool</name></name><argument_list>(<argument><expr><call><name><name>contributedTool</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>contributedTool</name><operator>.</operator><name>getVersion</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>tool</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+              <expr_stmt><expr><call><name><name>targetPackage</name><operator>.</operator><name>getTools</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>remove</name><argument_list>(<argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>targetPackage</name><operator>.</operator><name>getTools</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>add</name><argument_list>(<argument><expr><name>contributedTool</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></for>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>isPackageNameProtected</name><parameter_list>(<parameter><decl><type><name>ContributedPackage</name></type> <name>contributedPackage</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>Constants</name><operator>.</operator><name>PROTECTED_PACKAGE_NAMES</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><call><name><name>contributedPackage</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>ContributionsIndex</name></type> <name>parseIndex</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>indexFile</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>InputStream</name></type> <name>inputStream</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><name>inputStream</name> <operator>=</operator> <operator>new</operator> <call><name>FileInputStream</name><argument_list>(<argument><expr><name>indexFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>ObjectMapper</name></type> <name>mapper</name> <init>= <expr><operator>new</operator> <call><name>ObjectMapper</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>registerModule</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>MrBeanModule</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>configure</name></name><argument_list>(<argument><expr><name><name>DeserializationFeature</name><operator>.</operator><name>ACCEPT_SINGLE_VALUE_AS_ARRAY</name></name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>configure</name></name><argument_list>(<argument><expr><name><name>DeserializationFeature</name><operator>.</operator><name>EAGER_DESERIALIZER_FETCH</name></name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>configure</name></name><argument_list>(<argument><expr><name><name>DeserializationFeature</name><operator>.</operator><name>FAIL_ON_UNKNOWN_PROPERTIES</name></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><call><name><name>mapper</name><operator>.</operator><name>readValue</name></name><argument_list>(<argument><expr><name>inputStream</name></expr></argument>, <argument><expr><name><name>ContributionsIndex</name><operator>.</operator><name>class</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block> <finally>finally <block>{<block_content>
+      <expr_stmt><expr><call><name><name>IOUtils</name><operator>.</operator><name>closeQuietly</name></name><argument_list>(<argument><expr><name>inputStream</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></finally></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>syncWithFilesystem</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name>syncBuiltInHardware</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>syncLocalPackages</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>syncBuiltInHardware</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <name>builtInHardwareFolder</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>File</name></type> <name>folder</name> <range>: <expr><call><name><name>builtInHardwareFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name>ContributedPackage</name></type> <name>pack</name> <init>= <expr><call><name><name>index</name><operator>.</operator><name>findPackage</name></name><argument_list>(<argument><expr><call><name><name>folder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>pack</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+        <continue>continue;</continue></block_content></block></if></if_stmt>
+      <expr_stmt><expr><call><name>syncBuiltInPackageWithFilesystem</name><argument_list>(<argument><expr><name>pack</name></expr></argument>, <argument><expr><name>folder</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <decl_stmt><decl><type><name>File</name></type> <name>toolsFolder</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>builtInHardwareFolder</name></expr></argument>, <argument><expr><literal type="string">"tools"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>toolsFolder</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <continue>continue;</continue></block_content></block></if></if_stmt>
+
+      <for>for <control>(<init><decl><type><name>File</name></type> <name>toolFolder</name> <range>: <expr><call><name><name>toolsFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+
+        <comment type="line">// builtin_tools_versions.txt contains tools versions in the format:</comment>
+        <comment type="line">// "PACKAGER.TOOL_NAME=TOOL_VERSION"</comment>
+        <comment type="line">// for example:</comment>
+        <comment type="line">// "arduino.avrdude=6.0.1-arduino5"</comment>
+
+        <decl_stmt><decl><type><name>File</name></type> <name>versionsFile</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>toolFolder</name></expr></argument>, <argument><expr><literal type="string">"builtin_tools_versions.txt"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>versionsFile</name><operator>.</operator><name>isFile</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+          <continue>continue;</continue></block_content></block></if></if_stmt>
+        <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>toolsVersion</name> <init>= <expr><operator>new</operator> <call><name>PreferencesMap</name><argument_list>(<argument><expr><name>versionsFile</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>subTree</name><argument_list>(<argument><expr><call><name><name>pack</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>String</name></type> <name>name</name> <range>: <expr><call><name><name>toolsVersion</name><operator>.</operator><name>keySet</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+          <decl_stmt><decl><type><name>String</name></type> <name>version</name> <init>= <expr><call><name><name>toolsVersion</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+          <decl_stmt><decl><type><name>ContributedTool</name></type> <name>tool</name> <init>= <expr><call><name>syncToolWithFilesystem</name><argument_list>(<argument><expr><name>pack</name></expr></argument>, <argument><expr><name>toolFolder</name></expr></argument>, <argument><expr><name>name</name></expr></argument>, <argument><expr><name>version</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+          <if_stmt><if>if <condition>(<expr><name>tool</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>tool</name><operator>.</operator><name>setBuiltIn</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></for>
+      </block_content>}</block></for>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>syncBuiltInPackageWithFilesystem</name><parameter_list>(<parameter><decl><type><name>ContributedPackage</name></type> <name>pack</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>hardwareFolder</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <comment type="line">// Scan all hardware folders and mark as installed all the tools found.</comment>
+    <for>for <control>(<init><decl><type><name>File</name></type> <name>platformFolder</name> <range>: <expr><call><name><name>hardwareFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name>File</name></type> <name>platformTxt</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>platformFolder</name></expr></argument>, <argument><expr><literal type="string">"platform.txt"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>String</name></type> <name>version</name> <init>= <expr><operator>new</operator> <call><name>PreferencesMap</name><argument_list>(<argument><expr><name>platformTxt</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>get</name><argument_list>(<argument><expr><literal type="string">"version"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>ContributedPlatform</name></type> <name>p</name> <init>= <expr><call><name>syncHardwareWithFilesystem</name><argument_list>(<argument><expr><name>pack</name></expr></argument>, <argument><expr><name>platformFolder</name></expr></argument>, <argument><expr><call><name><name>platformFolder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>version</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>p</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>p</name><operator>.</operator><name>setBuiltIn</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>syncLocalPackages</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>packagesFolder</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Scan all hardware folders and mark as installed all the</comment>
+    <comment type="line">// platforms found.</comment>
+    <for>for <control>(<init><decl><type><name>File</name></type> <name>folder</name> <range>: <expr><call><name><name>packagesFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name>ContributedPackage</name></type> <name>pack</name> <init>= <expr><call><name><name>index</name><operator>.</operator><name>findPackage</name></name><argument_list>(<argument><expr><call><name><name>folder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>pack</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>syncPackageWithFilesystem</name><argument_list>(<argument><expr><name>pack</name></expr></argument>, <argument><expr><name>folder</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>syncPackageWithFilesystem</name><parameter_list>(<parameter><decl><type><name>ContributedPackage</name></type> <name>pack</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>root</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// Scan all hardware folders and mark as installed all the tools found.</comment>
+    <decl_stmt><decl><type><name>File</name></type> <name>hardwareFolder</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>root</name></expr></argument>, <argument><expr><literal type="string">"hardware"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>hardwareFolder</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <for>for <control>(<init><decl><type><name>File</name></type> <name>platformFolder</name> <range>: <expr><call><name><name>hardwareFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>File</name></type> <name>versionFolder</name> <range>: <expr><call><name><name>platformFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+          <expr_stmt><expr><call><name>syncHardwareWithFilesystem</name><argument_list>(<argument><expr><name>pack</name></expr></argument>, <argument><expr><name>versionFolder</name></expr></argument>, <argument><expr><call><name><name>platformFolder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>versionFolder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+      </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Scan all tools folders and mark as installed all the tools found.</comment>
+    <decl_stmt><decl><type><name>File</name></type> <name>toolsFolder</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>root</name></expr></argument>, <argument><expr><literal type="string">"tools"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>toolsFolder</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <for>for <control>(<init><decl><type><name>File</name></type> <name>toolFolder</name> <range>: <expr><call><name><name>toolsFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>File</name></type> <name>versionFolder</name> <range>: <expr><call><name><name>toolFolder</name><operator>.</operator><name>listFiles</name></name><argument_list>(<argument><expr><name>ONLY_DIRS</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+          <expr_stmt><expr><call><name>syncToolWithFilesystem</name><argument_list>(<argument><expr><name>pack</name></expr></argument>, <argument><expr><name>versionFolder</name></expr></argument>, <argument><expr><call><name><name>toolFolder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>versionFolder</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+      </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>ContributedTool</name></type> <name>syncToolWithFilesystem</name><parameter_list>(<parameter><decl><type><name>ContributedPackage</name></type> <name>pack</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>installationFolder</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>toolName</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>version</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>ContributedTool</name></type> <name>tool</name> <init>= <expr><call><name><name>pack</name><operator>.</operator><name>findTool</name></name><argument_list>(<argument><expr><name>toolName</name></expr></argument>, <argument><expr><name>version</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>tool</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>tool</name> <operator>=</operator> <call><name><name>pack</name><operator>.</operator><name>findResolvedTool</name></name><argument_list>(<argument><expr><name>toolName</name></expr></argument>, <argument><expr><name>version</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>tool</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><literal type="null">null</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>DownloadableContribution</name></type> <name>contrib</name> <init>= <expr><call><name><name>tool</name><operator>.</operator><name>getDownloadableContribution</name></name><argument_list>(<argument><expr><name>platform</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>contrib</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><name>tool</name> <operator>+</operator> <literal type="string">" seems to have no downloadable contributions for your operating system, but it is installed in\n"</literal> <operator>+</operator> <name>installationFolder</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><literal type="null">null</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>tool</name><operator>.</operator><name>setInstalled</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tool</name><operator>.</operator><name>setInstalledFolder</name></name><argument_list>(<argument><expr><name>installationFolder</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tool</name><operator>.</operator><name>setBuiltIn</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>tool</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>ContributedPlatform</name></type> <name>syncHardwareWithFilesystem</name><parameter_list>(<parameter><decl><type><name>ContributedPackage</name></type> <name>pack</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>installationFolder</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>architecture</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>version</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>ContributedPlatform</name></type> <name>p</name> <init>= <expr><call><name><name>pack</name><operator>.</operator><name>findPlatform</name></name><argument_list>(<argument><expr><name>architecture</name></expr></argument>, <argument><expr><name>version</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>p</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>p</name><operator>.</operator><name>setInstalled</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>p</name><operator>.</operator><name>setBuiltIn</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>p</name><operator>.</operator><name>setInstalledFolder</name></name><argument_list>(<argument><expr><name>installationFolder</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>p</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>String</name></type> <name>toString</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>index</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>TargetPackage</name></argument>&gt;</argument_list></name></type> <name>createTargetPackages</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>TargetPackage</name></argument>&gt;</argument_list></name></type> <name>packages</name> <init>= <expr><operator>new</operator> <call><name><name>ArrayList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><name>packages</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><name>ContributedPackage</name></type> <name>aPackage</name> <range>: <expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name>ContributedTargetPackage</name></type> <name>targetPackage</name> <init>= <expr><operator>new</operator> <call><name>ContributedTargetPackage</name><argument_list>(<argument><expr><call><name><name>aPackage</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+      <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedPlatform</name></argument>&gt;</argument_list></name></type> <name>platforms</name> <init>= <expr><call><name><name>aPackage</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>stream</name><argument_list>()</argument_list></call> <comment type="line">//</comment>
+          <operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>p</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>p</name><operator>.</operator><name>isInstalled</name></name><argument_list>()</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call> <comment type="line">//</comment>
+          <operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>toList</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>Collections</name><operator>.</operator><name>sort</name></name><argument_list>(<argument><expr><name>platforms</name></expr></argument>, <argument><expr><name><name>ContributedPlatform</name><operator>.</operator><name>BUILTIN_AS_LAST</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>p</name> <range>: <expr><name>platforms</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>String</name></type> <name>arch</name> <init>= <expr><call><name><name>p</name><operator>.</operator><name>getArchitecture</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>File</name></type> <name>folder</name> <init>= <expr><call><name><name>p</name><operator>.</operator><name>getInstalledFolder</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <try>try <block>{<block_content>
+          <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name> <init>= <expr><operator>new</operator> <call><name>ContributedTargetPlatform</name><argument_list>(<argument><expr><name>arch</name></expr></argument>, <argument><expr><name>folder</name></expr></argument>, <argument><expr><name>targetPackage</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+          <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>targetPackage</name><operator>.</operator><name>hasPlatform</name></name><argument_list>(<argument><expr><name>targetPlatform</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>targetPackage</name><operator>.</operator><name>addPlatform</name></name><argument_list>(<argument><expr><name>targetPlatform</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>TargetPlatformException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name><name>e</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></catch></try>
+      </block_content>}</block></for>
+
+      <if_stmt><if>if <condition>(<expr><call><name><name>targetPackage</name><operator>.</operator><name>hasPlatforms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>packages</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>targetPackage</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>Collections</name><operator>.</operator><name>sort</name></name><argument_list>(<argument><expr><name>packages</name></expr></argument>, <argument><expr><lambda><parameter_list>(<parameter><decl><name>package1</name></decl></parameter>, <parameter><decl><name>package2</name></decl></parameter>)</parameter_list> -&gt; <block>{<block_content>
+      <assert>assert <expr><call><name><name>package1</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>package2</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">null</literal></expr>;</assert>
+      <return>return <expr><call><name><name>package1</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>toLowerCase</name><argument_list>()</argument_list></call><operator>.</operator><call><name>compareTo</name><argument_list>(<argument><expr><call><name><name>package2</name><operator>.</operator><name>getId</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>toLowerCase</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>packages</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isContributedToolUsed</name><parameter_list>(<parameter><decl><type><name>ContributedPlatform</name></type> <name>platformToIgnore</name></decl></parameter>, <parameter><decl><type><name>ContributedTool</name></type> <name>tool</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <for>for <control>(<init><decl><type><name>ContributedPackage</name></type> <name>pack</name> <range>: <expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>p</name> <range>: <expr><call><name><name>pack</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>platformToIgnore</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>p</name><operator>.</operator><name>isInstalled</name></name><argument_list>()</argument_list></call> <operator>||</operator> <call><name><name>p</name><operator>.</operator><name>isBuiltIn</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+        <for>for <control>(<init><decl><type><name>ContributedTool</name></type> <name>requiredTool</name> <range>: <expr><call><name><name>p</name><operator>.</operator><name>getResolvedTools</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+          <if_stmt><if>if <condition>(<expr><call><name><name>requiredTool</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block></for>
+      </block_content>}</block></for>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>Set</name><argument_list type="generic">&lt;<argument><name>ContributedTool</name></argument>&gt;</argument_list></name></type> <name>getInstalledTools</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>Set</name><argument_list type="generic">&lt;<argument><name>ContributedTool</name></argument>&gt;</argument_list></name></type> <name>tools</name> <init>= <expr><operator>new</operator> <call><name><name>HashSet</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><name>tools</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>ContributedPackage</name></type> <name>pack</name> <range>: <expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>Collection</name><argument_list type="generic">&lt;<argument><name>ContributedPlatform</name></argument>&gt;</argument_list></name></type> <name>platforms</name> <init>= <expr><call><name><name>pack</name><operator>.</operator><name>getPlatforms</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>stream</name><argument_list>()</argument_list></call> <comment type="line">//</comment>
+          <operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>p</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>p</name><operator>.</operator><name>isInstalled</name></name><argument_list>()</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call> <comment type="line">//</comment>
+          <operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>toList</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name><name>Map</name><argument_list type="generic">&lt;<argument><name>String</name></argument>, <argument><name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedPlatform</name></argument>&gt;</argument_list></name></argument>&gt;</argument_list></name></type> <name>platformsByName</name> <init>= <expr><call><name><name>platforms</name><operator>.</operator><name>stream</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>groupingBy</name></name><argument_list>(<argument><expr><name>ContributedPlatform</name><operator>::</operator><name>getName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+      <expr_stmt><expr><call><name><name>platformsByName</name><operator>.</operator><name>forEach</name></name><argument_list>(<argument><expr><lambda><parameter_list>(<parameter><decl><name>platformName</name></decl></parameter>, <parameter><decl><name>platformsWithName</name></decl></parameter>)</parameter_list> -&gt; <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>platformsWithName</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>platformsWithName</name> <operator>=</operator> <call><name><name>platformsWithName</name><operator>.</operator><name>stream</name></name><argument_list>()</argument_list></call> <comment type="line">//</comment>
+              <operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>p</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><operator>!</operator><call><name><name>p</name><operator>.</operator><name>isBuiltIn</name></name><argument_list>()</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call> <comment type="line">//</comment>
+              <operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>toList</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>p</name> <range>: <expr><name>platformsWithName</name></expr></range></decl></init>)</control> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>tools</name><operator>.</operator><name>addAll</name></name><argument_list>(<argument><expr><call><name><name>p</name><operator>.</operator><name>getResolvedTools</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+      </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><name>tools</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>ContributionsIndex</name></type> <name>getIndex</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>index</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>File</name></type> <name>getPackagesFolder</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>packagesFolder</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>File</name></type> <name>getStagingFolder</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>stagingFolder</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>File</name></type> <name>getIndexFile</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>name</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>preferencesFolder</name></expr></argument>, <argument><expr><name>name</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedPackage</name></argument>&gt;</argument_list></name></type> <name>getPackages</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name><name>LinkedList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name><name>index</name><operator>.</operator><name>getPackages</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>getCategories</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name><name>LinkedList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name><name>index</name><operator>.</operator><name>getCategories</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>ContributedPlatform</name></type> <name>getInstalled</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>packageName</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>platformArch</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><literal type="null">null</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name><name>index</name><operator>.</operator><name>getInstalledPlatform</name></name><argument_list>(<argument><expr><name>packageName</name></expr></argument>, <argument><expr><name>platformArch</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>ContributedPlatform</name></argument>&gt;</argument_list></name></type> <name>getInstalledPlatforms</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name><name>LinkedList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name><name>index</name><operator>.</operator><name>getInstalledPlatforms</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name><name>Optional</name><argument_list type="generic">&lt;<argument><name>ContributedPlatform</name></argument>&gt;</argument_list></name></type> <name>getPlatformByFolder</name><parameter_list>(<parameter><decl><type><specifier>final</specifier> <name>File</name></type> <name>folder</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>getInstalledPlatforms</name><argument_list>()</argument_list></call><operator>.</operator><call><name>stream</name><argument_list>()</argument_list></call><operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>contributedPlatform</name></decl></parameter></parameter_list> -&gt; <block>{<block_content>
+      <assert>assert <expr><call><name><name>contributedPlatform</name><operator>.</operator><name>getInstalledFolder</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">null</literal></expr>;</assert>
+      <return>return <expr><call><name><name>FileUtils</name><operator>.</operator><name>isSubDirectory</name></name><argument_list>(<argument><expr><call><name><name>contributedPlatform</name><operator>.</operator><name>getInstalledFolder</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>folder</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call><operator>.</operator><call><name>findFirst</name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>ContributedPlatform</name></type> <name>getContributedPlaform</name><parameter_list>(<parameter><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <for>for <control>(<init><decl><type><name>ContributedPlatform</name></type> <name>plat</name> <range>: <expr><call><name>getInstalledPlatforms</name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><call><name><name>plat</name><operator>.</operator><name>getInstalledFolder</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><call><name><name>targetPlatform</name><operator>.</operator><name>getFolder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>plat</name></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="null">null</literal></expr>;</return>
+  </block_content>}</block></function>
+}</block></class>
+</unit>
