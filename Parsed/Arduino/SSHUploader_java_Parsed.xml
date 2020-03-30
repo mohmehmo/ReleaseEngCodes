@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/cc/arduino/packages/uploaders/SSHUploader.java"><comment type="block">/*
+ * This file is part of Arduino.
+ *
+ * Arduino is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As a special exception, you may use this file as part of a free software
+ * library without restriction.  Specifically, if other files instantiate
+ * templates or use macros or inline functions from this file, or you compile
+ * this file and link it with other files to produce an executable, this
+ * file does not by itself cause the resulting executable to be covered by
+ * the GNU General Public License.  This exception does not however
+ * invalidate any other reasons why the executable file might be covered by
+ * the GNU General Public License.
+ *
+ * Copyright 2013 Arduino LLC (http://www.arduino.cc/)
+ */</comment>
+
+<package>package <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>uploaders</name></name>;</package>
+
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>CompilerUtils</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>BoardPort</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>Uploader</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>ssh</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>jcraft</name><operator>.</operator><name>jsch</name><operator>.</operator><name>JSch</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>jcraft</name><operator>.</operator><name>jsch</name><operator>.</operator><name>JSchException</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>jcraft</name><operator>.</operator><name>jsch</name><operator>.</operator><name>Session</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>BaseNoGui</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>PreferencesData</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>RunnerException</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPlatform</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>PreferencesMap</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>PreferencesMapException</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>StringReplacer</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Arrays</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Collections</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>HashSet</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>List</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Set</name></name>;</import>
+
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>commons</name><operator>.</operator><name>lang3</name><operator>.</operator><name>StringUtils</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>SSHUploader</name> <super_list><extends>extends <super><name>Uploader</name></super></extends></super_list> <block>{
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>final</specifier> <name><name>Set</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>FILES_NOT_TO_COPY</name> <init>=
+      <expr><call><name><name>Collections</name><operator>.</operator><name>unmodifiableSet</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name><name>HashSet</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>Arrays</name><operator>.</operator><name>asList</name></name><argument_list>(<argument><expr><literal type="string">".DS_Store"</literal></expr></argument>, <argument><expr><literal type="string">".Trash"</literal></expr></argument>, <argument><expr><literal type="string">"Thumbs.db"</literal></expr></argument>, <argument><expr><literal type="string">"__MACOSX"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>BoardPort</name></type> <name>port</name></decl>;</decl_stmt>
+
+  <constructor><specifier>public</specifier> <name>SSHUploader</name><parameter_list>(<parameter><decl><type><name>BoardPort</name></type> <name>port</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>port</name></name> <operator>=</operator> <name>port</name></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>boolean</name></type> <name>requiresAuthorization</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>String</name></type> <name>getAuthorizationKey</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><literal type="string">"runtime.pwd."</literal> <operator>+</operator> <call><name><name>port</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>boolean</name></type> <name>uploadUsingPreferences</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>sourcePath</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>buildPath</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>className</name></decl></parameter>, <parameter><decl><type><name>boolean</name></type> <name>usingProgrammer</name></decl></parameter>, <parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>warningsAccumulator</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>RunnerException</name></expr></argument>, <argument><expr><name>PreferencesMapException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>usingProgrammer</name></expr>)</condition> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Network upload using programmer not supported"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getTargetPlatform</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>prefs</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>getMap</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>boardPreferences</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>boardPreferences</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>boardPreferences</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>tool</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.tool"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tool</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>tool</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>targetPlatform</name> <operator>=</operator> <call><name><name>BaseNoGui</name><operator>.</operator><name>getCurrentTargetPlatformFromPackage</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>tool</name> <operator>=</operator> <name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><call><name><name>targetPlatform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>boolean</name></type> <name>coreMissesRemoteUploadTool</name> <init>= <expr><call><name><name>targetPlatform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><name>tool</name> <operator>+</operator> <literal type="string">"_remote"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>isEmpty</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>coreMissesRemoteUploadTool</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.pattern"</literal></expr></argument>, <argument><expr><literal type="string">"/usr/bin/run-avrdude /tmp/sketch.hex"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><call><name><name>targetPlatform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><name>tool</name> <operator>+</operator> <literal type="string">"_remote"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.path"</literal></expr></argument>, <argument><expr><name>buildPath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.project_name"</literal></expr></argument>, <argument><expr><name>className</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>Session</name></type> <name>session</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>SCP</name></type> <name>scp</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <decl_stmt><decl><type><name>JSch</name></type> <name>jSch</name> <init>= <expr><operator>new</operator> <call><name>JSch</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>SSHClientSetupChainRing</name></type> <name>sshClientSetupChain</name> <init>= <expr><operator>new</operator> <call><name>SSHConfigFileSetup</name><argument_list>(<argument><expr><operator>new</operator> <call><name>SSHPwdSetup</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>session</name> <operator>=</operator> <call><name><name>sshClientSetupChain</name><operator>.</operator><name>setup</name></name><argument_list>(<argument><expr><name>port</name></expr></argument>, <argument><expr><name>jSch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <expr_stmt><expr><call><name><name>session</name><operator>.</operator><name>setConfig</name></name><argument_list>(<argument><expr><literal type="string">"PreferredAuthentications"</literal></expr></argument>, <argument><expr><literal type="string">"publickey,keyboard-interactive,password"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <expr_stmt><expr><call><name><name>session</name><operator>.</operator><name>setUserInfo</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>NoInteractionUserInfo</name><argument_list>(<argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"runtime.pwd."</literal> <operator>+</operator> <call><name><name>port</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>session</name><operator>.</operator><name>connect</name></name><argument_list>(<argument><expr><literal type="number">30000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <expr_stmt><expr><name>scp</name> <operator>=</operator> <operator>new</operator> <call><name>SCP</name><argument_list>(<argument><expr><name>session</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>SSH</name></type> <name>ssh</name> <init>= <expr><operator>new</operator> <call><name>SSH</name><argument_list>(<argument><expr><name>session</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+      <decl_stmt><decl><type><name>File</name></type> <name>mergedSketch</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>buildPath</name></expr></argument>, <argument><expr><name>className</name> <operator>+</operator> <literal type="string">".with_bootloader.hex"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+      <decl_stmt><decl><type><name>File</name></type> <name>sketchToCopy</name></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><name>coreMissesRemoteUploadTool</name> <operator>&amp;&amp;</operator> <call><name><name>mergedSketch</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>sketchToCopy</name> <operator>=</operator> <name>mergedSketch</name></expr>;</expr_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name>sketchToCopy</name> <operator>=</operator> <operator>new</operator> <call><name>CompilerUtils</name><argument_list>()</argument_list></call><operator>.</operator><call><name>findCompiledSketch</name><argument_list>(<argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+      <expr_stmt><expr><call><name>scpFiles</name><argument_list>(<argument><expr><name>scp</name></expr></argument>, <argument><expr><name>ssh</name></expr></argument>, <argument><expr><name>sourcePath</name></expr></argument>, <argument><expr><name>sketchToCopy</name></expr></argument>, <argument><expr><name>warningsAccumulator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <if_stmt><if>if <condition>(<expr><name>coreMissesRemoteUploadTool</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ssh</name><operator>.</operator><name>execSyncCommand</name></name><argument_list>(<argument><expr><literal type="string">"merge-sketch-with-bootloader.lua /tmp/sketch.hex"</literal></expr></argument>, <argument><expr><name><name>System</name><operator>.</operator><name>out</name></name></expr></argument>, <argument><expr><name><name>System</name><operator>.</operator><name>err</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+
+      <return>return <expr><call><name>runUploadTool</name><argument_list>(<argument><expr><name>ssh</name></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>JSchException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <decl_stmt><decl><type><name>String</name></type> <name>message</name> <init>= <expr><call><name><name>e</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>message</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"Auth cancel"</literal></expr></argument>)</argument_list></call> <operator>||</operator> <call><name><name>message</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"Auth fail"</literal></expr></argument>)</argument_list></call> <operator>||</operator> <call><name><name>message</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"authentication fail"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>e</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>contains</name><argument_list>(<argument><expr><literal type="string">"Connection refused"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Unable to connect to {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>port</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></if></if_stmt>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch> <finally>finally <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name>scp</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name>session</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>session</name><operator>.</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></finally></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>runUploadTool</name><parameter_list>(<parameter><decl><type><name>SSH</name></type> <name>ssh</name></decl></parameter>, <parameter><decl><type><name>PreferencesMap</name></type> <name>prefs</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>ssh</name><operator>.</operator><name>execSyncCommand</name></name><argument_list>(<argument><expr><literal type="string">"kill-bridge"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.verbose"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.quiet"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <decl_stmt><decl><type><name>String</name></type> <name>pattern</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.pattern"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>command</name> <init>= <expr><call><name><name>StringUtils</name><operator>.</operator><name>join</name></name><argument_list>(<argument><expr><call><name><name>StringReplacer</name><operator>.</operator><name>formatAndSplit</name></name><argument_list>(<argument><expr><name>pattern</name></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="string">" "</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><name>command</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name><name>ssh</name><operator>.</operator><name>execSyncCommand</name></name><argument_list>(<argument><expr><name>command</name></expr></argument>, <argument><expr><name><name>System</name><operator>.</operator><name>out</name></name></expr></argument>, <argument><expr><name><name>System</name><operator>.</operator><name>err</name></name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>scpFiles</name><parameter_list>(<parameter><decl><type><name>SCP</name></type> <name>scp</name></decl></parameter>, <parameter><decl><type><name>SSH</name></type> <name>ssh</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>sourcePath</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>sketch</name></decl></parameter>, <parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>warningsAccumulator</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>JSchException</name></expr></argument>, <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>uploadedSketchFileName</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>sketch</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>endsWith</name><argument_list>(<argument><expr><literal type="string">"hex"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>uploadedSketchFileName</name> <operator>=</operator> <literal type="string">"sketch.hex"</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><name>uploadedSketchFileName</name> <operator>=</operator> <literal type="string">"sketch.bin"</literal></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>open</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>startFolder</name></name><argument_list>(<argument><expr><literal type="string">"tmp"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>sendFile</name></name><argument_list>(<argument><expr><name>sketch</name></expr></argument>, <argument><expr><name>uploadedSketchFileName</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>endFolder</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+      <if_stmt><if>if <condition>(<expr><call><name>canUploadWWWFiles</name><argument_list>(<argument><expr><name>sourcePath</name></expr></argument>, <argument><expr><name>ssh</name></expr></argument>, <argument><expr><name>warningsAccumulator</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>startFolder</name></name><argument_list>(<argument><expr><literal type="string">"www"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>startFolder</name></name><argument_list>(<argument><expr><literal type="string">"sd"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>startFolder</name></name><argument_list>(<argument><expr><call><name><name>sourcePath</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>recursiveSCP</name><argument_list>(<argument><expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>sourcePath</name></expr></argument>, <argument><expr><literal type="string">"www"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>scp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>endFolder</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>endFolder</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>endFolder</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block> <finally>finally <block>{<block_content>
+      <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></finally></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>canUploadWWWFiles</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>sourcePath</name></decl></parameter>, <parameter><decl><type><name>SSH</name></type> <name>ssh</name></decl></parameter>, <parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>warningsAccumulator</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument>, <argument><expr><name>JSchException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>File</name></type> <name>www</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><name>sourcePath</name></expr></argument>, <argument><expr><literal type="string">"www"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>www</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><call><name><name>www</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>www</name><operator>.</operator><name>canExecute</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>warningsAccumulator</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Problem accessing files in folder \"{0}\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>www</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>ssh</name><operator>.</operator><name>execSyncCommand</name></name><argument_list>(<argument><expr><literal type="string">"special-storage-available"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>warningsAccumulator</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Problem accessing board folder /www/sd"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>recursiveSCP</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>from</name></decl></parameter>, <parameter><decl><type><name>SCP</name></type> <name>scp</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>File</name><index>[]</index></name></type> <name>files</name> <init>= <expr><call><name><name>from</name><operator>.</operator><name>listFiles</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>files</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><name>File</name></type> <name>file</name> <range>: <expr><name>files</name></expr></range></decl></init>)</control> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>FILES_NOT_TO_COPY</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><call><name><name>file</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>file</name><operator>.</operator><name>isDirectory</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>file</name><operator>.</operator><name>canExecute</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>startFolder</name></name><argument_list>(<argument><expr><call><name><name>file</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name>recursiveSCP</name><argument_list>(<argument><expr><name>file</name></expr></argument>, <argument><expr><name>scp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>endFolder</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>file</name><operator>.</operator><name>isFile</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>file</name><operator>.</operator><name>canRead</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>scp</name><operator>.</operator><name>sendFile</name></name><argument_list>(<argument><expr><name>file</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>boolean</name></type> <name>burnBootloader</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>RunnerException</name></expr></argument></throws> <block>{<block_content>
+    <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><literal type="string">"Can't burn bootloader via SSH"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+  </block_content>}</block></function>
+
+}</block></class>
+</unit>

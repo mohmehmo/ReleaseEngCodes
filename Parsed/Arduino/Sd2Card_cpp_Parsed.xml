@@ -1,0 +1,721 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/Arduino/app/testdata/libraries/SD_1.1.1/SD/src/utility/Sd2Card.cpp"><comment type="block">/* Arduino Sd2Card Library
+ * Copyright (C) 2009 by William Greiman
+ *
+ * This file is part of the Arduino Sd2Card Library
+ *
+ * This Library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This Library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Arduino Sd2Card Library.  If not, see
+ * &lt;http://www.gnu.org/licenses/&gt;.
+ */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>USE_SPI_LIB</name></cpp:macro></cpp:define>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;Arduino.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"Sd2Card.h"</cpp:file></cpp:include>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SOFTWARE_SPI</name></cpp:ifndef>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifdef>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SDCARD_SPI</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SDCARD_SPI</name></cpp:macro> <cpp:value>SPI</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;SPI.h&gt;</cpp:file></cpp:include>
+<decl_stmt><decl><type><specifier>static</specifier> <name>SPISettings</name></type> <name>settings</name></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<comment type="line">// functions for hardware SPI</comment>
+<comment type="block" format="doxygen">/** Send a byte to the card */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>spiSend</name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>b</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifndef>
+  <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <name>b</name></expr>;</expr_stmt>
+  <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+    <empty_stmt>;</empty_stmt></block_content></block></while>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+  <expr_stmt><expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>transfer</name></name><argument_list>(<argument><expr><name>b</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+<comment type="block" format="doxygen">/** Receive a byte from the card */</comment>
+<function><type><specifier>static</specifier>  <name>uint8_t</name></type> <name>spiRec</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifndef>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><literal type="number">0XFF</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><name>SPDR</name></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+  <return>return <expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>transfer</name></name><argument_list>(<argument><expr><literal type="number">0xFF</literal></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>  <comment type="line">// SOFTWARE_SPI</comment>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** nop to tune soft SPI timing */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>nop</name></cpp:macro> <cpp:value>asm volatile ("nop\n\t")</cpp:value></cpp:define>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Soft SPI receive */</comment>
+<function><type><name>uint8_t</name></type> <name>spiRec</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>data</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+  <comment type="line">// no interrupts during byte receive - about 8 us</comment>
+  <expr_stmt><expr><call><name>cli</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <comment type="line">// output pin high - like sending 0XFF</comment>
+  <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_MOSI_PIN</name></expr></argument>, <argument><expr><name>HIGH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_SCK_PIN</name></expr></argument>, <argument><expr><name>HIGH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// adjust so SCK is nice</comment>
+    <expr_stmt><expr><name>nop</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nop</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>data</name> <operator>&lt;&lt;=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name>fastDigitalRead</name><argument_list>(<argument><expr><name>SPI_MISO_PIN</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>data</name> <operator>|=</operator> <literal type="number">1</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_SCK_PIN</name></expr></argument>, <argument><expr><name>LOW</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// enable interrupts</comment>
+  <expr_stmt><expr><call><name>sei</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><name>data</name></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Soft SPI send */</comment>
+<function><type><name>void</name></type> <name>spiSend</name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>data</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// no interrupts during byte send - about 8 us</comment>
+  <expr_stmt><expr><call><name>cli</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_SCK_PIN</name></expr></argument>, <argument><expr><name>LOW</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_MOSI_PIN</name></expr></argument>, <argument><expr><name>data</name> <operator>&amp;</operator> <literal type="number">0X80</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>data</name> <operator>&lt;&lt;=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_SCK_PIN</name></expr></argument>, <argument><expr><name>HIGH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// hold SCK high for a few ns</comment>
+  <expr_stmt><expr><name>nop</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>nop</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>nop</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>nop</name></expr>;</expr_stmt>
+
+  <expr_stmt><expr><call><name>fastDigitalWrite</name><argument_list>(<argument><expr><name>SPI_SCK_PIN</name></expr></argument>, <argument><expr><name>LOW</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <comment type="line">// enable interrupts</comment>
+  <expr_stmt><expr><call><name>sei</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SOFTWARE_SPI</comment>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// send command and return error code.  Return zero for OK</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>cardCommand</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>cmd</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>arg</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// end read if in partialBlockRead mode</comment>
+  <expr_stmt><expr><call><name>readEnd</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// select card</comment>
+  <expr_stmt><expr><call><name>chipSelectLow</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// wait up to 300 ms if busy</comment>
+  <expr_stmt><expr><call><name>waitNotBusy</name><argument_list>(<argument><expr><literal type="number">300</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// send command</comment>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><name>cmd</name> <operator>|</operator> <literal type="number">0x40</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// send argument</comment>
+  <for>for <control>(<init><decl><type><name>int8_t</name></type> <name>s</name> <init>= <expr><literal type="number">24</literal></expr></init></decl>;</init> <condition><expr><name>s</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr>;</condition> <incr><expr><name>s</name> <operator>-=</operator> <literal type="number">8</literal></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><name>arg</name> <operator>&gt;&gt;</operator> <name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+  <comment type="line">// send CRC</comment>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>crc</name> <init>= <expr><literal type="number">0XFF</literal></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><name>cmd</name> <operator>==</operator> <name>CMD0</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>crc</name> <operator>=</operator> <literal type="number">0X95</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>  <comment type="line">// correct crc for CMD0 with arg 0</comment>
+  <if_stmt><if>if <condition>(<expr><name>cmd</name> <operator>==</operator> <name>CMD8</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>crc</name> <operator>=</operator> <literal type="number">0X87</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>  <comment type="line">// correct crc for CMD8 with arg 0X1AA</comment>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><name>crc</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// wait for response</comment>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><operator>(</operator><operator>(</operator><name>status_</name> <operator>=</operator> <call><name>spiRec</name><argument_list>()</argument_list></call><operator>)</operator> <operator>&amp;</operator> <literal type="number">0X80</literal><operator>)</operator> <operator>&amp;&amp;</operator> <name>i</name> <operator>!=</operator> <literal type="number">0XFF</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+    <empty_stmt>;</empty_stmt></block_content></block></for>
+  <return>return <expr><name>status_</name></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Determine the size of an SD flash memory card.
+ *
+ * \return The number of 512 byte data blocks in the card
+ *         or zero if an error occurs.
+ */</comment>
+<function><type><name>uint32_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>cardSize</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>csd_t</name></type> <name>csd</name></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>readCSD</name><argument_list>(<argument><expr><operator>&amp;</operator><name>csd</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>csd_ver</name></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>read_bl_len</name> <init>= <expr><name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>read_bl_len</name></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>c_size</name> <init>= <expr><operator>(</operator><name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>c_size_high</name></name> <operator>&lt;&lt;</operator> <literal type="number">10</literal><operator>)</operator>
+                      <operator>|</operator> <operator>(</operator><name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>c_size_mid</name></name> <operator>&lt;&lt;</operator> <literal type="number">2</literal><operator>)</operator> <operator>|</operator> <name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>c_size_low</name></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>c_size_mult</name> <init>= <expr><operator>(</operator><name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>c_size_mult_high</name></name> <operator>&lt;&lt;</operator> <literal type="number">1</literal><operator>)</operator>
+                          <operator>|</operator> <name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>c_size_mult_low</name></name></expr></init></decl>;</decl_stmt>
+    <return>return <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><name>c_size</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>&lt;&lt;</operator> <operator>(</operator><name>c_size_mult</name> <operator>+</operator> <name>read_bl_len</name> <operator>-</operator> <literal type="number">7</literal><operator>)</operator></expr>;</return>
+  </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>csd</name><operator>.</operator><name>v2</name><operator>.</operator><name>csd_ver</name></name> <operator>==</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>c_size</name> <init>= <expr><operator>(</operator><operator>(</operator><name>uint32_t</name><operator>)</operator><name><name>csd</name><operator>.</operator><name>v2</name><operator>.</operator><name>c_size_high</name></name> <operator>&lt;&lt;</operator> <literal type="number">16</literal><operator>)</operator>
+                      <operator>|</operator> <operator>(</operator><name><name>csd</name><operator>.</operator><name>v2</name><operator>.</operator><name>c_size_mid</name></name> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>|</operator> <name><name>csd</name><operator>.</operator><name>v2</name><operator>.</operator><name>c_size_low</name></name></expr></init></decl>;</decl_stmt>
+    <return>return <expr><operator>(</operator><name>c_size</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">10</literal></expr>;</return>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_BAD_CSD</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="number">0</literal></expr>;</return>
+  </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>uint8_t</name></type> <name>chip_select_asserted</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<function><type><name>void</name></type> <name><name>Sd2Card</name><operator>::</operator><name>chipSelectHigh</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><call><name>digitalWrite</name><argument_list>(<argument><expr><name>chipSelectPin_</name></expr></argument>, <argument><expr><name>HIGH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifdef>
+  <if_stmt><if>if <condition>(<expr><name>chip_select_asserted</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>chip_select_asserted</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>endTransaction</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<function><type><name>void</name></type> <name><name>Sd2Card</name><operator>::</operator><name>chipSelectLow</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifdef>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>chip_select_asserted</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>chip_select_asserted</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>beginTransaction</name></name><argument_list>(<argument><expr><name>settings</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+  <expr_stmt><expr><call><name>digitalWrite</name><argument_list>(<argument><expr><name>chipSelectPin_</name></expr></argument>, <argument><expr><name>LOW</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Erase a range of blocks.
+ *
+ * \param[in] firstBlock The address of the first block in the range.
+ * \param[in] lastBlock The address of the last block in the range.
+ *
+ * \note This function requests the SD card to do a flash erase for a
+ * range of blocks.  The data on the card after an erase operation is
+ * either 0 or 1, depends on the card vendor.  The card must support
+ * single block erase.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>erase</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>firstBlock</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>lastBlock</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>eraseSingleBlockEnable</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_ERASE_SINGLE_BLOCK</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name>type_</name> <operator>!=</operator> <name>SD_CARD_TYPE_SDHC</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>firstBlock</name> <operator>&lt;&lt;=</operator> <literal type="number">9</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>lastBlock</name> <operator>&lt;&lt;=</operator> <literal type="number">9</literal></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD32</name></expr></argument>, <argument><expr><name>firstBlock</name></expr></argument>)</argument_list></call>
+    <operator>||</operator> <call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD33</name></expr></argument>, <argument><expr><name>lastBlock</name></expr></argument>)</argument_list></call>
+    <operator>||</operator> <call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD38</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_ERASE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitNotBusy</name><argument_list>(<argument><expr><name>SD_ERASE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_ERASE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Determine if card supports single block erase.
+ *
+ * \return The value one, true, is returned if single block erase is supported.
+ * The value zero, false, is returned if single block erase is not supported.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>eraseSingleBlockEnable</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>csd_t</name></type> <name>csd</name></decl>;</decl_stmt>
+  <return>return <expr><ternary><condition><expr><call><name>readCSD</name><argument_list>(<argument><expr><operator>&amp;</operator><name>csd</name></expr></argument>)</argument_list></call></expr> ?</condition><then> <expr><name><name>csd</name><operator>.</operator><name>v1</name><operator>.</operator><name>erase_blk_en</name></name></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Initialize an SD flash memory card.
+ *
+ * \param[in] sckRateID SPI clock rate selector. See setSckRate().
+ * \param[in] chipSelectPin SD chip select pin number.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.  The reason for failure
+ * can be determined by calling errorCode() and errorData().
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>init</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>sckRateID</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>chipSelectPin</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><name>errorCode_</name> <operator>=</operator> <name>inBlock_</name> <operator>=</operator> <name>partialBlockRead_</name> <operator>=</operator> <name>type_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name>chipSelectPin_</name> <operator>=</operator> <name>chipSelectPin</name></expr>;</expr_stmt>
+  <comment type="line">// 16-bit init start time allows over a minute</comment>
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>t0</name> <init>= <expr><operator>(</operator><name>uint16_t</name><operator>)</operator><call><name>millis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>arg</name></decl>;</decl_stmt>
+
+  <comment type="line">// set pin modes</comment>
+  <expr_stmt><expr><call><name>pinMode</name><argument_list>(<argument><expr><name>chipSelectPin_</name></expr></argument>, <argument><expr><name>OUTPUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>digitalWrite</name><argument_list>(<argument><expr><name>chipSelectPin_</name></expr></argument>, <argument><expr><name>HIGH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifndef>
+  <expr_stmt><expr><call><name>pinMode</name><argument_list>(<argument><expr><name>SPI_MISO_PIN</name></expr></argument>, <argument><expr><name>INPUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>pinMode</name><argument_list>(<argument><expr><name>SPI_MOSI_PIN</name></expr></argument>, <argument><expr><name>OUTPUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>pinMode</name><argument_list>(<argument><expr><name>SPI_SCK_PIN</name></expr></argument>, <argument><expr><name>OUTPUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SOFTWARE_SPI</name></cpp:ifndef>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifndef>
+  <comment type="line">// SS must be in output mode even it is not chip select</comment>
+  <expr_stmt><expr><call><name>pinMode</name><argument_list>(<argument><expr><name>SS_PIN</name></expr></argument>, <argument><expr><name>OUTPUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>digitalWrite</name><argument_list>(<argument><expr><name>SS_PIN</name></expr></argument>, <argument><expr><name>HIGH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// disable any SPI device using hardware SS pin</comment>
+  <comment type="line">// Enable SPI, Master, clock rate f_osc/128</comment>
+  <expr_stmt><expr><name>SPCR</name> <operator>=</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPE</name><operator>)</operator> <operator>|</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>MSTR</name><operator>)</operator> <operator>|</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPR1</name><operator>)</operator> <operator>|</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPR0</name><operator>)</operator></expr>;</expr_stmt>
+  <comment type="line">// clear double speed</comment>
+  <expr_stmt><expr><name>SPSR</name> <operator>&amp;=</operator> <operator>~</operator><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPI2X</name><operator>)</operator></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else> <comment type="line">// USE_SPI_LIB</comment>
+  <expr_stmt><expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">250000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// USE_SPI_LIB</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// SOFTWARE_SPI</comment>
+
+  <comment type="line">// must supply min of 74 clock cycles with CS high.</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifdef>
+  <expr_stmt><expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>beginTransaction</name></name><argument_list>(<argument><expr><name>settings</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><literal type="number">0XFF</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifdef>
+  <expr_stmt><expr><call><name><name>SDCARD_SPI</name><operator>.</operator><name>endTransaction</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+  <expr_stmt><expr><call><name>chipSelectLow</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// command to go idle in SPI mode</comment>
+  <while>while <condition>(<expr><operator>(</operator><name>status_</name> <operator>=</operator> <call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD0</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <name>R1_IDLE_STATE</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>(</operator><name>uint16_t</name><operator>)</operator><operator>(</operator><call><name>millis</name><argument_list>()</argument_list></call> <operator>-</operator> <name>t0</name><operator>)</operator><operator>)</operator> <operator>&gt;</operator> <name>SD_INIT_TIMEOUT</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_CMD0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// check SD version</comment>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD8</name></expr></argument>, <argument><expr><literal type="number">0x1AA</literal></expr></argument>)</argument_list></call> <operator>&amp;</operator> <name>R1_ILLEGAL_COMMAND</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>type</name><argument_list>(<argument><expr><name>SD_CARD_TYPE_SD1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <comment type="line">// only need last byte of r7 response</comment>
+    <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">4</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><name>status_</name> <operator>=</operator> <call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <if_stmt><if>if <condition>(<expr><name>status_</name> <operator>!=</operator> <literal type="number">0XAA</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_CMD8</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>type</name><argument_list>(<argument><expr><name>SD_CARD_TYPE_SD2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <comment type="line">// initialize card and send host supports SDHC if SD2</comment>
+  <expr_stmt><expr><name>arg</name> <operator>=</operator> <ternary><condition><expr><call><name>type</name><argument_list>()</argument_list></call> <operator>==</operator> <name>SD_CARD_TYPE_SD2</name></expr> ?</condition><then> <expr><literal type="number">0X40000000</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</expr_stmt>
+
+  <while>while <condition>(<expr><operator>(</operator><name>status_</name> <operator>=</operator> <call><name>cardAcmd</name><argument_list>(<argument><expr><name>ACMD41</name></expr></argument>, <argument><expr><name>arg</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <name>R1_READY_STATE</name></expr>)</condition> <block>{<block_content>
+    <comment type="line">// check for timeout</comment>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>(</operator><name>uint16_t</name><operator>)</operator><operator>(</operator><call><name>millis</name><argument_list>()</argument_list></call> <operator>-</operator> <name>t0</name><operator>)</operator><operator>)</operator> <operator>&gt;</operator> <name>SD_INIT_TIMEOUT</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_ACMD41</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// if SD2 read OCR register to check for SDHC card</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>type</name><argument_list>()</argument_list></call> <operator>==</operator> <name>SD_CARD_TYPE_SD2</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD58</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_CMD58</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><call><name>spiRec</name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0XC0</literal><operator>)</operator> <operator>==</operator> <literal type="number">0XC0</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>type</name><argument_list>(<argument><expr><name>SD_CARD_TYPE_SDHC</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <comment type="line">// discard rest of ocr - contains allowed voltage range</comment>
+    <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">3</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SOFTWARE_SPI</name></cpp:ifndef>
+  <return>return <expr><call><name>setSckRate</name><argument_list>(<argument><expr><name>sckRateID</name></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>  <comment type="line">// SOFTWARE_SPI</comment>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SOFTWARE_SPI</comment>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Enable or disable partial block reads.
+ *
+ * Enabling partial block reads improves performance by allowing a block
+ * to be read over the SPI bus as several sub-blocks.  Errors may occur
+ * if the time between reads is too long since the SD card may timeout.
+ * The SPI SS line will be held low until the entire block is read or
+ * readEnd() is called.
+ *
+ * Use this for applications like the Adafruit Wave Shield.
+ *
+ * \param[in] value The value TRUE (non-zero) or FALSE (zero).)
+ */</comment>
+<function><type><name>void</name></type> <name><name>Sd2Card</name><operator>::</operator><name>partialBlockRead</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>value</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><call><name>readEnd</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><name>partialBlockRead_</name> <operator>=</operator> <name>value</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Read a 512 byte block from an SD card device.
+ *
+ * \param[in] block Logical block to be read.
+ * \param[out] dst Pointer to the location that will receive the data.
+
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>readBlock</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>block</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>dst</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <return>return <expr><call><name>readData</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">512</literal></expr></argument>, <argument><expr><name>dst</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Read part of a 512 byte block from an SD card.
+ *
+ * \param[in] block Logical block to be read.
+ * \param[in] offset Number of bytes to skip at start of block
+ * \param[out] dst Pointer to the location that will receive the data.
+ * \param[in] count Number of bytes to read
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>readData</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>block</name></decl></parameter>,
+        <parameter><decl><type><name>uint16_t</name></type> <name>offset</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>count</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>dst</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>count</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><name>count</name> <operator>+</operator> <name>offset</name><operator>)</operator> <operator>&gt;</operator> <literal type="number">512</literal></expr>)</condition> <block>{<block_content>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>inBlock_</name> <operator>||</operator> <name>block</name> <operator>!=</operator> <name>block_</name> <operator>||</operator> <name>offset</name> <operator>&lt;</operator> <name>offset_</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>block_</name> <operator>=</operator> <name>block</name></expr>;</expr_stmt>
+    <comment type="line">// use address if not SDHC card</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>type</name><argument_list>()</argument_list></call><operator>!=</operator> <name>SD_CARD_TYPE_SDHC</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>block</name> <operator>&lt;&lt;=</operator> <literal type="number">9</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD17</name></expr></argument>, <argument><expr><name>block</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_CMD17</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitStartBlock</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>offset_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>inBlock_</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>OPTIMIZE_HARDWARE_SPI</name></cpp:ifdef>
+  <comment type="line">// start first spi transfer</comment>
+  <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <literal type="number">0XFF</literal></expr>;</expr_stmt>
+
+  <comment type="line">// skip data before offset</comment>
+  <for>for <control>(<init>;</init><condition><expr><name>offset_</name> <operator>&lt;</operator> <name>offset</name></expr>;</condition> <incr><expr><name>offset_</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+      <empty_stmt>;</empty_stmt></block_content></block></while>
+    <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <literal type="number">0XFF</literal></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// transfer data</comment>
+  <expr_stmt><expr><name>n</name> <operator>=</operator> <name>count</name> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+  <for>for <control>(<init><decl><type><name>uint16_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+      <empty_stmt>;</empty_stmt></block_content></block></while>
+    <expr_stmt><expr><name><name>dst</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <name>SPDR</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <literal type="number">0XFF</literal></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// wait for last byte</comment>
+  <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+    <empty_stmt>;</empty_stmt></block_content></block></while>
+  <expr_stmt><expr><name><name>dst</name><index>[<expr><name>n</name></expr>]</index></name> <operator>=</operator> <name>SPDR</name></expr>;</expr_stmt>
+
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>  <comment type="line">// OPTIMIZE_HARDWARE_SPI</comment>
+
+  <comment type="line">// skip data before offset</comment>
+  <for>for <control>(<init>;</init><condition><expr><name>offset_</name> <operator>&lt;</operator> <name>offset</name></expr>;</condition> <incr><expr><name>offset_</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// transfer data</comment>
+  <for>for <control>(<init><decl><type><name>uint16_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>count</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><name><name>dst</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></for>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// OPTIMIZE_HARDWARE_SPI</comment>
+
+  <expr_stmt><expr><name>offset_</name> <operator>+=</operator> <name>count</name></expr>;</expr_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>partialBlockRead_</name> <operator>||</operator> <name>offset_</name> <operator>&gt;=</operator> <literal type="number">512</literal></expr>)</condition> <block>{<block_content>
+    <comment type="line">// read rest of data, checksum and set chip select high</comment>
+    <expr_stmt><expr><call><name>readEnd</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Skip remaining data in a block when in partial block read mode. */</comment>
+<function><type><name>void</name></type> <name><name>Sd2Card</name><operator>::</operator><name>readEnd</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>inBlock_</name></expr>)</condition> <block>{<block_content>
+      <comment type="line">// skip data and crc</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>OPTIMIZE_HARDWARE_SPI</name></cpp:ifdef>
+    <comment type="line">// optimize skip for hardware</comment>
+    <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <literal type="number">0XFF</literal></expr>;</expr_stmt>
+    <while>while <condition>(<expr><name>offset_</name><operator>++</operator> <operator>&lt;</operator> <literal type="number">513</literal></expr>)</condition> <block>{<block_content>
+      <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+        <empty_stmt>;</empty_stmt></block_content></block></while>
+      <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <literal type="number">0XFF</literal></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <comment type="line">// wait for last crc byte</comment>
+    <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+      <empty_stmt>;</empty_stmt></block_content></block></while>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>  <comment type="line">// OPTIMIZE_HARDWARE_SPI</comment>
+    <while>while <condition>(<expr><name>offset_</name><operator>++</operator> <operator>&lt;</operator> <literal type="number">514</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></while>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// OPTIMIZE_HARDWARE_SPI</comment>
+    <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>inBlock_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** read CID or CSR register */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>readRegister</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>cmd</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>buf</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>dst</name> <init>= <expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><name>uint8_t</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>cmd</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_READ_REG</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitStartBlock</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>fail</name>;</goto></block_content></block></if></if_stmt>
+  <comment type="line">// transfer data</comment>
+  <for>for <control>(<init><decl><type><name>uint16_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">16</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><name><name>dst</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+  <expr_stmt><expr><call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt>  <comment type="line">// get first crc byte</comment>
+  <expr_stmt><expr><call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt>  <comment type="line">// get second crc byte</comment>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Set the SPI clock rate.
+ *
+ * \param[in] sckRateID A value in the range [0, 6].
+ *
+ * The SPI clock will be set to F_CPU/pow(2, 1 + sckRateID). The maximum
+ * SPI rate is F_CPU/2 for \a sckRateID = 0 and the minimum rate is F_CPU/128
+ * for \a scsRateID = 6.
+ *
+ * \return The value one, true, is returned for success and the value zero,
+ * false, is returned for an invalid value of \a sckRateID.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>setSckRate</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>sckRateID</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>sckRateID</name> <operator>&gt;</operator> <literal type="number">6</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_SCK_RATE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifndef>
+  <comment type="line">// see avr processor datasheet for SPI register bit definitions</comment>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><name>sckRateID</name> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator> <operator>||</operator> <name>sckRateID</name> <operator>==</operator> <literal type="number">6</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>SPSR</name> <operator>&amp;=</operator> <operator>~</operator><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPI2X</name><operator>)</operator></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <expr_stmt><expr><name>SPSR</name> <operator>|=</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPI2X</name><operator>)</operator></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <expr_stmt><expr><name>SPCR</name> <operator>&amp;=</operator> <operator>~</operator><operator>(</operator><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator><name>SPR1</name><operator>)</operator> <operator>|</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPR0</name><operator>)</operator><operator>)</operator></expr>;</expr_stmt>
+  <expr_stmt><expr><name>SPCR</name> <operator>|=</operator> <operator>(</operator><ternary><condition><expr><name>sckRateID</name> <operator>&amp;</operator> <literal type="number">4</literal></expr> ?</condition><then> <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPR1</name><operator>)</operator></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary><operator>)</operator>
+    <operator>|</operator> <operator>(</operator><ternary><condition><expr><name>sckRateID</name> <operator>&amp;</operator> <literal type="number">2</literal></expr> ?</condition><then> <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPR0</name><operator>)</operator></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary><operator>)</operator></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else> <comment type="line">// USE_SPI_LIB</comment>
+  <switch>switch <condition>(<expr><name>sckRateID</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><literal type="number">0</literal></expr>:</case>  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">25000000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><literal type="number">1</literal></expr>:</case>  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">4000000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><literal type="number">2</literal></expr>:</case>  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">2000000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><literal type="number">3</literal></expr>:</case>  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">1000000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><literal type="number">4</literal></expr>:</case>  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">500000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><literal type="number">5</literal></expr>:</case>  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">250000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+    <default>default:</default> <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><literal type="number">125000</literal></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></switch>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// USE_SPI_LIB</comment>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_SPI_LIB</name></cpp:ifdef>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// set the SPI clock frequency</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>setSpiClock</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>clock</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+  <expr_stmt><expr><name>settings</name> <operator>=</operator> <call><name>SPISettings</name><argument_list>(<argument><expr><name>clock</name></expr></argument>, <argument><expr><name>MSBFIRST</name></expr></argument>, <argument><expr><name>SPI_MODE0</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// wait for card to go not busy</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>waitNotBusy</name></name><parameter_list>(<parameter><decl><type><name>uint16_t</name></type> <name>timeoutMillis</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>t0</name> <init>= <expr><call><name>millis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+  <do>do <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name>spiRec</name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0XFF</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block>
+  while <condition>(<expr><operator>(</operator><operator>(</operator><name>uint16_t</name><operator>)</operator><call><name>millis</name><argument_list>()</argument_list></call> <operator>-</operator> <name>t0</name><operator>)</operator> <operator>&lt;</operator> <name>timeoutMillis</name></expr>)</condition>;</do>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Wait for start block token */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>waitStartBlock</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>t0</name> <init>= <expr><call><name>millis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+  <while>while <condition>(<expr><operator>(</operator><name>status_</name> <operator>=</operator> <call><name>spiRec</name><argument_list>()</argument_list></call><operator>)</operator> <operator>==</operator> <literal type="number">0XFF</literal></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>(</operator><name>uint16_t</name><operator>)</operator><call><name>millis</name><argument_list>()</argument_list></call> <operator>-</operator> <name>t0</name><operator>)</operator> <operator>&gt;</operator> <name>SD_READ_TIMEOUT</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_READ_TIMEOUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <goto>goto <name>fail</name>;</goto>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></while>
+  <if_stmt><if>if <condition>(<expr><name>status_</name> <operator>!=</operator> <name>DATA_START_BLOCK</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_READ</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Writes a 512 byte block to an SD card.
+ *
+ * \param[in] blockNumber Logical block to be written.
+ * \param[in] src Pointer to the location of the data to be written.
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>writeBlock</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>blockNumber</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint8_t</name><modifier>*</modifier></type> <name>src</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>SD_PROTECT_BLOCK_ZERO</name></expr></cpp:if>
+  <comment type="line">// don't allow write to first block</comment>
+  <if_stmt><if>if <condition>(<expr><name>blockNumber</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_WRITE_BLOCK_ZERO</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SD_PROTECT_BLOCK_ZERO</comment>
+
+  <comment type="line">// use address if not SDHC card</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>type</name><argument_list>()</argument_list></call> <operator>!=</operator> <name>SD_CARD_TYPE_SDHC</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>blockNumber</name> <operator>&lt;&lt;=</operator> <literal type="number">9</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD24</name></expr></argument>, <argument><expr><name>blockNumber</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_CMD24</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>writeData</name><argument_list>(<argument><expr><name>DATA_START_BLOCK</name></expr></argument>, <argument><expr><name>src</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>fail</name>;</goto></block_content></block></if></if_stmt>
+
+  <comment type="line">// wait for flash programming to complete</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitNotBusy</name><argument_list>(<argument><expr><name>SD_WRITE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_WRITE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// response is r2 so get and check two bytes for nonzero</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD13</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>spiRec</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_WRITE_PROGRAMMING</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Write one data block in a multiple block write sequence */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>writeData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint8_t</name><modifier>*</modifier></type> <name>src</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// wait for previous write to finish</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitNotBusy</name><argument_list>(<argument><expr><name>SD_WRITE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_WRITE_MULTIPLE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><call><name>writeData</name><argument_list>(<argument><expr><name>WRITE_MULTIPLE_TOKEN</name></expr></argument>, <argument><expr><name>src</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// send one block of data for write block or write multiple blocks</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>writeData</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>token</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint8_t</name><modifier>*</modifier></type> <name>src</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>OPTIMIZE_HARDWARE_SPI</name></cpp:ifdef>
+
+  <comment type="line">// send data - optimized loop</comment>
+  <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <name>token</name></expr>;</expr_stmt>
+
+  <comment type="line">// send two byte per iteration</comment>
+  <for>for <control>(<init><decl><type><name>uint16_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">512</literal></expr>;</condition> <incr><expr><name>i</name> <operator>+=</operator> <literal type="number">2</literal></expr></incr>)</control> <block>{<block_content>
+    <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+      <empty_stmt>;</empty_stmt></block_content></block></while>
+    <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <name><name>src</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+    <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+      <empty_stmt>;</empty_stmt></block_content></block></while>
+    <expr_stmt><expr><name>SPDR</name> <operator>=</operator> <name><name>src</name><index>[<expr><name>i</name><operator>+</operator><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+  </block_content>}</block></for>
+
+  <comment type="line">// wait for last data byte</comment>
+  <while>while <condition>(<expr><operator>!</operator><operator>(</operator><name>SPSR</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>SPIF</name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+    <empty_stmt>;</empty_stmt></block_content></block></while>
+
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>  <comment type="line">// OPTIMIZE_HARDWARE_SPI</comment>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><name>token</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <for>for <control>(<init><decl><type><name>uint16_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">512</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><name><name>src</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></for>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// OPTIMIZE_HARDWARE_SPI</comment>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><literal type="number">0xff</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>  <comment type="line">// dummy crc</comment>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><literal type="number">0xff</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>  <comment type="line">// dummy crc</comment>
+
+  <expr_stmt><expr><name>status_</name> <operator>=</operator> <call><name>spiRec</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><name>status_</name> <operator>&amp;</operator> <name>DATA_RES_MASK</name><operator>)</operator> <operator>!=</operator> <name>DATA_RES_ACCEPTED</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_WRITE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Start a write multiple blocks sequence.
+ *
+ * \param[in] blockNumber Address of first block in sequence.
+ * \param[in] eraseCount The number of blocks to be pre-erased.
+ *
+ * \note This function is used with writeData() and writeStop()
+ * for optimized multiple block writes.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>writeStart</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>blockNumber</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>eraseCount</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>SD_PROTECT_BLOCK_ZERO</name></expr></cpp:if>
+  <comment type="line">// don't allow write to first block</comment>
+  <if_stmt><if>if <condition>(<expr><name>blockNumber</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_WRITE_BLOCK_ZERO</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SD_PROTECT_BLOCK_ZERO</comment>
+  <comment type="line">// send pre-erase count</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>cardAcmd</name><argument_list>(<argument><expr><name>ACMD23</name></expr></argument>, <argument><expr><name>eraseCount</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_ACMD23</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// use address if not SDHC card</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>type</name><argument_list>()</argument_list></call> <operator>!=</operator> <name>SD_CARD_TYPE_SDHC</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>blockNumber</name> <operator>&lt;&lt;=</operator> <literal type="number">9</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><call><name>cardCommand</name><argument_list>(<argument><expr><name>CMD25</name></expr></argument>, <argument><expr><name>blockNumber</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_CMD25</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <goto>goto <name>fail</name>;</goto>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** End a write multiple blocks sequence.
+ *
+* \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>Sd2Card</name><operator>::</operator><name>writeStop</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitNotBusy</name><argument_list>(<argument><expr><name>SD_WRITE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>fail</name>;</goto></block_content></block></if></if_stmt>
+  <expr_stmt><expr><call><name>spiSend</name><argument_list>(<argument><expr><name>STOP_TRAN_TOKEN</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>waitNotBusy</name><argument_list>(<argument><expr><name>SD_WRITE_TIMEOUT</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>fail</name>;</goto></block_content></block></if></if_stmt>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+
+ <label><name>fail</name>:</label>
+  <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><name>SD_CARD_ERROR_STOP_TRAN</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>chipSelectHigh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

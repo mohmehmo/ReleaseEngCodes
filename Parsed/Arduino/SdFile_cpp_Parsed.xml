@@ -1,0 +1,1265 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/Arduino/app/testdata/libraries/SD_1.1.1/SD/src/utility/SdFile.cpp"><comment type="block">/* Arduino SdFat Library
+ * Copyright (C) 2009 by William Greiman
+ *
+ * This file is part of the Arduino SdFat Library
+ *
+ * This Library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This Library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Arduino SdFat Library.  If not, see
+ * &lt;http://www.gnu.org/licenses/&gt;.
+ */</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"SdFat.h"</cpp:file></cpp:include>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>__AVR__</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;avr/pgmspace.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;Arduino.h&gt;</cpp:file></cpp:include>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// callback function for date/time</comment>
+<function_decl><type><name>void</name></type> (<modifier>*</modifier><name><name>SdFile</name><operator>::</operator><name>dateTime_</name></name>)<parameter_list>(<parameter><decl><type><name>uint16_t</name><modifier>*</modifier></type> <name>date</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name><modifier>*</modifier></type> <name>time</name></decl></parameter>)</parameter_list> <init>= <expr><name>NULL</name></expr></init>;</function_decl>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>ALLOW_DEPRECATED_FUNCTIONS</name></expr></cpp:if>
+<comment type="line">// suppress cpplint warnings with NOLINT comment</comment>
+<function_decl><type><name>void</name></type> (<modifier>*</modifier><name><name>SdFile</name><operator>::</operator><name>oldDateTime_</name></name>)<parameter_list>(<parameter><decl><type><name>uint16_t</name><modifier>&amp;</modifier></type> <name>date</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name><modifier>&amp;</modifier></type> <name>time</name></decl></parameter>)</parameter_list> <init>= <expr><name>NULL</name></expr></init>;</function_decl>  <comment type="line">// NOLINT</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// ALLOW_DEPRECATED_FUNCTIONS</comment>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// add a cluster to a file</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>addCluster</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>allocContiguous</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>curCluster_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// if first cluster of file link to directory entry</comment>
+  <if_stmt><if>if <condition>(<expr><name>firstCluster_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>firstCluster_</name> <operator>=</operator> <name>curCluster_</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>flags_</name> <operator>|=</operator> <name>F_FILE_DIR_DIRTY</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// Add a cluster to a directory file and zero the cluster.</comment>
+<comment type="line">// return with first block of cluster in the cache</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>addDirCluster</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>addCluster</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// zero data in cluster insure first cluster is in cache</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>block</name> <init>= <expr><call><name><name>vol_</name><operator>-&gt;</operator><name>clusterStartBlock</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><name><name>vol_</name><operator>-&gt;</operator><name>blocksPerCluster_</name></name></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>!=</operator> <literal type="number">0</literal></expr>;</condition> <incr><expr><name>i</name><operator>--</operator></expr></incr>)</control> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheZeroBlock</name></name><argument_list>(<argument><expr><name>block</name> <operator>+</operator> <name>i</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// Increase directory file size by cluster size</comment>
+  <expr_stmt><expr><name>fileSize_</name> <operator>+=</operator> <literal type="number">512UL</literal> <operator>&lt;&lt;</operator> <name><name>vol_</name><operator>-&gt;</operator><name>clusterSizeShift_</name></name></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// cache a file's directory entry</comment>
+<comment type="line">// return pointer to cached entry or null for failure</comment>
+<function><type><name>dir_t</name><modifier>*</modifier></type> <name><name>SdFile</name><operator>::</operator><name>cacheDirEntry</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheRawBlock</name></name><argument_list>(<argument><expr><name>dirBlock_</name></expr></argument>, <argument><expr><name>action</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>NULL</name></expr>;</return></block_content></block></if></if_stmt>
+  <return>return <expr><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>dir</name></name> <operator>+</operator> <name>dirIndex_</name></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ *  Close a file and force cached data and directory information
+ *  to be written to the storage device.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include no file is open or an I/O error.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>close</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>sync</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content><return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_CLOSED</name></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Check for contiguous file and return its raw block range.
+ *
+ * \param[out] bgnBlock the first block address for the file.
+ * \param[out] endBlock the last  block address for the file.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include file is not contiguous, file has zero length
+ * or an I/O error occurred.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>contiguousRange</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>bgnBlock</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>endBlock</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// error if no blocks</comment>
+  <if_stmt><if>if <condition>(<expr><name>firstCluster_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>c</name> <init>= <expr><name>firstCluster_</name></expr></init></decl>;</init> <condition>;</condition> <incr><expr><name>c</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>next</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>fatGet</name></name><argument_list>(<argument><expr><name>c</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>next</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// check for contiguous</comment>
+    <if_stmt><if>if <condition>(<expr><name>next</name> <operator>!=</operator> <operator>(</operator><name>c</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+      <comment type="line">// error if not end of chain</comment>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>isEOC</name></name><argument_list>(<argument><expr><name>next</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+      <expr_stmt><expr><operator>*</operator><name>bgnBlock</name> <operator>=</operator> <call><name><name>vol_</name><operator>-&gt;</operator><name>clusterStartBlock</name></name><argument_list>(<argument><expr><name>firstCluster_</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><operator>*</operator><name>endBlock</name> <operator>=</operator> <call><name><name>vol_</name><operator>-&gt;</operator><name>clusterStartBlock</name></name><argument_list>(<argument><expr><name>c</name></expr></argument>)</argument_list></call>
+                  <operator>+</operator> <name><name>vol_</name><operator>-&gt;</operator><name>blocksPerCluster_</name></name> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+      <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></for>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Create and open a new contiguous file of a specified size.
+ *
+ * \note This function only supports short DOS 8.3 names.
+ * See open() for more information.
+ *
+ * \param[in] dirFile The directory where the file will be created.
+ * \param[in] fileName A valid DOS 8.3 file name.
+ * \param[in] size The desired file size.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include \a fileName contains
+ * an invalid DOS 8.3 file name, the FAT volume has not been initialized,
+ * a file is already open, the file already exists, the root
+ * directory is full or an I/O error.
+ *
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>createContiguous</name></name><parameter_list>(<parameter><decl><type><name>SdFile</name><modifier>*</modifier></type> <name>dirFile</name></decl></parameter>,
+        <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>fileName</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>size</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// don't allow zero length file</comment>
+  <if_stmt><if>if <condition>(<expr><name>size</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>open</name><argument_list>(<argument><expr><name>dirFile</name></expr></argument>, <argument><expr><name>fileName</name></expr></argument>, <argument><expr><name>O_CREAT</name> <operator>|</operator> <name>O_EXCL</name> <operator>|</operator> <name>O_RDWR</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// calculate number of clusters needed</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>count</name> <init>= <expr><operator>(</operator><operator>(</operator><name>size</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator> <operator>&gt;&gt;</operator> <operator>(</operator><name><name>vol_</name><operator>-&gt;</operator><name>clusterSizeShift_</name></name> <operator>+</operator> <literal type="number">9</literal><operator>)</operator><operator>)</operator> <operator>+</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// allocate clusters</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>allocContiguous</name></name><argument_list>(<argument><expr><name>count</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>firstCluster_</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>remove</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><name>fileSize_</name> <operator>=</operator> <name>size</name></expr>;</expr_stmt>
+
+  <comment type="line">// insure sync() will update dir entry</comment>
+  <expr_stmt><expr><name>flags_</name> <operator>|=</operator> <name>F_FILE_DIR_DIRTY</name></expr>;</expr_stmt>
+  <return>return <expr><call><name>sync</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Return a files directory entry
+ *
+ * \param[out] dir Location for return of the files directory entry.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>dirEntry</name></name><parameter_list>(<parameter><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>dir</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// make sure fields on SD are correct</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>sync</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// read entry</comment>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><call><name>cacheDirEntry</name><argument_list>(<argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_READ</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>p</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// copy to caller's struct</comment>
+  <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>dir</name></expr></argument>, <argument><expr><name>p</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>dir_t</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Format the name field of \a dir into the 13 byte array
+ * \a name in standard 8.3 short name format.
+ *
+ * \param[in] dir The directory structure containing the name.
+ * \param[out] name A 13 byte char array for the formatted name.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>dirName</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>dir_t</name><modifier>&amp;</modifier></type> <name>dir</name></decl></parameter>, <parameter><decl><type><name>char</name><modifier>*</modifier></type> <name>name</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">11</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>dir</name><operator>.</operator><name>name</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="char">' '</literal></expr>)</condition><block type="pseudo"><block_content><continue>continue;</continue></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>i</name> <operator>==</operator> <literal type="number">8</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name><name>name</name><index>[<expr><name>j</name><operator>++</operator></expr>]</index></name> <operator>=</operator> <literal type="char">'.'</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name><name>name</name><index>[<expr><name>j</name><operator>++</operator></expr>]</index></name> <operator>=</operator> <name><name>dir</name><operator>.</operator><name>name</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <expr_stmt><expr><name><name>name</name><index>[<expr><name>j</name></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** List directory contents to Serial.
+ *
+ * \param[in] flags The inclusive OR of
+ *
+ * LS_DATE - %Print file modification date
+ *
+ * LS_SIZE - %Print file size.
+ *
+ * LS_R - Recursive list of subdirectories.
+ *
+ * \param[in] indent Amount of space before file name. Used for recursive
+ * list to indicate subdirectory level.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>ls</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>flags</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>indent</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name></decl>;</decl_stmt>
+
+  <expr_stmt><expr><call><name>rewind</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <while>while <condition>(<expr><operator>(</operator><name>p</name> <operator>=</operator> <call><name>readDirCache</name><argument_list>()</argument_list></call><operator>)</operator></expr>)</condition> <block>{<block_content>
+    <comment type="line">// done if past last used entry</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+
+    <comment type="line">// skip deleted entry and entries for . and  ..</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_DELETED</name> <operator>||</operator> <name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+
+    <comment type="line">// only list subdirectories and files</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>DIR_IS_FILE_OR_SUBDIR</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+
+    <comment type="line">// print any indent spaces</comment>
+    <for>for <control>(<init><decl><type><name>int8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>indent</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">' '</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <comment type="line">// print file name with possible blank fill</comment>
+    <expr_stmt><expr><call><name>printDirName</name><argument_list>(<argument><expr><operator>*</operator><name>p</name></expr></argument>, <argument><expr><ternary><condition><expr><name>flags</name> <operator>&amp;</operator> <operator>(</operator><name>LS_DATE</name> <operator>|</operator> <name>LS_SIZE</name><operator>)</operator></expr> ?</condition><then> <expr><literal type="number">14</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// print modify date/time if requested</comment>
+    <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>LS_DATE</name></expr>)</condition> <block>{<block_content>
+       <expr_stmt><expr><call><name>printFatDate</name><argument_list>(<argument><expr><name><name>p</name><operator>-&gt;</operator><name>lastWriteDate</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+       <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">' '</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+       <expr_stmt><expr><call><name>printFatTime</name><argument_list>(<argument><expr><name><name>p</name><operator>-&gt;</operator><name>lastWriteTime</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// print size if requested</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>DIR_IS_SUBDIR</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <operator>(</operator><name>flags</name> <operator>&amp;</operator> <name>LS_SIZE</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">' '</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><name><name>p</name><operator>-&gt;</operator><name>fileSize</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>println</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// list subdirectory content if requested</comment>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>flags</name> <operator>&amp;</operator> <name>LS_R</name><operator>)</operator> <operator>&amp;&amp;</operator> <call><name>DIR_IS_SUBDIR</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name>uint16_t</name></type> <name>index</name> <init>= <expr><call><name>curPosition</name><argument_list>()</argument_list></call><operator>/</operator><literal type="number">32</literal> <operator>-</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>SdFile</name></type> <name>s</name></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>s</name><operator>.</operator><name>open</name></name><argument_list>(<argument><expr><name>this</name></expr></argument>, <argument><expr><name>index</name></expr></argument>, <argument><expr><name>O_READ</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>ls</name></name><argument_list>(<argument><expr><name>flags</name></expr></argument>, <argument><expr><name>indent</name> <operator>+</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+      <expr_stmt><expr><call><name>seekSet</name><argument_list>(<argument><expr><literal type="number">32</literal> <operator>*</operator> <operator>(</operator><name>index</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></while>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// format directory name field from a 8.3 name string</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>make83Name</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>str</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>name</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>c</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>n</name> <init>= <expr><literal type="number">7</literal></expr></init></decl>;</decl_stmt>  <comment type="line">// max index for part before dot</comment>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+  <comment type="line">// blank fill name and extension</comment>
+  <while>while <condition>(<expr><name>i</name> <operator>&lt;</operator> <literal type="number">11</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name><name>name</name><index>[<expr><name>i</name><operator>++</operator></expr>]</index></name> <operator>=</operator> <literal type="char">' '</literal></expr>;</expr_stmt></block_content></block></while>
+  <expr_stmt><expr><name>i</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <while>while <condition>(<expr><operator>(</operator><name>c</name> <operator>=</operator> <operator>*</operator><name>str</name><operator>++</operator><operator>)</operator> <operator>!=</operator> <literal type="char">'\0'</literal></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>c</name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name>n</name> <operator>==</operator> <literal type="number">10</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>  <comment type="line">// only one dot allowed</comment>
+      <expr_stmt><expr><name>n</name> <operator>=</operator> <literal type="number">10</literal></expr>;</expr_stmt>  <comment type="line">// max index for full 8.3 name</comment>
+      <expr_stmt><expr><name>i</name> <operator>=</operator> <literal type="number">8</literal></expr>;</expr_stmt>   <comment type="line">// place for extension</comment>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <comment type="line">// illegal FAT characters</comment>
+      <decl_stmt><decl><type><name>uint8_t</name></type> <name>b</name></decl>;</decl_stmt>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>__AVR__</name></expr></argument>)</argument_list></call></expr></cpp:if>
+      <decl_stmt><decl><type><name>PGM_P</name></type> <name>p</name> <init>= <expr><call><name>PSTR</name><argument_list>(<argument><expr><literal type="string">"|&lt;&gt;^+=?/[];,*\"\\"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <while>while <condition>(<expr><operator>(</operator><name>b</name> <operator>=</operator> <call><name>pgm_read_byte</name><argument_list>(<argument><expr><name>p</name><operator>++</operator></expr></argument>)</argument_list></call><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <if_stmt><if>if <condition>(<expr><name>b</name> <operator>==</operator> <name>c</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt></block_content></block></while>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>__arm__</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+      <decl_stmt><decl><type><specifier>const</specifier> <name>uint8_t</name></type> <name><name>valid</name><index>[]</index></name> <init>= <expr><literal type="string">"|&lt;&gt;^+=?/[];,*\"\\"</literal></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><specifier>const</specifier> <name>uint8_t</name> <modifier>*</modifier></type><name>p</name> <init>= <expr><name>valid</name></expr></init></decl>;</decl_stmt>
+      <while>while <condition>(<expr><operator>(</operator><name>b</name> <operator>=</operator> <operator>*</operator><name>p</name><operator>++</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <if_stmt><if>if <condition>(<expr><name>b</name> <operator>==</operator> <name>c</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt></block_content></block></while>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+      <comment type="line">// check size and only allow ASCII printable characters</comment>
+      <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;</operator> <name>n</name> <operator>||</operator> <name><name>c</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">0X21</literal> <operator>||</operator> <name>c</name></expr></argument> &gt;</argument_list></name> <literal type="number">0X7E</literal></expr>)</condition><block type="pseudo"><block_content><return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+      <comment type="line">// only upper case allowed in 8.3 names - convert lower to upper</comment>
+      <expr_stmt><expr><name><name>name</name><index>[<expr><name>i</name><operator>++</operator></expr>]</index></name> <operator>=</operator> <ternary><condition><expr><name><name>c</name> <argument_list type="generic">&lt; <argument><expr><literal type="char">'a'</literal> <operator>||</operator> <name>c</name></expr></argument> &gt;</argument_list></name> <literal type="char">'z'</literal></expr> ?</condition><then>  <expr><name>c</name></expr> </then><else>: <expr><name>c</name> <operator>+</operator> <operator>(</operator><literal type="char">'A'</literal> <operator>-</operator> <literal type="char">'a'</literal><operator>)</operator></expr></else></ternary></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// must have a file name, extension is optional</comment>
+  <return>return <expr><name><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>!=</operator> <literal type="char">' '</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Make a new directory.
+ *
+ * \param[in] dir An open SdFat instance for the directory that will containing
+ * the new directory.
+ *
+ * \param[in] dirName A valid 8.3 DOS name for the new directory.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include this SdFile is already open, \a dir is not a
+ * directory, \a dirName is invalid or already exists in \a dir.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>makeDir</name></name><parameter_list>(<parameter><decl><type><name>SdFile</name><modifier>*</modifier></type> <name>dir</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>dirName</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>dir_t</name></type> <name>d</name></decl>;</decl_stmt>
+
+  <comment type="line">// create a normal file</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>open</name><argument_list>(<argument><expr><name>dir</name></expr></argument>, <argument><expr><name>dirName</name></expr></argument>, <argument><expr><name>O_CREAT</name> <operator>|</operator> <name>O_EXCL</name> <operator>|</operator> <name>O_RDWR</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// convert SdFile to directory</comment>
+  <expr_stmt><expr><name>flags_</name> <operator>=</operator> <name>O_READ</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_SUBDIR</name></expr>;</expr_stmt>
+
+  <comment type="line">// allocate and zero first cluster</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>addDirCluster</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content><return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// force entry to SD</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>sync</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// cache entry - should already be in cache due to sync() call</comment>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><call><name>cacheDirEntry</name><argument_list>(<argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>p</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// change directory entry  attribute</comment>
+  <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>attributes</name></name> <operator>=</operator> <name>DIR_ATT_DIRECTORY</name></expr>;</expr_stmt>
+
+  <comment type="line">// make entry for '.'</comment>
+  <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><operator>&amp;</operator><name>d</name></expr></argument>, <argument><expr><name>p</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>d</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">11</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><name><name>d</name><operator>.</operator><name>name</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <literal type="char">' '</literal></expr>;</expr_stmt></block_content></block></for>
+  <expr_stmt><expr><name><name>d</name><operator>.</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="char">'.'</literal></expr>;</expr_stmt>
+
+  <comment type="line">// cache block for '.'  and '..'</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>block</name> <init>= <expr><call><name><name>vol_</name><operator>-&gt;</operator><name>clusterStartBlock</name></name><argument_list>(<argument><expr><name>firstCluster_</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheRawBlock</name></name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// copy '.' to block</comment>
+  <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>dir</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name>d</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>d</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// make entry for '..'</comment>
+  <expr_stmt><expr><name><name>d</name><operator>.</operator><name>name</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <literal type="char">'.'</literal></expr>;</expr_stmt>
+  <if_stmt><if>if <condition>(<expr><call><name><name>dir</name><operator>-&gt;</operator><name>isRoot</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name><name>d</name><operator>.</operator><name>firstClusterLow</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>d</name><operator>.</operator><name>firstClusterHigh</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <expr_stmt><expr><name><name>d</name><operator>.</operator><name>firstClusterLow</name></name> <operator>=</operator> <name><name>dir</name><operator>-&gt;</operator><name>firstCluster_</name></name> <operator>&amp;</operator> <literal type="number">0XFFFF</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>d</name><operator>.</operator><name>firstClusterHigh</name></name> <operator>=</operator> <name><name>dir</name><operator>-&gt;</operator><name>firstCluster_</name></name> <operator>&gt;&gt;</operator> <literal type="number">16</literal></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <comment type="line">// copy '..' to block</comment>
+  <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>dir</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name>d</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>d</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// set position after '..'</comment>
+  <expr_stmt><expr><name>curPosition_</name> <operator>=</operator> <literal type="number">2</literal> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>d</name></expr></argument>)</argument_list></sizeof></expr>;</expr_stmt>
+
+  <comment type="line">// write first block</comment>
+  <return>return <expr><call><name><name>SdVolume</name><operator>::</operator><name>cacheFlush</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Open a file or directory by name.
+ *
+ * \param[in] dirFile An open SdFat instance for the directory containing the
+ * file to be opened.
+ *
+ * \param[in] fileName A valid 8.3 DOS name for a file to be opened.
+ *
+ * \param[in] oflag Values for \a oflag are constructed by a bitwise-inclusive
+ * OR of flags from the following list
+ *
+ * O_READ - Open for reading.
+ *
+ * O_RDONLY - Same as O_READ.
+ *
+ * O_WRITE - Open for writing.
+ *
+ * O_WRONLY - Same as O_WRITE.
+ *
+ * O_RDWR - Open for reading and writing.
+ *
+ * O_APPEND - If set, the file offset shall be set to the end of the
+ * file prior to each write.
+ *
+ * O_CREAT - If the file exists, this flag has no effect except as noted
+ * under O_EXCL below. Otherwise, the file shall be created
+ *
+ * O_EXCL - If O_CREAT and O_EXCL are set, open() shall fail if the file exists.
+ *
+ * O_SYNC - Call sync() after each write.  This flag should not be used with
+ * write(uint8_t), write_P(PGM_P), writeln_P(PGM_P), or the Arduino Print class.
+ * These functions do character at a time writes so sync() will be called
+ * after each byte.
+ *
+ * O_TRUNC - If the file exists and is a regular file, and the file is
+ * successfully opened and is not read only, its length shall be truncated to 0.
+ *
+ * \note Directory files must be opened read only.  Write and truncation is
+ * not allowed for directory files.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include this SdFile is already open, \a difFile is not
+ * a directory, \a fileName is invalid, the file does not exist
+ * or can't be opened in the access mode specified by oflag.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>open</name></name><parameter_list>(<parameter><decl><type><name>SdFile</name><modifier>*</modifier></type> <name>dirFile</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>fileName</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>oflag</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>dname</name><index>[<expr><literal type="number">11</literal></expr>]</index></name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name></decl>;</decl_stmt>
+
+  <comment type="line">// error if already open</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>isOpen</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content><return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>make83Name</name><argument_list>(<argument><expr><name>fileName</name></expr></argument>, <argument><expr><name>dname</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  <expr_stmt><expr><name>vol_</name> <operator>=</operator> <name><name>dirFile</name><operator>-&gt;</operator><name>vol_</name></name></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name><name>dirFile</name><operator>-&gt;</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// bool for empty entry found</comment>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>emptyFound</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// search for file</comment>
+  <while>while <condition>(<expr><name><name>dirFile</name><operator>-&gt;</operator><name>curPosition_</name></name> <operator>&lt;</operator> <name><name>dirFile</name><operator>-&gt;</operator><name>fileSize_</name></name></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>index</name> <init>= <expr><literal type="number">0XF</literal> <operator>&amp;</operator> <operator>(</operator><name><name>dirFile</name><operator>-&gt;</operator><name>curPosition_</name></name> <operator>&gt;&gt;</operator> <literal type="number">5</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>p</name> <operator>=</operator> <call><name><name>dirFile</name><operator>-&gt;</operator><name>readDirCache</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>p</name> <operator>==</operator> <name>NULL</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name> <operator>||</operator> <name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_DELETED</name></expr>)</condition> <block>{<block_content>
+      <comment type="line">// remember first empty slot</comment>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><name>emptyFound</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>emptyFound</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>dirIndex_</name> <operator>=</operator> <name>index</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>dirBlock_</name> <operator>=</operator> <name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <comment type="line">// done if no entries follow</comment>
+      <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name>memcmp</name><argument_list>(<argument><expr><name>dname</name></expr></argument>, <argument><expr><name><name>p</name><operator>-&gt;</operator><name>name</name></name></expr></argument>, <argument><expr><literal type="number">11</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <comment type="line">// don't open existing file if O_CREAT and O_EXCL</comment>
+      <if_stmt><if>if <condition>(<expr><operator>(</operator><name>oflag</name> <operator>&amp;</operator> <operator>(</operator><name>O_CREAT</name> <operator>|</operator> <name>O_EXCL</name><operator>)</operator><operator>)</operator> <operator>==</operator> <operator>(</operator><name>O_CREAT</name> <operator>|</operator> <name>O_EXCL</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+      <comment type="line">// open found file</comment>
+      <return>return <expr><call><name>openCachedEntry</name><argument_list>(<argument><expr><literal type="number">0XF</literal> <operator>&amp;</operator> <name>index</name></expr></argument>, <argument><expr><name>oflag</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// only create file if O_CREAT and O_WRITE</comment>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><name>oflag</name> <operator>&amp;</operator> <operator>(</operator><name>O_CREAT</name> <operator>|</operator> <name>O_WRITE</name><operator>)</operator><operator>)</operator> <operator>!=</operator> <operator>(</operator><name>O_CREAT</name> <operator>|</operator> <name>O_WRITE</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// cache found slot or add cluster if end of file</comment>
+  <if_stmt><if>if <condition>(<expr><name>emptyFound</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>p</name> <operator>=</operator> <call><name>cacheDirEntry</name><argument_list>(<argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>p</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>dirFile</name><operator>-&gt;</operator><name>type_</name></name> <operator>==</operator> <name>FAT_FILE_TYPE_ROOT16</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// add and zero cluster for dirFile - first cluster is in cache for write</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>dirFile</name><operator>-&gt;</operator><name>addDirCluster</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// use first entry in cluster</comment>
+    <expr_stmt><expr><name>dirIndex_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>p</name> <operator>=</operator> <name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>dir</name></name></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <comment type="line">// initialize as empty file</comment>
+  <expr_stmt><expr><call><name>memset</name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>dir_t</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name><name>p</name><operator>-&gt;</operator><name>name</name></name></expr></argument>, <argument><expr><name>dname</name></expr></argument>, <argument><expr><literal type="number">11</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// set timestamps</comment>
+  <if_stmt><if>if <condition>(<expr><name>dateTime_</name></expr>)</condition> <block>{<block_content>
+    <comment type="line">// call user function</comment>
+    <expr_stmt><expr><call><name>dateTime_</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>creationDate</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>creationTime</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <comment type="line">// use default date/time</comment>
+    <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>creationDate</name></name> <operator>=</operator> <name>FAT_DEFAULT_DATE</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>creationTime</name></name> <operator>=</operator> <name>FAT_DEFAULT_TIME</name></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>lastAccessDate</name></name> <operator>=</operator> <name><name>p</name><operator>-&gt;</operator><name>creationDate</name></name></expr>;</expr_stmt>
+  <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>lastWriteDate</name></name> <operator>=</operator> <name><name>p</name><operator>-&gt;</operator><name>creationDate</name></name></expr>;</expr_stmt>
+  <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>lastWriteTime</name></name> <operator>=</operator> <name><name>p</name><operator>-&gt;</operator><name>creationTime</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// force write of entry to SD</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheFlush</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// open entry in cache</comment>
+  <return>return <expr><call><name>openCachedEntry</name><argument_list>(<argument><expr><name>dirIndex_</name></expr></argument>, <argument><expr><name>oflag</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Open a file by index.
+ *
+ * \param[in] dirFile An open SdFat instance for the directory.
+ *
+ * \param[in] index The \a index of the directory entry for the file to be
+ * opened.  The value for \a index is (directory file position)/32.
+ *
+ * \param[in] oflag Values for \a oflag are constructed by a bitwise-inclusive
+ * OR of flags O_READ, O_WRITE, O_TRUNC, and O_SYNC.
+ *
+ * See open() by fileName for definition of flags and return values.
+ *
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>open</name></name><parameter_list>(<parameter><decl><type><name>SdFile</name><modifier>*</modifier></type> <name>dirFile</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>index</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>oflag</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// error if already open</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>isOpen</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content><return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// don't open existing file if O_CREAT and O_EXCL - user call error</comment>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><name>oflag</name> <operator>&amp;</operator> <operator>(</operator><name>O_CREAT</name> <operator>|</operator> <name>O_EXCL</name><operator>)</operator><operator>)</operator> <operator>==</operator> <operator>(</operator><name>O_CREAT</name> <operator>|</operator> <name>O_EXCL</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <expr_stmt><expr><name>vol_</name> <operator>=</operator> <name><name>dirFile</name><operator>-&gt;</operator><name>vol_</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// seek to location of entry</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>dirFile</name><operator>-&gt;</operator><name>seekSet</name></name><argument_list>(<argument><expr><literal type="number">32</literal> <operator>*</operator> <name>index</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// read entry into cache</comment>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><call><name><name>dirFile</name><operator>-&gt;</operator><name>readDirCache</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><name>p</name> <operator>==</operator> <name>NULL</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// error if empty slot or '.' or '..'</comment>
+  <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name> <operator>||</operator>
+      <name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_DELETED</name> <operator>||</operator> <name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition> <block>{<block_content>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// open cached entry</comment>
+  <return>return <expr><call><name>openCachedEntry</name><argument_list>(<argument><expr><name>index</name> <operator>&amp;</operator> <literal type="number">0XF</literal></expr></argument>, <argument><expr><name>oflag</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// open a cached directory entry. Assumes vol_ is initializes</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>openCachedEntry</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>dirIndex</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>oflag</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// location of entry in cache</comment>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>dir</name></name> <operator>+</operator> <name>dirIndex</name></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// write or truncate is an error for a directory or read-only file</comment>
+  <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>attributes</name></name> <operator>&amp;</operator> <operator>(</operator><name>DIR_ATT_READ_ONLY</name> <operator>|</operator> <name>DIR_ATT_DIRECTORY</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>oflag</name> <operator>&amp;</operator> <operator>(</operator><name>O_WRITE</name> <operator>|</operator> <name>O_TRUNC</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// remember location of directory entry on SD</comment>
+  <expr_stmt><expr><name>dirIndex_</name> <operator>=</operator> <name>dirIndex</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>dirBlock_</name> <operator>=</operator> <name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// copy first cluster number for directory fields</comment>
+  <expr_stmt><expr><name>firstCluster_</name> <operator>=</operator> <operator>(</operator><name>uint32_t</name><operator>)</operator><name><name>p</name><operator>-&gt;</operator><name>firstClusterHigh</name></name> <operator>&lt;&lt;</operator> <literal type="number">16</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name>firstCluster_</name> <operator>|=</operator> <name><name>p</name><operator>-&gt;</operator><name>firstClusterLow</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// make sure it is a normal file or subdirectory</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>DIR_IS_FILE</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>fileSize_</name> <operator>=</operator> <name><name>p</name><operator>-&gt;</operator><name>fileSize</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_NORMAL</name></expr>;</expr_stmt>
+  </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name>DIR_IS_SUBDIR</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>chainSize</name></name><argument_list>(<argument><expr><name>firstCluster_</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>fileSize_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_SUBDIR</name></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></else></if_stmt>
+  <comment type="line">// save open flags for read/write</comment>
+  <expr_stmt><expr><name>flags_</name> <operator>=</operator> <name>oflag</name> <operator>&amp;</operator> <operator>(</operator><name>O_ACCMODE</name> <operator>|</operator> <name>O_SYNC</name> <operator>|</operator> <name>O_APPEND</name><operator>)</operator></expr>;</expr_stmt>
+
+  <comment type="line">// set to start of file</comment>
+  <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name>curPosition_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+  <comment type="line">// truncate file to zero length if requested</comment>
+  <if_stmt><if>if <condition>(<expr><name>oflag</name> <operator>&amp;</operator> <name>O_TRUNC</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><call><name>truncate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Open a volume's root directory.
+ *
+ * \param[in] vol The FAT volume containing the root directory to be opened.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include the FAT volume has not been initialized
+ * or it a FAT12 volume.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>openRoot</name></name><parameter_list>(<parameter><decl><type><name>SdVolume</name><modifier>*</modifier></type> <name>vol</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// error if file is already open</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>isOpen</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <if_stmt><if>if <condition>(<expr><call><name><name>vol</name><operator>-&gt;</operator><name>fatType</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">16</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_ROOT16</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>firstCluster_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fileSize_</name> <operator>=</operator> <literal type="number">32</literal> <operator>*</operator> <call><name><name>vol</name><operator>-&gt;</operator><name>rootDirEntryCount</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>vol</name><operator>-&gt;</operator><name>fatType</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_ROOT32</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>firstCluster_</name> <operator>=</operator> <call><name><name>vol</name><operator>-&gt;</operator><name>rootDirStart</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol</name><operator>-&gt;</operator><name>chainSize</name></name><argument_list>(<argument><expr><name>firstCluster_</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>fileSize_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <comment type="line">// volume is not initialized or FAT12</comment>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></else></if_stmt>
+  <expr_stmt><expr><name>vol_</name> <operator>=</operator> <name>vol</name></expr>;</expr_stmt>
+  <comment type="line">// read only</comment>
+  <expr_stmt><expr><name>flags_</name> <operator>=</operator> <name>O_READ</name></expr>;</expr_stmt>
+
+  <comment type="line">// set to start of file</comment>
+  <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name>curPosition_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+  <comment type="line">// root has no directory entry</comment>
+  <expr_stmt><expr><name>dirBlock_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name>dirIndex_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** %Print the name field of a directory entry in 8.3 format to Serial.
+ *
+ * \param[in] dir The directory structure containing the name.
+ * \param[in] width Blank fill name if length is less than \a width.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>printDirName</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>dir_t</name><modifier>&amp;</modifier></type> <name>dir</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>width</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>w</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">11</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>dir</name><operator>.</operator><name>name</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="char">' '</literal></expr>)</condition><block type="pseudo"><block_content><continue>continue;</continue></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>i</name> <operator>==</operator> <literal type="number">8</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">'.'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>w</name><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><name><name>dir</name><operator>.</operator><name>name</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>w</name><operator>++</operator></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <if_stmt><if>if <condition>(<expr><call><name>DIR_IS_SUBDIR</name><argument_list>(<argument><expr><operator>&amp;</operator><name>dir</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">'/'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>w</name><operator>++</operator></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <while>while <condition>(<expr><name>w</name> <operator>&lt;</operator> <name>width</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">' '</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>w</name><operator>++</operator></expr>;</expr_stmt>
+  </block_content>}</block></while>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** %Print a directory date field to Serial.
+ *
+ *  Format is yyyy-mm-dd.
+ *
+ * \param[in] fatDate The date field from a directory entry.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>printFatDate</name></name><parameter_list>(<parameter><decl><type><name>uint16_t</name></type> <name>fatDate</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><call><name>FAT_YEAR</name><argument_list>(<argument><expr><name>fatDate</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">'-'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>printTwoDigits</name><argument_list>(<argument><expr><call><name>FAT_MONTH</name><argument_list>(<argument><expr><name>fatDate</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">'-'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>printTwoDigits</name><argument_list>(<argument><expr><call><name>FAT_DAY</name><argument_list>(<argument><expr><name>fatDate</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** %Print a directory time field to Serial.
+ *
+ * Format is hh:mm:ss.
+ *
+ * \param[in] fatTime The time field from a directory entry.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>printFatTime</name></name><parameter_list>(<parameter><decl><type><name>uint16_t</name></type> <name>fatTime</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><call><name>printTwoDigits</name><argument_list>(<argument><expr><call><name>FAT_HOUR</name><argument_list>(<argument><expr><name>fatTime</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>printTwoDigits</name><argument_list>(<argument><expr><call><name>FAT_MINUTE</name><argument_list>(<argument><expr><name>fatTime</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>printTwoDigits</name><argument_list>(<argument><expr><call><name>FAT_SECOND</name><argument_list>(<argument><expr><name>fatTime</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** %Print a value as two digits to Serial.
+ *
+ * \param[in] v Value to be printed, 0 &lt;= \a v &lt;= 99
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>printTwoDigits</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>v</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>char</name></type> <name><name>str</name><index>[<expr><literal type="number">3</literal></expr>]</index></name></decl>;</decl_stmt>
+  <expr_stmt><expr><name><name>str</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="char">'0'</literal> <operator>+</operator> <name>v</name><operator>/</operator><literal type="number">10</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name><name>str</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <literal type="char">'0'</literal> <operator>+</operator> <name>v</name> <operator>%</operator> <literal type="number">10</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><name><name>str</name><index>[<expr><literal type="number">2</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><name>str</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Read data from a file starting at the current position.
+ *
+ * \param[out] buf Pointer to the location that will receive the data.
+ *
+ * \param[in] nbyte Maximum number of bytes to read.
+ *
+ * \return For success read() returns the number of bytes read.
+ * A value less than \a nbyte, including zero, will be returned
+ * if end of file is reached.
+ * If an error occurs, read() returns -1.  Possible errors include
+ * read() called before a file has been opened, corrupt file system
+ * or an I/O error occurred.
+ */</comment>
+<function><type><name>int16_t</name></type> <name><name>SdFile</name><operator>::</operator><name>read</name></name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>buf</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>nbyte</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>dst</name> <init>= <expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><name>uint8_t</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// error if not open or write only</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isOpen</name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><operator>(</operator><name>flags_</name> <operator>&amp;</operator> <name>O_READ</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// max bytes left in file</comment>
+  <if_stmt><if>if <condition>(<expr><name>nbyte</name> <operator>&gt;</operator> <operator>(</operator><name>fileSize_</name> <operator>-</operator> <name>curPosition_</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>nbyte</name> <operator>=</operator> <name>fileSize_</name> <operator>-</operator> <name>curPosition_</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+  <comment type="line">// amount left to read</comment>
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>toRead</name> <init>= <expr><name>nbyte</name></expr></init></decl>;</decl_stmt>
+  <while>while <condition>(<expr><name>toRead</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>block</name></decl>;</decl_stmt>  <comment type="line">// raw device block number</comment>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>offset</name> <init>= <expr><name>curPosition_</name> <operator>&amp;</operator> <literal type="number">0X1FF</literal></expr></init></decl>;</decl_stmt>  <comment type="line">// offset in block</comment>
+    <if_stmt><if>if <condition>(<expr><name>type_</name> <operator>==</operator> <name>FAT_FILE_TYPE_ROOT16</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>block</name> <operator>=</operator> <call><name><name>vol_</name><operator>-&gt;</operator><name>rootDirStart</name></name><argument_list>()</argument_list></call> <operator>+</operator> <operator>(</operator><name>curPosition_</name> <operator>&gt;&gt;</operator> <literal type="number">9</literal><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <decl_stmt><decl><type><name>uint8_t</name></type> <name>blockOfCluster</name> <init>= <expr><call><name><name>vol_</name><operator>-&gt;</operator><name>blockOfCluster</name></name><argument_list>(<argument><expr><name>curPosition_</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>offset</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>blockOfCluster</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// start of new cluster</comment>
+        <if_stmt><if>if <condition>(<expr><name>curPosition_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+          <comment type="line">// use first cluster in file</comment>
+          <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <name>firstCluster_</name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+          <comment type="line">// get next cluster from FAT</comment>
+          <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>fatGet</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>curCluster_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block></else></if_stmt>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><name>block</name> <operator>=</operator> <call><name><name>vol_</name><operator>-&gt;</operator><name>clusterStartBlock</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>)</argument_list></call> <operator>+</operator> <name>blockOfCluster</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>n</name> <init>= <expr><name>toRead</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// amount to be read from current block</comment>
+    <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&gt;</operator> <operator>(</operator><literal type="number">512</literal> <operator>-</operator> <name>offset</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>n</name> <operator>=</operator> <literal type="number">512</literal> <operator>-</operator> <name>offset</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// no buffering needed if n == 512 or user requests no buffering</comment>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><call><name>unbufferedRead</name><argument_list>()</argument_list></call> <operator>||</operator> <name>n</name> <operator>==</operator> <literal type="number">512</literal><operator>)</operator> <operator>&amp;&amp;</operator>
+      <name>block</name> <operator>!=</operator> <name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name></expr>)</condition> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>readData</name></name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>offset</name></expr></argument>, <argument><expr><name>n</name></expr></argument>, <argument><expr><name>dst</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return></block_content></block></if></if_stmt>
+      <expr_stmt><expr><name>dst</name> <operator>+=</operator> <name>n</name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <comment type="line">// read block to cache and copy data to caller</comment>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheRawBlock</name></name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_READ</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return></block_content></block></if></if_stmt>
+      <decl_stmt><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>src</name> <init>= <expr><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>data</name></name> <operator>+</operator> <name>offset</name></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>end</name> <init>= <expr><name>src</name> <operator>+</operator> <name>n</name></expr></init></decl>;</decl_stmt>
+      <while>while <condition>(<expr><name>src</name> <operator>!=</operator> <name>end</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><operator>*</operator><name>dst</name><operator>++</operator> <operator>=</operator> <operator>*</operator><name>src</name><operator>++</operator></expr>;</expr_stmt></block_content></block></while>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><name>curPosition_</name> <operator>+=</operator> <name>n</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>toRead</name> <operator>-=</operator> <name>n</name></expr>;</expr_stmt>
+  </block_content>}</block></while>
+  <return>return <expr><name>nbyte</name></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Read the next directory entry from a directory file.
+ *
+ * \param[out] dir The dir_t struct that will receive the data.
+ *
+ * \return For success readDir() returns the number of bytes read.
+ * A value of zero will be returned if end of file is reached.
+ * If an error occurs, readDir() returns -1.  Possible errors include
+ * readDir() called before a directory has been opened, this is not
+ * a directory file or an I/O error occurred.
+ */</comment>
+<function><type><name>int8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>readDir</name></name><parameter_list>(<parameter><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>dir</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>int8_t</name></type> <name>n</name></decl>;</decl_stmt>
+  <comment type="line">// if not a directory file or miss-positioned return an error</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isDir</name><argument_list>()</argument_list></call> <operator>||</operator> <operator>(</operator><literal type="number">0X1F</literal> <operator>&amp;</operator> <name>curPosition_</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <while>while <condition>(<expr><operator>(</operator><name>n</name> <operator>=</operator> <call><name>read</name><argument_list>(<argument><expr><name>dir</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>dir_t</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call><operator>)</operator> <operator>==</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>dir_t</name></expr></argument>)</argument_list></sizeof></expr>)</condition> <block>{<block_content>
+    <comment type="line">// last entry if DIR_NAME_FREE</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>dir</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+    <comment type="line">// skip empty entries and entry for .  and ..</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>dir</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_DELETED</name> <operator>||</operator> <name><name>dir</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+    <comment type="line">// return if normal file or subdirectory</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>DIR_IS_FILE_OR_SUBDIR</name><argument_list>(<argument><expr><name>dir</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>n</name></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// error, end of file, or past last entry</comment>
+  <return>return <expr><ternary><condition><expr><name>n</name> <operator>&lt;</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><operator>-</operator><literal type="number">1</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// Read next directory entry into the cache</comment>
+<comment type="line">// Assumes file is correctly positioned</comment>
+<function><type><name>dir_t</name><modifier>*</modifier></type> <name><name>SdFile</name><operator>::</operator><name>readDirCache</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// error if not directory</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isDir</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>NULL</name></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// index of entry in cache</comment>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>curPosition_</name> <operator>&gt;&gt;</operator> <literal type="number">5</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0XF</literal></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// use read to locate and cache block</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>read</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>NULL</name></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// advance to next entry</comment>
+  <expr_stmt><expr><name>curPosition_</name> <operator>+=</operator> <literal type="number">31</literal></expr>;</expr_stmt>
+
+  <comment type="line">// return pointer to entry</comment>
+  <return>return <expr><operator>(</operator><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>dir</name></name> <operator>+</operator> <name>i</name><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Remove a file.
+ *
+ * The directory entry and all data for the file are deleted.
+ *
+ * \note This function should not be used to delete the 8.3 version of a
+ * file that has a long name. For example if a file has the long name
+ * "New Text Document.txt" you should not delete the 8.3 name "NEWTEX~1.TXT".
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include the file read-only, is a directory,
+ * or an I/O error occurred.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>remove</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// free any clusters - will fail if read-only or directory</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>truncate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// cache directory entry</comment>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>d</name> <init>= <expr><call><name>cacheDirEntry</name><argument_list>(<argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>d</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// mark entry deleted</comment>
+  <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name>DIR_NAME_DELETED</name></expr>;</expr_stmt>
+
+  <comment type="line">// set this SdFile closed</comment>
+  <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_CLOSED</name></expr>;</expr_stmt>
+
+  <comment type="line">// write entry to SD</comment>
+  <return>return <expr><call><name><name>SdVolume</name><operator>::</operator><name>cacheFlush</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Remove a file.
+ *
+ * The directory entry and all data for the file are deleted.
+ *
+ * \param[in] dirFile The directory that contains the file.
+ * \param[in] fileName The name of the file to be removed.
+ *
+ * \note This function should not be used to delete the 8.3 version of a
+ * file that has a long name. For example if a file has the long name
+ * "New Text Document.txt" you should not delete the 8.3 name "NEWTEX~1.TXT".
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include the file is a directory, is read only,
+ * \a dirFile is not a directory, \a fileName is not found
+ * or an I/O error occurred.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>remove</name></name><parameter_list>(<parameter><decl><type><name>SdFile</name><modifier>*</modifier></type> <name>dirFile</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>fileName</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>SdFile</name></type> <name>file</name></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>file</name><operator>.</operator><name>open</name></name><argument_list>(<argument><expr><name>dirFile</name></expr></argument>, <argument><expr><name>fileName</name></expr></argument>, <argument><expr><name>O_WRITE</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  <return>return <expr><call><name><name>file</name><operator>.</operator><name>remove</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Remove a directory file.
+ *
+ * The directory file will be removed only if it is empty and is not the
+ * root directory.  rmDir() follows DOS and Windows and ignores the
+ * read-only attribute for the directory.
+ *
+ * \note This function should not be used to delete the 8.3 version of a
+ * directory that has a long name. For example if a directory has the
+ * long name "New folder" you should not delete the 8.3 name "NEWFOL~1".
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include the file is not a directory, is the root
+ * directory, is not empty, or an I/O error occurred.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>rmDir</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// must be open subdirectory</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isSubDir</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <expr_stmt><expr><call><name>rewind</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// make sure directory is empty</comment>
+  <while>while <condition>(<expr><name>curPosition_</name> <operator>&lt;</operator> <name>fileSize_</name></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><call><name>readDirCache</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>p</name> <operator>==</operator> <name>NULL</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <comment type="line">// done if past last used entry</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+    <comment type="line">// skip empty slot or '.' or '..'</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_DELETED</name> <operator>||</operator> <name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+    <comment type="line">// error not empty</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>DIR_IS_FILE_OR_SUBDIR</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// convert empty directory to normal file for remove</comment>
+  <expr_stmt><expr><name>type_</name> <operator>=</operator> <name>FAT_FILE_TYPE_NORMAL</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>flags_</name> <operator>|=</operator> <name>O_WRITE</name></expr>;</expr_stmt>
+  <return>return <expr><call><name>remove</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/** Recursively delete a directory and all contained files.
+ *
+ * This is like the Unix/Linux 'rm -rf *' if called with the root directory
+ * hence the name.
+ *
+ * Warning - This will remove all contents of the directory including
+ * subdirectories.  The directory will then be removed if it is not root.
+ * The read-only attribute for files will be ignored.
+ *
+ * \note This function should not be used to delete the 8.3 version of
+ * a directory that has a long name.  See remove() and rmDir().
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>rmRfStar</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><call><name>rewind</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <while>while <condition>(<expr><name>curPosition_</name> <operator>&lt;</operator> <name>fileSize_</name></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>SdFile</name></type> <name>f</name></decl>;</decl_stmt>
+
+    <comment type="line">// remember position</comment>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>index</name> <init>= <expr><name>curPosition_</name><operator>/</operator><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><call><name>readDirCache</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>p</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// done if past last entry</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_FREE</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+
+    <comment type="line">// skip empty slot or '.' or '..'</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>DIR_NAME_DELETED</name> <operator>||</operator> <name><name>p</name><operator>-&gt;</operator><name>name</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+
+    <comment type="line">// skip if part of long file name or volume label in root</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>DIR_IS_FILE_OR_SUBDIR</name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>f</name><operator>.</operator><name>open</name></name><argument_list>(<argument><expr><name>this</name></expr></argument>, <argument><expr><name>index</name></expr></argument>, <argument><expr><name>O_READ</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>f</name><operator>.</operator><name>isSubDir</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <comment type="line">// recursively delete</comment>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>f</name><operator>.</operator><name>rmRfStar</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <comment type="line">// ignore read-only</comment>
+      <expr_stmt><expr><name><name>f</name><operator>.</operator><name>flags_</name></name> <operator>|=</operator> <name>O_WRITE</name></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>f</name><operator>.</operator><name>remove</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></else></if_stmt>
+    <comment type="line">// position to next entry if required</comment>
+    <if_stmt><if>if <condition>(<expr><name>curPosition_</name> <operator>!=</operator> <operator>(</operator><literal type="number">32u</literal><operator>*</operator><operator>(</operator><name>index</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator><operator>)</operator></expr>)</condition> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>seekSet</name><argument_list>(<argument><expr><literal type="number">32u</literal><operator>*</operator><operator>(</operator><name>index</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></while>
+  <comment type="line">// don't try to delete root</comment>
+  <if_stmt><if>if <condition>(<expr><call><name>isRoot</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+  <return>return <expr><call><name>rmDir</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Sets a file's position.
+ *
+ * \param[in] pos The new position in bytes from the beginning of the file.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>seekSet</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>pos</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// error if file not open or seek past end of file</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isOpen</name><argument_list>()</argument_list></call> <operator>||</operator> <name>pos</name> <operator>&gt;</operator> <name>fileSize_</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <if_stmt><if>if <condition>(<expr><name>type_</name> <operator>==</operator> <name>FAT_FILE_TYPE_ROOT16</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>curPosition_</name> <operator>=</operator> <name>pos</name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <comment type="line">// set position to start of file</comment>
+    <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>curPosition_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// calculate cluster index for cur and new position</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>nCur</name> <init>= <expr><operator>(</operator><name>curPosition_</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator> <operator>&gt;&gt;</operator> <operator>(</operator><name><name>vol_</name><operator>-&gt;</operator><name>clusterSizeShift_</name></name> <operator>+</operator> <literal type="number">9</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>nNew</name> <init>= <expr><operator>(</operator><name>pos</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator> <operator>&gt;&gt;</operator> <operator>(</operator><name><name>vol_</name><operator>-&gt;</operator><name>clusterSizeShift_</name></name> <operator>+</operator> <literal type="number">9</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+  <if_stmt><if>if <condition>(<expr><name>nNew</name> <operator>&lt;</operator> <name>nCur</name> <operator>||</operator> <name>curPosition_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <comment type="line">// must follow chain from first cluster</comment>
+    <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <name>firstCluster_</name></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <comment type="line">// advance from curPosition</comment>
+    <expr_stmt><expr><name>nNew</name> <operator>-=</operator> <name>nCur</name></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <while>while <condition>(<expr><name>nNew</name><operator>--</operator></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>fatGet</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>curCluster_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></while>
+  <expr_stmt><expr><name>curPosition_</name> <operator>=</operator> <name>pos</name></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * The sync() call causes all modified data and directory fields
+ * to be written to the storage device.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include a call to sync() before a file has been
+ * opened or an I/O error.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>sync</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// only allow open files and directories</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isOpen</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <if_stmt><if>if <condition>(<expr><name>flags_</name> <operator>&amp;</operator> <name>F_FILE_DIR_DIRTY</name></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>d</name> <init>= <expr><call><name>cacheDirEntry</name><argument_list>(<argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>d</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// do not set filesize for dir files</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isDir</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>fileSize</name></name> <operator>=</operator> <name>fileSize_</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// update first cluster fields</comment>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>firstClusterLow</name></name> <operator>=</operator> <name>firstCluster_</name> <operator>&amp;</operator> <literal type="number">0XFFFF</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>firstClusterHigh</name></name> <operator>=</operator> <name>firstCluster_</name> <operator>&gt;&gt;</operator> <literal type="number">16</literal></expr>;</expr_stmt>
+
+    <comment type="line">// set modify time if user supplied a callback date/time function</comment>
+    <if_stmt><if>if <condition>(<expr><name>dateTime_</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>dateTime_</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>d</name><operator>-&gt;</operator><name>lastWriteDate</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>d</name><operator>-&gt;</operator><name>lastWriteTime</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>lastAccessDate</name></name> <operator>=</operator> <name><name>d</name><operator>-&gt;</operator><name>lastWriteDate</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// clear directory dirty</comment>
+    <expr_stmt><expr><name>flags_</name> <operator>&amp;=</operator> <operator>~</operator><name>F_FILE_DIR_DIRTY</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><call><name><name>SdVolume</name><operator>::</operator><name>cacheFlush</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Set a file's timestamps in its directory entry.
+ *
+ * \param[in] flags Values for \a flags are constructed by a bitwise-inclusive
+ * OR of flags from the following list
+ *
+ * T_ACCESS - Set the file's last access date.
+ *
+ * T_CREATE - Set the file's creation date and time.
+ *
+ * T_WRITE - Set the file's last write/modification date and time.
+ *
+ * \param[in] year Valid range 1980 - 2107 inclusive.
+ *
+ * \param[in] month Valid range 1 - 12 inclusive.
+ *
+ * \param[in] day Valid range 1 - 31 inclusive.
+ *
+ * \param[in] hour Valid range 0 - 23 inclusive.
+ *
+ * \param[in] minute Valid range 0 - 59 inclusive.
+ *
+ * \param[in] second Valid range 0 - 59 inclusive
+ *
+ * \note It is possible to set an invalid date since there is no check for
+ * the number of days in a month.
+ *
+ * \note
+ * Modify and access timestamps may be overwritten if a date time callback
+ * function has been set by dateTimeCallback().
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>timestamp</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>flags</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>year</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>month</name></decl></parameter>,
+         <parameter><decl><type><name>uint8_t</name></type> <name>day</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>hour</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>minute</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>second</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isOpen</name><argument_list>()</argument_list></call>
+    <operator>||</operator> <name><name>year</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1980</literal>
+    <operator>||</operator> <name>year</name></expr></argument> &gt;</argument_list></name> <literal type="number">2107</literal>
+    <operator>||</operator> <name><name>month</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal>
+    <operator>||</operator> <name>month</name></expr></argument> &gt;</argument_list></name> <literal type="number">12</literal>
+    <operator>||</operator> <name><name>day</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal>
+    <operator>||</operator> <name>day</name></expr></argument> &gt;</argument_list></name> <literal type="number">31</literal>
+    <operator>||</operator> <name>hour</name> <operator>&gt;</operator> <literal type="number">23</literal>
+    <operator>||</operator> <name>minute</name> <operator>&gt;</operator> <literal type="number">59</literal>
+    <operator>||</operator> <name>second</name> <operator>&gt;</operator> <literal type="number">59</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <decl_stmt><decl><type><name>dir_t</name><modifier>*</modifier></type> <name>d</name> <init>= <expr><call><name>cacheDirEntry</name><argument_list>(<argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><name>d</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>dirDate</name> <init>= <expr><call><name>FAT_DATE</name><argument_list>(<argument><expr><name>year</name></expr></argument>, <argument><expr><name>month</name></expr></argument>, <argument><expr><name>day</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>dirTime</name> <init>= <expr><call><name>FAT_TIME</name><argument_list>(<argument><expr><name>hour</name></expr></argument>, <argument><expr><name>minute</name></expr></argument>, <argument><expr><name>second</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>T_ACCESS</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>lastAccessDate</name></name> <operator>=</operator> <name>dirDate</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>T_CREATE</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>creationDate</name></name> <operator>=</operator> <name>dirDate</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>creationTime</name></name> <operator>=</operator> <name>dirTime</name></expr>;</expr_stmt>
+    <comment type="line">// seems to be units of 1/100 second not 1/10 as Microsoft states</comment>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>creationTimeTenths</name></name> <operator>=</operator> <ternary><condition><expr><name>second</name> <operator>&amp;</operator> <literal type="number">1</literal></expr> ?</condition><then> <expr><literal type="number">100</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>T_WRITE</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>lastWriteDate</name></name> <operator>=</operator> <name>dirDate</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>d</name><operator>-&gt;</operator><name>lastWriteTime</name></name> <operator>=</operator> <name>dirTime</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><call><name><name>SdVolume</name><operator>::</operator><name>cacheSetDirty</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><call><name>sync</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Truncate a file to a specified length.  The current file position
+ * will be maintained if it is less than or equal to \a length otherwise
+ * it will be set to end of file.
+ *
+ * \param[in] length The desired length for the file.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.
+ * Reasons for failure include file is read only, file is a directory,
+ * \a length is greater than the current file size or an I/O error occurs.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdFile</name><operator>::</operator><name>truncate</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>length</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<comment type="line">// error if not a normal file or read-only</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isFile</name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><operator>(</operator><name>flags_</name> <operator>&amp;</operator> <name>O_WRITE</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// error if length is greater than current size</comment>
+  <if_stmt><if>if <condition>(<expr><name>length</name> <operator>&gt;</operator> <name>fileSize_</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// fileSize and length are zero - nothing to do</comment>
+  <if_stmt><if>if <condition>(<expr><name>fileSize_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// remember position for seek after truncation</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>newPos</name> <init>= <expr><ternary><condition><expr><name>curPosition_</name> <operator>&gt;</operator> <name>length</name></expr> ?</condition><then> <expr><name>length</name></expr> </then><else>: <expr><name>curPosition_</name></expr></else></ternary></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// position to last cluster in truncated file</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>seekSet</name><argument_list>(<argument><expr><name>length</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <if_stmt><if>if <condition>(<expr><name>length</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <comment type="line">// free all clusters</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>freeChain</name></name><argument_list>(<argument><expr><name>firstCluster_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>firstCluster_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>toFree</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>fatGet</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>toFree</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>isEOC</name></name><argument_list>(<argument><expr><name>toFree</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <comment type="line">// free extra clusters</comment>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>freeChain</name></name><argument_list>(<argument><expr><name>toFree</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+      <comment type="line">// current cluster is end of chain</comment>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>fatPutEOC</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></else></if_stmt>
+  <expr_stmt><expr><name>fileSize_</name> <operator>=</operator> <name>length</name></expr>;</expr_stmt>
+
+  <comment type="line">// need to update directory entry</comment>
+  <expr_stmt><expr><name>flags_</name> <operator>|=</operator> <name>F_FILE_DIR_DIRTY</name></expr>;</expr_stmt>
+
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>sync</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// set file to correct position</comment>
+  <return>return <expr><call><name>seekSet</name><argument_list>(<argument><expr><name>newPos</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Write data to an open file.
+ *
+ * \note Data is moved to the cache but may not be written to the
+ * storage device until sync() is called.
+ *
+ * \param[in] buf Pointer to the location of the data to be written.
+ *
+ * \param[in] nbyte Number of bytes to write.
+ *
+ * \return For success write() returns the number of bytes written, always
+ * \a nbyte.  If an error occurs, write() returns 0.  Possible errors
+ * include write() is called before a file has been opened, write is called
+ * for a read-only file, device is full, a corrupt file system or an I/O error.
+ *
+ */</comment>
+<function><type><name>size_t</name></type> <name><name>SdFile</name><operator>::</operator><name>write</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>void</name><modifier>*</modifier></type> <name>buf</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>nbyte</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// convert void* to uint8_t*  -  must be before goto statements</comment>
+  <decl_stmt><decl><type><specifier>const</specifier> <name>uint8_t</name><modifier>*</modifier></type> <name>src</name> <init>= <expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>uint8_t</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// number of bytes left to write  -  must be before goto statements</comment>
+  <decl_stmt><decl><type><name>uint16_t</name></type> <name>nToWrite</name> <init>= <expr><name>nbyte</name></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// error if not a normal file or is read-only</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>isFile</name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><operator>(</operator><name>flags_</name> <operator>&amp;</operator> <name>O_WRITE</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+
+  <comment type="line">// seek to end of file if append flag</comment>
+  <if_stmt><if>if <condition>(<expr><operator>(</operator><name>flags_</name> <operator>&amp;</operator> <name>O_APPEND</name><operator>)</operator> <operator>&amp;&amp;</operator> <name>curPosition_</name> <operator>!=</operator> <name>fileSize_</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>seekEnd</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+  </block_content>}</block></if></if_stmt>
+
+  <while>while <condition>(<expr><name>nToWrite</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>blockOfCluster</name> <init>= <expr><call><name><name>vol_</name><operator>-&gt;</operator><name>blockOfCluster</name></name><argument_list>(<argument><expr><name>curPosition_</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>blockOffset</name> <init>= <expr><name>curPosition_</name> <operator>&amp;</operator> <literal type="number">0X1FF</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>blockOfCluster</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>blockOffset</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <comment type="line">// start of new cluster</comment>
+      <if_stmt><if>if <condition>(<expr><name>curCluster_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>firstCluster_</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+          <comment type="line">// allocate first cluster of file</comment>
+          <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>addCluster</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+          <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <name>firstCluster_</name></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>next</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>fatGet</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>next</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>vol_</name><operator>-&gt;</operator><name>isEOC</name></name><argument_list>(<argument><expr><name>next</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <comment type="line">// add cluster if at end of chain</comment>
+          <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>addCluster</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+          <expr_stmt><expr><name>curCluster_</name> <operator>=</operator> <name>next</name></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+      </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// max space in block</comment>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>n</name> <init>= <expr><literal type="number">512</literal> <operator>-</operator> <name>blockOffset</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// lesser of space and amount to write</comment>
+    <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&gt;</operator> <name>nToWrite</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>n</name> <operator>=</operator> <name>nToWrite</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// block for data write</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>block</name> <init>= <expr><call><name><name>vol_</name><operator>-&gt;</operator><name>clusterStartBlock</name></name><argument_list>(<argument><expr><name>curCluster_</name></expr></argument>)</argument_list></call> <operator>+</operator> <name>blockOfCluster</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>n</name> <operator>==</operator> <literal type="number">512</literal></expr>)</condition> <block>{<block_content>
+      <comment type="line">// full block - don't need to use cache</comment>
+      <comment type="line">// invalidate cache if block is in cache</comment>
+      <if_stmt><if>if <condition>(<expr><name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name> <operator>==</operator> <name>block</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name> <operator>=</operator> <literal type="number">0XFFFFFFFF</literal></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vol_</name><operator>-&gt;</operator><name>writeBlock</name></name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>src</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+      <expr_stmt><expr><name>src</name> <operator>+=</operator> <literal type="number">512</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name>blockOffset</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>curPosition_</name> <operator>&gt;=</operator> <name>fileSize_</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// start of new block don't need to read into cache</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheFlush</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name> <operator>=</operator> <name>block</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>SdVolume</name><operator>::</operator><name>cacheSetDirty</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <comment type="line">// rewrite part of block</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>SdVolume</name><operator>::</operator><name>cacheRawBlock</name></name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name><name>SdVolume</name><operator>::</operator><name>CACHE_FOR_WRITE</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <goto>goto <name>writeErrorReturn</name>;</goto>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></else></if_stmt>
+      <decl_stmt><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>dst</name> <init>= <expr><name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name><operator>.</operator><name>data</name></name> <operator>+</operator> <name>blockOffset</name></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>end</name> <init>= <expr><name>dst</name> <operator>+</operator> <name>n</name></expr></init></decl>;</decl_stmt>
+      <while>while <condition>(<expr><name>dst</name> <operator>!=</operator> <name>end</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><operator>*</operator><name>dst</name><operator>++</operator> <operator>=</operator> <operator>*</operator><name>src</name><operator>++</operator></expr>;</expr_stmt></block_content></block></while>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><name>nToWrite</name> <operator>-=</operator> <name>n</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>curPosition_</name> <operator>+=</operator> <name>n</name></expr>;</expr_stmt>
+  </block_content>}</block></while>
+  <if_stmt><if>if <condition>(<expr><name>curPosition_</name> <operator>&gt;</operator> <name>fileSize_</name></expr>)</condition> <block>{<block_content>
+    <comment type="line">// update fileSize and insure sync will update dir entry</comment>
+    <expr_stmt><expr><name>fileSize_</name> <operator>=</operator> <name>curPosition_</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>flags_</name> <operator>|=</operator> <name>F_FILE_DIR_DIRTY</name></expr>;</expr_stmt>
+  </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>dateTime_</name> <operator>&amp;&amp;</operator> <name>nbyte</name></expr>)</condition> <block>{<block_content>
+    <comment type="line">// insure sync will update modified date and time</comment>
+    <expr_stmt><expr><name>flags_</name> <operator>|=</operator> <name>F_FILE_DIR_DIRTY</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+
+  <if_stmt><if>if <condition>(<expr><name>flags_</name> <operator>&amp;</operator> <name>O_SYNC</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>sync</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <goto>goto <name>writeErrorReturn</name>;</goto></block_content></block></if></if_stmt>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><name>nbyte</name></expr>;</return>
+
+ <label><name>writeErrorReturn</name>:</label>
+  <comment type="line">// return for write error</comment>
+  <comment type="line">//writeError = true;</comment>
+  <expr_stmt><expr><call><name>setWriteError</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Write a byte to a file. Required by the Arduino Print class.
+ *
+ * Use SdFile::writeError to check for errors.
+ */</comment>
+<function><type><name>size_t</name></type> <name><name>SdFile</name><operator>::</operator><name>write</name></name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>b</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <return>return <expr><call><name>write</name><argument_list>(<argument><expr><operator>&amp;</operator><name>b</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Write a string to a file. Used by the Arduino Print class.
+ *
+ * Use SdFile::writeError to check for errors.
+ */</comment>
+<function><type><name>size_t</name></type> <name><name>SdFile</name><operator>::</operator><name>write</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>str</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <return>return <expr><call><name>write</name><argument_list>(<argument><expr><name>str</name></expr></argument>, <argument><expr><call><name>strlen</name><argument_list>(<argument><expr><name>str</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>__AVR__</name></cpp:ifdef>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Write a PROGMEM string to a file.
+ *
+ * Use SdFile::writeError to check for errors.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>write_P</name></name><parameter_list>(<parameter><decl><type><name>PGM_P</name></type> <name>str</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>c</name></decl>;</init> <condition><expr><operator>(</operator><name>c</name> <operator>=</operator> <call><name>pgm_read_byte</name><argument_list>(<argument><expr><name>str</name></expr></argument>)</argument_list></call><operator>)</operator></expr>;</condition> <incr><expr><name>str</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name>write</name><argument_list>(<argument><expr><name>c</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Write a PROGMEM string followed by CR/LF to a file.
+ *
+ * Use SdFile::writeError to check for errors.
+ */</comment>
+<function><type><name>void</name></type> <name><name>SdFile</name><operator>::</operator><name>writeln_P</name></name><parameter_list>(<parameter><decl><type><name>PGM_P</name></type> <name>str</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <expr_stmt><expr><call><name>write_P</name><argument_list>(<argument><expr><name>str</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>println</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</unit>

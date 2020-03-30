@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/processing/app/Serial.java"><comment type="block">/*
+  PSerial - class for serial port goodness
+  Part of the Processing project - http://processing.org
+
+  Copyright (c) 2004 Ben Fry &amp; Casey Reas
+
+  This library is free software; you can redistribute it and/or
+  modify it under the terms of the GNU Lesser General Public
+  License as published by the Free Software Foundation; either
+  version 2.1 of the License, or (at your option) any later version.
+
+  This library is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General
+  Public License along with this library; if not, write to the
+  Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+  Boston, MA  02111-1307  USA
+*/</comment>
+
+<package>package <name><name>processing</name><operator>.</operator><name>app</name></name>;</package>
+
+<import>import <name><name>jssc</name><operator>.</operator><name>SerialPort</name></name>;</import>
+<import>import <name><name>jssc</name><operator>.</operator><name>SerialPortEvent</name></name>;</import>
+<import>import <name><name>jssc</name><operator>.</operator><name>SerialPortEventListener</name></name>;</import>
+<import>import <name><name>jssc</name><operator>.</operator><name>SerialPortException</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>ByteBuffer</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>CharBuffer</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>charset</name><operator>.</operator><name>Charset</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>charset</name><operator>.</operator><name>CharsetDecoder</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>charset</name><operator>.</operator><name>CodingErrorAction</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>charset</name><operator>.</operator><name>StandardCharsets</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Arrays</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>List</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>format</name></name>;</import>
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>Serial</name> <super_list><implements>implements <super><name>SerialPortEventListener</name></super></implements></super_list> <block>{
+
+  <comment type="line">//PApplet parent;</comment>
+
+  <comment type="line">// properties can be passed in for default values</comment>
+  <comment type="line">// otherwise defaults to 9600 N81</comment>
+
+  <comment type="line">// these could be made static, which might be a solution</comment>
+  <comment type="line">// for the classloading problem.. because if code ran again,</comment>
+  <comment type="line">// the static class would have an object that could be closed</comment>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <name>SerialPort</name></type> <name>port</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <name>CharsetDecoder</name></type> <name>bytesToStrings</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>final</specifier> <name>int</name></type> <name>IN_BUFFER_CAPACITY</name> <init>= <expr><literal type="number">128</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>final</specifier> <name>int</name></type> <name>OUT_BUFFER_CAPACITY</name> <init>= <expr><literal type="number">128</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>ByteBuffer</name></type> <name>inFromSerial</name> <init>= <expr><call><name><name>ByteBuffer</name><operator>.</operator><name>allocate</name></name><argument_list>(<argument><expr><name>IN_BUFFER_CAPACITY</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>CharBuffer</name></type> <name>outToMessage</name> <init>= <expr><call><name><name>CharBuffer</name><operator>.</operator><name>allocate</name></name><argument_list>(<argument><expr><name>OUT_BUFFER_CAPACITY</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+  <constructor><specifier>public</specifier> <name>Serial</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>SerialException</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name>this</name><argument_list>(<argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.debug_rate"</literal></expr></argument>, <argument><expr><literal type="number">9600</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getNonEmpty</name></name><argument_list>(<argument><expr><literal type="string">"serial.parity"</literal></expr></argument>, <argument><expr><literal type="string">"N"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>charAt</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.databits"</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getFloat</name></name><argument_list>(<argument><expr><literal type="string">"serial.stopbits"</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableRTS"</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableDTR"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <constructor><specifier>public</specifier> <name>Serial</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>irate</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>SerialException</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name>this</name><argument_list>(<argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>irate</name></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getNonEmpty</name></name><argument_list>(<argument><expr><literal type="string">"serial.parity"</literal></expr></argument>, <argument><expr><literal type="string">"N"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>charAt</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.databits"</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getFloat</name></name><argument_list>(<argument><expr><literal type="string">"serial.stopbits"</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableRTS"</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableDTR"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <constructor><specifier>public</specifier> <name>Serial</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>iname</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>irate</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>SerialException</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name>this</name><argument_list>(<argument><expr><name>iname</name></expr></argument>, <argument><expr><name>irate</name></expr></argument>, <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getNonEmpty</name></name><argument_list>(<argument><expr><literal type="string">"serial.parity"</literal></expr></argument>, <argument><expr><literal type="string">"N"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>charAt</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.databits"</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getFloat</name></name><argument_list>(<argument><expr><literal type="string">"serial.stopbits"</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableRTS"</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableDTR"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <constructor><specifier>public</specifier> <name>Serial</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>iname</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>SerialException</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name>this</name><argument_list>(<argument><expr><name>iname</name></expr></argument>, <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.debug_rate"</literal></expr></argument>, <argument><expr><literal type="number">9600</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getNonEmpty</name></name><argument_list>(<argument><expr><literal type="string">"serial.parity"</literal></expr></argument>, <argument><expr><literal type="string">"N"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>charAt</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.databits"</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getFloat</name></name><argument_list>(<argument><expr><literal type="string">"serial.stopbits"</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableRTS"</literal></expr></argument>)</argument_list></call></expr></argument>,
+      <argument><expr><operator>!</operator><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getBoolean</name><argument_list>(<argument><expr><literal type="string">"serial.disableDTR"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>public</specifier> <specifier>static</specifier> <name>boolean</name></type> <name>touchForCDCReset</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>iname</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>SerialException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>SerialPort</name></type> <name>serialPort</name> <init>= <expr><operator>new</operator> <call><name>SerialPort</name><argument_list>(<argument><expr><name>iname</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>serialPort</name><operator>.</operator><name>openPort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>serialPort</name><operator>.</operator><name>setParams</name></name><argument_list>(<argument><expr><literal type="number">1200</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>, <argument><expr><name><name>SerialPort</name><operator>.</operator><name>STOPBITS_1</name></name></expr></argument>, <argument><expr><name><name>SerialPort</name><operator>.</operator><name>PARITY_NONE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>serialPort</name><operator>.</operator><name>setDTR</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>serialPort</name><operator>.</operator><name>closePort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>SerialException</name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error touching serial port ''{0}''."</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>iname</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch> <finally>finally <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><call><name><name>serialPort</name><operator>.</operator><name>isOpened</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><call><name><name>serialPort</name><operator>.</operator><name>closePort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+          <comment type="line">// noop</comment>
+        </block_content>}</block></catch></try>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></finally></try>
+  </block_content>}</block></function>
+
+  <constructor><specifier>private</specifier> <name>Serial</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>iname</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>irate</name></decl></parameter>, <parameter><decl><type><name>char</name></type> <name>iparity</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>idatabits</name></decl></parameter>, <parameter><decl><type><name>float</name></type> <name>istopbits</name></decl></parameter>, <parameter><decl><type><name>boolean</name></type> <name>setRTS</name></decl></parameter>, <parameter><decl><type><name>boolean</name></type> <name>setDTR</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>SerialException</name></expr></argument></throws> <block>{<block_content>
+    <comment type="line">//if (port != null) port.close();</comment>
+    <comment type="line">//this.parent = parent;</comment>
+    <comment type="line">//parent.attach(this);</comment>
+
+    <expr_stmt><expr><call><name>resetDecoding</name><argument_list>(<argument><expr><name><name>StandardCharsets</name><operator>.</operator><name>UTF_8</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>parity</name> <init>= <expr><name><name>SerialPort</name><operator>.</operator><name>PARITY_NONE</name></name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>iparity</name> <operator>==</operator> <literal type="char">'E'</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>parity</name> <operator>=</operator> <name><name>SerialPort</name><operator>.</operator><name>PARITY_EVEN</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>iparity</name> <operator>==</operator> <literal type="char">'O'</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>parity</name> <operator>=</operator> <name><name>SerialPort</name><operator>.</operator><name>PARITY_ODD</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>stopbits</name> <init>= <expr><name><name>SerialPort</name><operator>.</operator><name>STOPBITS_1</name></name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>istopbits</name> <operator>==</operator> <literal type="number">1.5f</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>stopbits</name> <operator>=</operator> <name><name>SerialPort</name><operator>.</operator><name>STOPBITS_1_5</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>istopbits</name> <operator>==</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>stopbits</name> <operator>=</operator> <name><name>SerialPort</name><operator>.</operator><name>STOPBITS_2</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><name>port</name> <operator>=</operator> <operator>new</operator> <call><name>SerialPort</name><argument_list>(<argument><expr><name>iname</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>openPort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>boolean</name></type> <name>res</name> <init>= <expr><call><name><name>port</name><operator>.</operator><name>setParams</name></name><argument_list>(<argument><expr><name>irate</name></expr></argument>, <argument><expr><name>idatabits</name></expr></argument>, <argument><expr><name>stopbits</name></expr></argument>, <argument><expr><name>parity</name></expr></argument>, <argument><expr><name>setRTS</name></expr></argument>, <argument><expr><name>setDTR</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><name>res</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error while setting serial port parameters: {0} {1} {2} {3}"</literal></expr></argument>)</argument_list></call></expr></argument>,
+                                  <argument><expr><name>irate</name></expr></argument>, <argument><expr><name>iparity</name></expr></argument>, <argument><expr><name>idatabits</name></expr></argument>, <argument><expr><name>istopbits</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>addEventListener</name></name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><call><name><name>e</name><operator>.</operator><name>getPortName</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>startsWith</name><argument_list>(<argument><expr><literal type="string">"/dev"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>SerialPortException</name><operator>.</operator><name>TYPE_PERMISSION_DENIED</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><call><name><name>e</name><operator>.</operator><name>getExceptionType</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>SerialException</name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error opening serial port ''{0}''. Try consulting the documentation at http://playground.arduino.cc/Linux/All#Permission"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>iname</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></if></if_stmt>
+      <throw>throw <expr><operator>new</operator> <call><name>SerialException</name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error opening serial port ''{0}''."</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>iname</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch></try>
+
+    <if_stmt><if>if <condition>(<expr><name>port</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>SerialNotFoundException</name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Serial port ''{0}'' not found. Did you select the right one from the Tools &gt; Serial Port menu?"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>iname</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>setup</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <comment type="line">//parent.registerCall(this, DISPOSE);</comment>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>dispose</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>port</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <try>try <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>port</name><operator>.</operator><name>isOpened</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>closePort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>  <comment type="line">// close the port</comment>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>IOException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></catch> <finally>finally <block>{<block_content>
+        <expr_stmt><expr><name>port</name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+      </block_content>}</block></finally></try>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <specifier>synchronized</specifier> <name>void</name></type> <name>serialEvent</name><parameter_list>(<parameter><decl><type><name>SerialPortEvent</name></type> <name>serialEvent</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>serialEvent</name><operator>.</operator><name>isRXCHAR</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>buf</name> <init>= <expr><call><name><name>port</name><operator>.</operator><name>readBytes</name></name><argument_list>(<argument><expr><call><name><name>serialEvent</name><operator>.</operator><name>getEventValue</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>next</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <while>while<condition>(<expr><name>next</name> <operator>&lt;</operator> <name><name>buf</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+          <while>while<condition>(<expr><name>next</name> <operator>&lt;</operator> <name><name>buf</name><operator>.</operator><name>length</name></name> <operator>&amp;&amp;</operator> <call><name><name>outToMessage</name><operator>.</operator><name>hasRemaining</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>int</name></type> <name>spaceInIn</name> <init>= <expr><call><name><name>inFromSerial</name><operator>.</operator><name>remaining</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>copyNow</name> <init>= <expr><ternary><condition><expr><name><name>buf</name><operator>.</operator><name>length</name></name> <operator>-</operator> <name>next</name> <operator>&lt;</operator> <name>spaceInIn</name></expr> ?</condition><then> <expr><name><name>buf</name><operator>.</operator><name>length</name></name> <operator>-</operator> <name>next</name></expr> </then><else>: <expr><name>spaceInIn</name></expr></else></ternary></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>inFromSerial</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>next</name></expr></argument>, <argument><expr><name>copyNow</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>next</name> <operator>+=</operator> <name>copyNow</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>inFromSerial</name><operator>.</operator><name>flip</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>bytesToStrings</name><operator>.</operator><name>decode</name></name><argument_list>(<argument><expr><name>inFromSerial</name></expr></argument>, <argument><expr><name>outToMessage</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>inFromSerial</name><operator>.</operator><name>compact</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></while>
+          <expr_stmt><expr><call><name><name>outToMessage</name><operator>.</operator><name>flip</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          <if_stmt><if>if<condition>(<expr><call><name><name>outToMessage</name><operator>.</operator><name>hasRemaining</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>char</name><index>[]</index></name></type> <name>chars</name> <init>= <expr><operator>new</operator> <name><name>char</name><index>[<expr><call><name><name>outToMessage</name><operator>.</operator><name>remaining</name></name><argument_list>()</argument_list></call></expr>]</index></name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>outToMessage</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>chars</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>message</name><argument_list>(<argument><expr><name>chars</name></expr></argument>, <argument><expr><name><name>chars</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <expr_stmt><expr><call><name><name>outToMessage</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></while>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>errorMessage</name><argument_list>(<argument><expr><literal type="string">"serialEvent"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * This method is intented to be extended to receive messages
+   * coming from serial port.
+   */</comment>
+  <function><type><specifier>protected</specifier> <name>void</name></type> <name>message</name><parameter_list>(<parameter><decl><type><name><name>char</name><index>[]</index></name></type> <name>chars</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>length</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// Empty</comment>
+  </block_content>}</block></function>
+
+
+  <comment type="block" format="javadoc">/**
+   * This will handle both ints, bytes and chars transparently.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>write</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>what</name></decl></parameter>)</parameter_list> <block>{<block_content>  <comment type="line">// will also cover char</comment>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>writeInt</name></name><argument_list>(<argument><expr><name>what</name> <operator>&amp;</operator> <literal type="number">0xff</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>errorMessage</name><argument_list>(<argument><expr><literal type="string">"write"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>write</name><parameter_list>(<parameter><decl><type><name>byte</name></type> <name><name>bytes</name><index>[]</index></name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>writeBytes</name></name><argument_list>(<argument><expr><name>bytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>errorMessage</name><argument_list>(<argument><expr><literal type="string">"write"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+
+  <comment type="block" format="javadoc">/**
+   * Write a String to the output. Note that this doesn't account
+   * for Unicode (two bytes per char), nor will it send UTF8
+   * characters.. It assumes that you mean to send a byte buffer
+   * (most often the case for networking and serial i/o) and
+   * will only use the bottom 8 bits of each char in the string.
+   * (Meaning that internally it uses String.getBytes)
+   * &lt;p&gt;
+   * If you want to move Unicode data, you can first convert the
+   * String to a byte stream in the representation of your choice
+   * (i.e. UTF8 or two-byte Unicode data), and send it as a byte array.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>write</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>what</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>write</name><argument_list>(<argument><expr><call><name><name>what</name><operator>.</operator><name>getBytes</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>setDTR</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>state</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>setDTR</name></name><argument_list>(<argument><expr><name>state</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>errorMessage</name><argument_list>(<argument><expr><literal type="string">"setDTR"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>setRTS</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>state</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>setRTS</name></name><argument_list>(<argument><expr><name>state</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialPortException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>errorMessage</name><argument_list>(<argument><expr><literal type="string">"setRTS"</literal></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Reset the encoding used to convert the bytes coming in
+   * before they are handed as Strings to {@Link #message(char[], int)}.
+   */</comment>
+  <function><type><specifier>public</specifier> <specifier>synchronized</specifier> <name>void</name></type> <name>resetDecoding</name><parameter_list>(<parameter><decl><type><name>Charset</name></type> <name>charset</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name>bytesToStrings</name> <operator>=</operator> <call><name><name>charset</name><operator>.</operator><name>newDecoder</name></name><argument_list>()</argument_list></call>
+                      <operator>.</operator><call><name>onMalformedInput</name><argument_list>(<argument><expr><name><name>CodingErrorAction</name><operator>.</operator><name>REPLACE</name></name></expr></argument>)</argument_list></call>
+                      <operator>.</operator><call><name>onUnmappableCharacter</name><argument_list>(<argument><expr><name><name>CodingErrorAction</name><operator>.</operator><name>REPLACE</name></name></expr></argument>)</argument_list></call>
+                      <operator>.</operator><call><name>replaceWith</name><argument_list>(<argument><expr><literal type="string">"\u2e2e"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>static</specifier> <specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>list</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>Arrays</name><operator>.</operator><name>asList</name></name><argument_list>(<argument><expr><call><name><name>SerialPortList</name><operator>.</operator><name>getPortNames</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+
+  <comment type="block" format="javadoc">/**
+   * General error reporting, all corraled here just in case
+   * I think of something slightly more intelligent to do.
+   */</comment>
+  <function><type><specifier>private</specifier> <specifier>static</specifier> <name>void</name></type> <name>errorMessage</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>where</name></decl></parameter>, <parameter><decl><type><name>Throwable</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error inside Serial.{0}()"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>where</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+}</block></class>
+</unit>

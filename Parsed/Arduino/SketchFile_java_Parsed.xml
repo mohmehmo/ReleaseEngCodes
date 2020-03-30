@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/processing/app/SketchFile.java"><comment type="block">/*
+  SketchFile - data class for a single file inside a sketch
+  Part of the Processing project - http://processing.org
+
+  Copyright (c) 2004-08 Ben Fry and Casey Reas
+  Copyright (c) 2001-04 Massachusetts Institute of Technology
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software Foundation,
+  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/</comment>
+
+<package>package <name><name>processing</name><operator>.</operator><name>app</name></name>;</package>
+
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>FileUtils</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>IOException</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>file</name><operator>.</operator><name>Files</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>file</name><operator>.</operator><name>Path</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>Arrays</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>List</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>stream</name><operator>.</operator><name>Collectors</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>stream</name><operator>.</operator><name>Stream</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+<comment type="block" format="javadoc">/**
+ * Represents a file within a sketch.
+ */</comment>
+<class><specifier>public</specifier> class <name>SketchFile</name> <block>{
+
+  <comment type="block" format="javadoc">/**
+   * File object for where this code is located
+   */</comment>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>File</name></type> <name>file</name></decl>;</decl_stmt>
+
+  <comment type="block" format="javadoc">/**
+   * The sketch this file belongs to.
+   */</comment>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Sketch</name></type> <name>sketch</name></decl>;</decl_stmt>
+
+  <comment type="block" format="javadoc">/**
+   * Is this the primary file in the sketch?
+   */</comment>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>boolean</name></type> <name>primary</name></decl>;</decl_stmt>
+
+  <comment type="block" format="javadoc">/**
+   * Interface for an in-memory storage of text file contents. This is
+   * intended to allow a GUI to keep modified text in memory, and allow
+   * SketchFile to check for changes when needed.
+   */</comment>
+  <interface><specifier>public</specifier> <specifier>static</specifier> interface <name>TextStorage</name> <block>{
+    <comment type="block" format="javadoc">/** Get the current text */</comment>
+    <function_decl><type><specifier>public</specifier> <name>String</name></type> <name>getText</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block" format="javadoc">/**
+     * Is the text modified externally, after the last call to
+     * clearModified() or setText()?
+     */</comment>
+    <function_decl><type><specifier>public</specifier> <name>boolean</name></type> <name>isModified</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block" format="javadoc">/** Clear the isModified() result value */</comment>
+    <function_decl><type><specifier>public</specifier> <name>void</name></type> <name>clearModified</name><parameter_list>()</parameter_list>;</function_decl>
+  }</block></interface>
+
+  <comment type="block" format="javadoc">/**
+   * A storage for this file's text. This can be set by a GUI, so we can
+   * have access to any modified version of the file. This can be null,
+   * in which case the file is never modified, and saving is a no-op.
+   */</comment>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>TextStorage</name></type> <name>storage</name></decl>;</decl_stmt>
+
+  <comment type="block" format="javadoc">/**
+   * Create a new SketchFile
+   *
+   * @param sketch
+   *          The sketch this file belongs to
+   * @param file
+   *          The file this SketchFile represents
+   * @param primary
+   *          Whether this file is the primary file of the sketch
+   */</comment>
+  <constructor><specifier>public</specifier> <name>SketchFile</name><parameter_list>(<parameter><decl><type><name>Sketch</name></type> <name>sketch</name></decl></parameter>, <parameter><decl><type><name>File</name></type> <name>file</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>sketch</name></name> <operator>=</operator> <name>sketch</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>file</name></name> <operator>=</operator> <name>file</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>FileUtils</name><operator>.</operator><name>SplitFile</name></name></type> <name>split</name> <init>= <expr><call><name><name>FileUtils</name><operator>.</operator><name>splitFilename</name></name><argument_list>(<argument><expr><name>file</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>primary</name></name> <operator>=</operator> <call><name><name>split</name><operator>.</operator><name>basename</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><call><name><name>sketch</name><operator>.</operator><name>getFolder</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getName</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>
+        <operator>&amp;&amp;</operator> <call><name><name>Sketch</name><operator>.</operator><name>SKETCH_EXTENSIONS</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>split</name><operator>.</operator><name>extension</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <comment type="block" format="javadoc">/**
+   * Set an in-memory storage for this file's text, that will be queried
+   * on compile, save, and whenever the text is needed. null can be
+   * passed to detach any attached storage.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>setStorage</name><parameter_list>(<parameter><decl><type><name>TextStorage</name></type> <name>text</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>storage</name></name> <operator>=</operator> <name>text</name></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>File</name></type> <name>getFile</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>file</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Is this the primary file in the sketch?
+   */</comment>
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isPrimary</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>primary</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>protected</specifier> <name>boolean</name></type> <name>fileExists</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>file</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>protected</specifier> <name>boolean</name></type> <name>fileReadOnly</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><operator>!</operator><call><name><name>file</name><operator>.</operator><name>canWrite</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>protected</specifier> <name>boolean</name></type> <name>delete</name><parameter_list>(<parameter><decl><type><name>Path</name></type> <name>tempBuildFolder</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>file</name><operator>.</operator><name>delete</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>Path</name></argument>&gt;</argument_list></name></type> <name>tempBuildFolders</name> <init>= <expr><call><name><name>Stream</name><operator>.</operator><name>of</name></name><argument_list>(<argument><expr><name>tempBuildFolder</name></expr></argument>, <argument><expr><call><name><name>tempBuildFolder</name><operator>.</operator><name>resolve</name></name><argument_list>(<argument><expr><literal type="string">"sketch"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>path</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>Files</name><operator>.</operator><name>exists</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>)</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call><operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>toList</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>Path</name></type> <name>folder</name> <range>: <expr><name>tempBuildFolders</name></expr></range></decl></init>)</control> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>deleteCompiledFilesFrom</name><argument_list>(<argument><expr><name>folder</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>sketch</name><operator>.</operator><name>removeFile</name></name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>deleteCompiledFilesFrom</name><parameter_list>(<parameter><decl><type><name>Path</name></type> <name>tempBuildFolder</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>Path</name></argument>&gt;</argument_list></name></type> <name>compiledFiles</name> <init>= <expr><call><name><name>Files</name><operator>.</operator><name>list</name></name><argument_list>(<argument><expr><name>tempBuildFolder</name></expr></argument>)</argument_list></call>
+      <operator>.</operator><call><name>filter</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>pathname</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>pathname</name><operator>.</operator><name>getFileName</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>startsWith</name><argument_list>(<argument><expr><call><name>getFileName</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call>
+      <operator>.</operator><call><name>collect</name><argument_list>(<argument><expr><call><name><name>Collectors</name><operator>.</operator><name>toList</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>Path</name></type> <name>compiledFile</name> <range>: <expr><name>compiledFiles</name></expr></range></decl></init>)</control> <block>{<block_content>
+      <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name><name>Files</name><operator>.</operator><name>delete</name></name><argument_list>(<argument><expr><name>compiledFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>IOException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Rename the given file to get the given name.
+   *
+   * @param newName
+   *          The new name, including extension, excluding directory
+   *          name.
+   * @throws IOException
+   *           When a problem occurs, or is expected to occur. The error
+   *           message should be already translated.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>renameTo</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>newName</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>File</name></type> <name>newFile</name> <init>= <expr><operator>new</operator> <call><name>File</name><argument_list>(<argument><expr><call><name><name>file</name><operator>.</operator><name>getParentFile</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>newName</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>sketch</name><operator>.</operator><name>checkNewFilename</name></name><argument_list>(<argument><expr><name>newFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>file</name><operator>.</operator><name>exists</name></name><argument_list>()</argument_list></call> <operator>||</operator> <call><name><name>file</name><operator>.</operator><name>renameTo</name></name><argument_list>(<argument><expr><name>newFile</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name>renamedTo</name><argument_list>(<argument><expr><name>newFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <decl_stmt><decl><type><name>String</name></type> <name>msg</name> <init>= <expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Failed to rename \"{0}\" to \"{1}\""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>file</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>newName</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <throw>throw <expr><operator>new</operator> <call><name>IOException</name><argument_list>(<argument><expr><name>msg</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></else></if_stmt>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Should be called when this file was renamed and renameTo could not
+   * be used (e.g. when renaming the entire sketch directory).
+   */</comment>
+  <function><type><specifier>protected</specifier> <name>void</name></type> <name>renamedTo</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>what</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name>file</name> <operator>=</operator> <name>what</name></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <comment type="block">/*
+   * Returns the filename include extension.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getFileName</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>file</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Returns the filename without extension for normal sketch files
+   * (Sketch.SKETCH_EXTENSIONS) and the filename with extension for all
+   * others.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getPrettyName</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>PreferencesData</name><operator>.</operator><name>getBoolean</name></name><argument_list>(<argument><expr><literal type="string">"editor.show_always_extensions"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>isExtension</name><argument_list>(<argument><expr><name><name>Sketch</name><operator>.</operator><name>SKETCH_EXTENSIONS</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><call><name>getBaseName</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+      <return>return <expr><call><name>getFileName</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></else></if_stmt>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Returns the filename without extension
+   */</comment>
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getBaseName</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>FileUtils</name><operator>.</operator><name>splitFilename</name></name><argument_list>(<argument><expr><name>file</name></expr></argument>)</argument_list></call><operator>.</operator><name>basename</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isExtension</name><parameter_list>(<parameter><decl><type><name>String</name><modifier>...</modifier></type> <name>extensions</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>isExtension</name><argument_list>(<argument><expr><call><name><name>Arrays</name><operator>.</operator><name>asList</name></name><argument_list>(<argument><expr><name>extensions</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isExtension</name><parameter_list>(<parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>extensions</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name><name>FileUtils</name><operator>.</operator><name>hasExtension</name></name><argument_list>(<argument><expr><name>file</name></expr></argument>, <argument><expr><name>extensions</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>getProgram</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>storage</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><call><name><name>storage</name><operator>.</operator><name>getText</name></name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><literal type="null">null</literal></expr>;</return>
+  </block_content>}</block></function>
+
+
+  <function><type><specifier>public</specifier> <name>boolean</name></type> <name>isModified</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>storage</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><call><name><name>storage</name><operator>.</operator><name>isModified</name></name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>boolean</name></type> <name>equals</name><parameter_list>(<parameter><decl><type><name>Object</name></type> <name>o</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><operator>(</operator><name>o</name> <operator>instanceof</operator> <name>SketchFile</name><operator>)</operator> <operator>&amp;&amp;</operator> <call><name><name>file</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><operator>(</operator><operator>(</operator><name>SketchFile</name><operator>)</operator> <name>o</name><operator>)</operator><operator>.</operator><name>file</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="block" format="javadoc">/**
+   * Load this piece of code from a file and return the contents. This
+   * completely ignores any changes in the linked storage, if any, and
+   * just directly reads the file.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>String</name></type> <name>load</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>text</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>loadFile</name></name><argument_list>(<argument><expr><name>file</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>text</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>IOException</name><argument_list>()</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>text</name><operator>.</operator><name>indexOf</name></name><argument_list>(<argument><expr><literal type="char">'\uFFFD'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(
+        <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(
+          <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"\"{0}\" contains unrecognized characters. "</literal> <operator>+</operator>
+            <literal type="string">"If this code was created with an older version of Arduino, "</literal> <operator>+</operator>
+            <literal type="string">"you may need to use Tools -&gt; Fix Encoding &amp; Reload to update "</literal> <operator>+</operator>
+            <literal type="string">"the sketch to use UTF-8 encoding. If not, you may need to "</literal> <operator>+</operator>
+            <literal type="string">"delete the bad characters to get rid of this warning."</literal></expr></argument>)</argument_list></call></expr></argument>,
+          <argument><expr><call><name><name>file</name><operator>.</operator><name>getName</name></name><argument_list>()</argument_list></call></expr></argument>
+        )</argument_list></call></expr></argument>
+      )</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>text</name></expr>;</return>
+  </block_content>}</block></function>
+
+
+  <comment type="block" format="javadoc">/**
+   * Save this piece of code, regardless of whether the modified
+   * flag is set or not.
+   */</comment>
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>save</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>storage</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt> <comment type="block">/* Nothing to do */</comment>
+
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>saveFile</name></name><argument_list>(<argument><expr><call><name><name>storage</name><operator>.</operator><name>getText</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>file</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>storage</name><operator>.</operator><name>clearModified</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+
+  <comment type="block" format="javadoc">/**
+   * Save this file to another location, used by Sketch.saveAs()
+   */</comment>
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>saveAs</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>newFile</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>IOException</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>storage</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt> <comment type="block">/* Nothing to do */</comment>
+
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>saveFile</name></name><argument_list>(<argument><expr><call><name><name>storage</name><operator>.</operator><name>getText</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>newFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>renamedTo</name><argument_list>(<argument><expr><name>newFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>storage</name><operator>.</operator><name>clearModified</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+}</block></class>
+</unit>

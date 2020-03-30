@@ -1,0 +1,397 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/cc/arduino/packages/uploaders/SerialUploader.java"><comment type="block">/*
+ * This file is part of Arduino.
+ *
+ * BasicUploader - generic command line uploader implementation
+ *
+ * Copyright (c) 2004-05
+ * Hernando Barragan
+ * Copyright (c) 2012
+ * Cristian Maglie &lt;c.maglie@arduino.cc&gt;
+ *
+ * Arduino is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As a special exception, you may use this file as part of a free software
+ * library without restriction.  Specifically, if other files instantiate
+ * templates or use macros or inline functions from this file, or you compile
+ * this file and link it with other files to produce an executable, this
+ * file does not by itself cause the resulting executable to be covered by
+ * the GNU General Public License.  This exception does not however
+ * invalidate any other reasons why the executable file might be covered by
+ * the GNU General Public License.
+ */</comment>
+
+<package>package <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>uploaders</name></name>;</package>
+
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>LoadVIDPIDSpecificPreferences</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>Uploader</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>BoardPort</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>RunnerException</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>debug</name><operator>.</operator><name>TargetPlatform</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>PreferencesMap</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>PreferencesMapException</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>StringReplacer</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>File</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>ArrayList</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>List</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>SerialUploader</name> <super_list><extends>extends <super><name>Uploader</name></super></extends></super_list> <block>{
+
+  <constructor><specifier>public</specifier> <name>SerialUploader</name><parameter_list>()</parameter_list>
+  <block>{<block_content>
+    <expr_stmt><expr><call><name>super</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <constructor><specifier>public</specifier> <name>SerialUploader</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>noUploadPort</name></decl></parameter>)</parameter_list>
+  <block>{<block_content>
+    <expr_stmt><expr><call><name>super</name><argument_list>(<argument><expr><name>noUploadPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>boolean</name></type> <name>uploadUsingPreferences</name><parameter_list>(<parameter><decl><type><name>File</name></type> <name>sourcePath</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>buildPath</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>className</name></decl></parameter>, <parameter><decl><type><name>boolean</name></type> <name>usingProgrammer</name></decl></parameter>, <parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>warningsAccumulator</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <comment type="line">// FIXME: Preferences should be reorganized</comment>
+    <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getTargetPlatform</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>prefs</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>getMap</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>boardPreferences</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>boardPreferences</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>boardPreferences</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>tool</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.tool"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tool</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>tool</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>targetPlatform</name> <operator>=</operator> <call><name><name>BaseNoGui</name><operator>.</operator><name>getCurrentTargetPlatformFromPackage</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>tool</name> <operator>=</operator> <name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><call><name><name>targetPlatform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>programmerPid</name> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>programmerPid</name><operator>.</operator><name>isAlive</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <comment type="line">// kill the previous programmer</comment>
+      <expr_stmt><expr><call><name><name>programmerPid</name><operator>.</operator><name>destroyForcibly</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// if no protocol is specified for this board, assume it lacks a </comment>
+    <comment type="line">// bootloader and upload using the selected programmer.</comment>
+    <if_stmt><if>if <condition>(<expr><name>usingProgrammer</name> <operator>||</operator> <call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"upload.protocol"</literal></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <return>return <expr><call><name>uploadUsingProgrammer</name><argument_list>(<argument><expr><name>buildPath</name></expr></argument>, <argument><expr><name>className</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>pausePolling</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>noUploadPort</name></expr>)</condition>
+    <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.path"</literal></expr></argument>, <argument><expr><name>buildPath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.project_name"</literal></expr></argument>, <argument><expr><name>className</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.verbose"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+      <else>else<block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.quiet"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+
+      <if_stmt><if>if <condition>(<expr><name>verifyUpload</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verify"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.verify"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+      <else>else<block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verify"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.noverify"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+
+      <try>try <block>{<block_content>
+        <return>return <expr><call><name>runCommand</name><argument_list>(<argument><expr><literal type="string">"upload.pattern"</literal></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</return>
+      </block_content>}</block> <finally>finally <block>{<block_content>
+        <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>pausePolling</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></finally></try>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// need to do a little dance for Leonardo and derivatives:</comment>
+    <comment type="line">// open then close the port at the magic baudrate (usually 1200 bps) first</comment>
+    <comment type="line">// to signal to the sketch that it should reset into bootloader. after doing</comment>
+    <comment type="line">// this wait a moment for the bootloader to enumerate. On Windows, also must</comment>
+    <comment type="line">// deal with the fact that the COM port number changes from bootloader to</comment>
+    <comment type="line">// sketch.</comment>
+    <decl_stmt><decl><type><name>boolean</name></type> <name>doTouch</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getBoolean</name></name><argument_list>(<argument><expr><literal type="string">"upload.use_1200bps_touch"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>boolean</name></type> <name>waitForUploadPort</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getBoolean</name></name><argument_list>(<argument><expr><literal type="string">"upload.wait_for_upload_port"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>String</name></type> <name>userSelectedUploadPort</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>actualUploadPort</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>doTouch</name></expr>)</condition> <block>{<block_content>
+      <try>try <block>{<block_content>
+        <comment type="line">// Toggle 1200 bps on selected serial port to force board reset.</comment>
+        <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>before</name> <init>= <expr><call><name><name>Serial</name><operator>.</operator><name>list</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>before</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name>userSelectedUploadPort</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>println</name></name><argument_list>(
+              <argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Forcing reset using 1200bps open/close on port {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>userSelectedUploadPort</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+          <expr_stmt><expr><call><name><name>Serial</name><operator>.</operator><name>touchForCDCReset</name></name><argument_list>(<argument><expr><name>userSelectedUploadPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>Thread</name><operator>.</operator><name>sleep</name></name><argument_list>(<argument><expr><literal type="number">400</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>waitForUploadPort</name></expr>)</condition> <block>{<block_content>
+          <comment type="line">// Scanning for available ports seems to open the port or</comment>
+          <comment type="line">// otherwise assert DTR, which would cancel the WDT reset if</comment>
+          <comment type="line">// it happened within 250 ms. So we wait until the reset should</comment>
+          <comment type="line">// have already occurred before we start scanning.</comment>
+          <expr_stmt><expr><name>actualUploadPort</name> <operator>=</operator> <call><name>waitForUploadPort</name><argument_list>(<argument><expr><name>userSelectedUploadPort</name></expr></argument>, <argument><expr><name>before</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    	  <comment type="line">// on OS X, if the port is opened too quickly after it is detected,</comment>
+    	  <comment type="line">// a "Resource busy" error occurs, add a delay to workaround this,</comment>
+          <comment type="line">// apply to other platforms as well.</comment>
+    	  <expr_stmt><expr><call><name><name>Thread</name><operator>.</operator><name>sleep</name></name><argument_list>(<argument><expr><literal type="number">250</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>SerialException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>InterruptedException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><call><name><name>e</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></catch> <finally>finally <block>{<block_content>
+        <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>pausePolling</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></finally></try>
+      <if_stmt><if>if <condition>(<expr><name>actualUploadPort</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>actualUploadPort</name> <operator>=</operator> <name>userSelectedUploadPort</name></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>, <argument><expr><name>actualUploadPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>actualUploadPort</name><operator>.</operator><name>startsWith</name></name><argument_list>(<argument><expr><literal type="string">"/dev/"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"serial.port.file"</literal></expr></argument>, <argument><expr><call><name><name>actualUploadPort</name><operator>.</operator><name>substring</name></name><argument_list>(<argument><expr><literal type="number">5</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"serial.port.file"</literal></expr></argument>, <argument><expr><name>actualUploadPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+
+      <comment type="line">// retrigger a discovery</comment>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>setUploadInProgress</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>Thread</name><operator>.</operator><name>sleep</name></name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>forceRefresh</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>Thread</name><operator>.</operator><name>sleep</name></name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>BoardPort</name></type> <name>boardPort</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>find</name><argument_list>(<argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"serial.port.iserial"</literal></expr></argument>, <argument><expr><call><name><name>boardPort</name><operator>.</operator><name>getPrefs</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getOrExcept</name><argument_list>(<argument><expr><literal type="string">"iserial"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <comment type="line">// if serial port does not contain an iserial field</comment>
+    </block_content>}</block></catch></try>
+
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.path"</literal></expr></argument>, <argument><expr><name>buildPath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.project_name"</literal></expr></argument>, <argument><expr><name>className</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.verbose"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.quiet"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>verifyUpload</name></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verify"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.verify"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"upload.verify"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"upload.params.noverify"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+
+    <decl_stmt><decl><type><name>boolean</name></type> <name>uploadResult</name></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><name>uploadResult</name> <operator>=</operator> <call><name>runCommand</name><argument_list>(<argument><expr><literal type="string">"upload.pattern"</literal></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <finally>finally <block>{<block_content>
+      <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>pausePolling</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></finally></try>
+
+    <decl_stmt><decl><type><name>String</name></type> <name>finalUploadPort</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>uploadResult</name> <operator>&amp;&amp;</operator> <name>doTouch</name></expr>)</condition> <block>{<block_content>
+      <try>try <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>waitForUploadPort</name></expr>)</condition> <block>{<block_content>
+          <comment type="line">// For Due/Leonardo wait until the bootloader serial port disconnects and the</comment>
+          <comment type="line">// sketch serial port reconnects (or timeout after a few seconds if the</comment>
+          <comment type="line">// sketch port never comes back). Doing this saves users from accidentally</comment>
+          <comment type="line">// opening Serial Monitor on the soon-to-be-orphaned bootloader port.</comment>
+
+          <comment type="line">// Reuse waitForUploadPort for this task, but this time we are simply waiting</comment>
+          <comment type="line">// for one port to reappear. If no port reappears before the timeout, actualUploadPort is selected</comment>
+          <expr_stmt><expr><name>finalUploadPort</name> <operator>=</operator> <call><name>waitForUploadPort</name><argument_list>(<argument><expr><name>actualUploadPort</name></expr></argument>, <argument><expr><call><name><name>Serial</name><operator>.</operator><name>list</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><literal type="number">2000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>RunnerException</name></type> <name>ex</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <comment type="line">// noop</comment>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>finalUploadPort</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>finalUploadPort</name> <operator>=</operator> <name>userSelectedUploadPort</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>selectSerialPort</name></name><argument_list>(<argument><expr><name>finalUploadPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>setUploadInProgress</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getDiscoveryManager</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getSerialDiscoverer</name><argument_list>()</argument_list></call><operator>.</operator><call><name>pausePolling</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>uploadResult</name></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>String</name></type> <name>waitForUploadPort</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>uploadPort</name></decl></parameter>, <parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>before</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>InterruptedException</name></expr></argument>, <argument><expr><name>RunnerException</name></expr></argument></throws> <block>{<block_content>
+	  <return>return <expr><call><name>waitForUploadPort</name><argument_list>(<argument><expr><name>uploadPort</name></expr></argument>, <argument><expr><name>before</name></expr></argument>, <argument><expr><name>verbose</name></expr></argument>, <argument><expr><literal type="number">10000</literal></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>String</name></type> <name>waitForUploadPort</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>uploadPort</name></decl></parameter>, <parameter><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>before</name></decl></parameter>, <parameter><decl><type><name>boolean</name></type> <name>verbose</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>timeout</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>InterruptedException</name></expr></argument>, <argument><expr><name>RunnerException</name></expr></argument></throws> <block>{<block_content>
+    <comment type="line">// Wait for a port to appear on the list</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>elapsed</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>elapsed</name> <operator>&lt;</operator> <name>timeout</name></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>now</name> <init>= <expr><call><name><name>Serial</name><operator>.</operator><name>list</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name><name>List</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>diff</name> <init>= <expr><operator>new</operator> <call><name><name>ArrayList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>(<argument><expr><name>now</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>diff</name><operator>.</operator><name>removeAll</name></name><argument_list>(<argument><expr><name>before</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="string">"PORTS {"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>String</name></type> <name>p</name> <range>: <expr><name>before</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><name>p</name> <operator>+</operator> <literal type="string">", "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="string">"} / {"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>String</name></type> <name>p</name> <range>: <expr><name>now</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><name>p</name> <operator>+</operator> <literal type="string">", "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><literal type="string">"} =&gt; {"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>String</name></type> <name>p</name> <range>: <expr><name>diff</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>print</name></name><argument_list>(<argument><expr><name>p</name> <operator>+</operator> <literal type="string">", "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><literal type="string">"}"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>diff</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>String</name></type> <name>newPort</name> <init>= <expr><call><name><name>diff</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><literal type="string">"Found upload port: "</literal> <operator>+</operator> <name>newPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <return>return <expr><name>newPort</name></expr>;</return>
+      </block_content>}</block></if></if_stmt>
+
+      <comment type="line">// Keep track of port that disappears</comment>
+      <expr_stmt><expr><name>before</name> <operator>=</operator> <name>now</name></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>Thread</name><operator>.</operator><name>sleep</name></name><argument_list>(<argument><expr><literal type="number">250</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>elapsed</name> <operator>+=</operator> <literal type="number">250</literal></expr>;</expr_stmt>
+
+      <comment type="line">// On Windows and OS X, it can take a few seconds for the port to disappear and</comment>
+      <comment type="line">// come back, so use a time out before assuming that the selected port is the</comment>
+      <comment type="line">// bootloader (not the sketch).</comment>
+      <if_stmt><if>if <condition>(<expr><name>elapsed</name> <operator>&gt;=</operator> <literal type="number">5000</literal> <operator>&amp;&amp;</operator> <call><name><name>now</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name>uploadPort</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition><block type="pseudo"><block_content>
+          <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><literal type="string">"Uploading using selected port: "</literal> <operator>+</operator> <name>uploadPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <return>return <expr><name>uploadPort</name></expr>;</return>
+      </block_content>}</block></if></if_stmt>
+    </block_content>}</block></while>
+
+    <comment type="line">// Something happened while detecting port</comment>
+    <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Couldn't find a Board on the selected port. Check that you have the correct port selected.  If it is correct, try pressing the board's reset button after initiating the upload."</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</throw>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>uploadUsingProgrammer</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>buildPath</name></decl></parameter>, <parameter><decl><type><name>String</name></type> <name>className</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+
+    <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getTargetPlatform</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>programmer</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"programmer"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>programmer</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>programmer</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>targetPlatform</name> <operator>=</operator> <call><name><name>BaseNoGui</name><operator>.</operator><name>getCurrentTargetPlatformFromPackage</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>programmer</name> <operator>=</operator> <name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>prefs</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>getMap</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>boardPreferences</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>boardPreferences</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>boardPreferences</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>programmerPrefs</name> <init>= <expr><call><name><name>targetPlatform</name><operator>.</operator><name>getProgrammer</name></name><argument_list>(<argument><expr><name>programmer</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>programmerPrefs</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(
+          <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Please select a programmer from Tools-&gt;Programmer menu"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><call><name><name>targetPlatform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><call><name><name>programmerPrefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"program.tool"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>programmerPrefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.path"</literal></expr></argument>, <argument><expr><name>buildPath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"build.project_name"</literal></expr></argument>, <argument><expr><name>className</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"program.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"program.params.verbose"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"program.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"program.params.quiet"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>verifyUpload</name></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"program.verify"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"program.params.verify"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"program.verify"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"program.params.noverify"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+
+    <return>return <expr><call><name>runCommand</name><argument_list>(<argument><expr><literal type="string">"program.pattern"</literal></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>boolean</name></type> <name>burnBootloader</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>targetPlatform</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getTargetPlatform</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Find preferences for the selected programmer</comment>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>programmerPrefs</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>programmer</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"programmer"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>programmer</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>programmer</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>platform</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getCurrentTargetPlatformFromPackage</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>programmer</name> <operator>=</operator> <name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>programmerPrefs</name> <operator>=</operator> <call><name><name>platform</name><operator>.</operator><name>getProgrammer</name></name><argument_list>(<argument><expr><name>programmer</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><name>programmerPrefs</name> <operator>=</operator> <call><name><name>targetPlatform</name><operator>.</operator><name>getProgrammer</name></name><argument_list>(<argument><expr><name>programmer</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>programmerPrefs</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(
+          <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Please select a programmer from Tools-&gt;Programmer menu"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// Build configuration for the current programmer</comment>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>prefs</name> <init>= <expr><call><name><name>PreferencesData</name><operator>.</operator><name>getMap</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>boardPreferences</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getBoardPreferences</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>boardPreferences</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>boardPreferences</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>programmerPrefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Create configuration for bootloader tool</comment>
+    <decl_stmt><decl><type><name>PreferencesMap</name></type> <name>toolPrefs</name> <init>= <expr><operator>new</operator> <call><name>PreferencesMap</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>String</name></type> <name>tool</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"bootloader.tool"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tool</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>split</name> <init>= <expr><call><name><name>tool</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>TargetPlatform</name></type> <name>platform</name> <init>= <expr><call><name><name>BaseNoGui</name><operator>.</operator><name>getCurrentTargetPlatformFromPackage</name></name><argument_list>(<argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>tool</name> <operator>=</operator> <name><name>split</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>toolPrefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><call><name><name>platform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>toolPrefs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Could not find tool {0} from package {1}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>tool</name></expr></argument>, <argument><expr><name><name>split</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>toolPrefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><call><name><name>targetPlatform</name><operator>.</operator><name>getTool</name></name><argument_list>(<argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>toolPrefs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Could not find tool {0}"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>tool</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// Merge tool with global configuration</comment>
+    <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>putAll</name></name><argument_list>(<argument><expr><name>toolPrefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>verbose</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"erase.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"erase.params.verbose"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"bootloader.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"bootloader.params.verbose"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"erase.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"erase.params.quiet"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>prefs</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><literal type="string">"bootloader.verbose"</literal></expr></argument>, <argument><expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"bootloader.params.quiet"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <expr_stmt><expr><operator>new</operator> <call><name>LoadVIDPIDSpecificPreferences</name><argument_list>()</argument_list></call><operator>.</operator><call><name>load</name><argument_list>(<argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>runCommand</name><argument_list>(<argument><expr><literal type="string">"erase.pattern"</literal></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name>runCommand</name><argument_list>(<argument><expr><literal type="string">"bootloader.pattern"</literal></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>boolean</name></type> <name>runCommand</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>patternKey</name></decl></parameter>, <parameter><decl><type><name>PreferencesMap</name></type> <name>prefs</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument>, <argument><expr><name>RunnerException</name></expr></argument></throws> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <decl_stmt><decl><type><name>String</name></type> <name>pattern</name> <init>= <expr><call><name><name>prefs</name><operator>.</operator><name>getOrExcept</name></name><argument_list>(<argument><expr><name>patternKey</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>StringReplacer</name><operator>.</operator><name>checkIfRequiredKeyIsMissingOrExcept</name></name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>, <argument><expr><name>pattern</name></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>cmd</name> <init>= <expr><call><name><name>StringReplacer</name><operator>.</operator><name>formatAndSplit</name></name><argument_list>(<argument><expr><name>pattern</name></expr></argument>, <argument><expr><name>prefs</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <return>return <expr><call><name>executeUploadCommand</name><argument_list>(<argument><expr><name>cmd</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>RunnerException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <throw>throw <expr><name>e</name></expr>;</throw>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>PreferencesMapException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><call><name><name>e</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><literal type="string">"serial.port"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><operator>new</operator> <call><name>SerialNotFoundException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+      </block_content>}</block></if></if_stmt>
+      <throw>throw <expr><name>e</name></expr>;</throw>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <throw>throw <expr><operator>new</operator> <call><name>RunnerException</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+}</block></class>
+</unit>

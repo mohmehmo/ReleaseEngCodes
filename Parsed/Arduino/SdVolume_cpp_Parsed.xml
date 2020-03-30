@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/Arduino/app/testdata/libraries/SD_1.1.1/SD/src/utility/SdVolume.cpp"><comment type="block">/* Arduino SdFat Library
+ * Copyright (C) 2009 by William Greiman
+ *
+ * This file is part of the Arduino SdFat Library
+ *
+ * This Library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This Library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Arduino SdFat Library.  If not, see
+ * &lt;http://www.gnu.org/licenses/&gt;.
+ */</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"SdFat.h"</cpp:file></cpp:include>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// raw block cache</comment>
+<comment type="line">// init cacheBlockNumber_to invalid SD block number</comment>
+<decl_stmt><decl><type><name>uint32_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>cacheBlockNumber_</name></name> <init>= <expr><literal type="number">0XFFFFFFFF</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>cache_t</name></type>  <name><name>SdVolume</name><operator>::</operator><name>cacheBuffer_</name></name></decl>;</decl_stmt>     <comment type="line">// 512 byte cache for Sd2Card</comment>
+<decl_stmt><decl><type><name>Sd2Card</name><modifier>*</modifier></type> <name><name>SdVolume</name><operator>::</operator><name>sdCard_</name></name></decl>;</decl_stmt>          <comment type="line">// pointer to SD card object</comment>
+<decl_stmt><decl><type><name>uint8_t</name></type>  <name><name>SdVolume</name><operator>::</operator><name>cacheDirty_</name></name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>  <comment type="line">// cacheFlush() will write block if true</comment>
+<decl_stmt><decl><type><name>uint32_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>cacheMirrorBlock_</name></name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>  <comment type="line">// mirror  block for second FAT</comment>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// find a contiguous group of clusters</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>allocContiguous</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>count</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>curCluster</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// start of group</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>bgnCluster</name></decl>;</decl_stmt>
+
+  <comment type="line">// flag to save place to start next search</comment>
+  <decl_stmt><decl><type><name>uint8_t</name></type> <name>setStart</name></decl>;</decl_stmt>
+
+  <comment type="line">// set search start cluster</comment>
+  <if_stmt><if>if <condition>(<expr><operator>*</operator><name>curCluster</name></expr>)</condition> <block>{<block_content>
+    <comment type="line">// try to make file contiguous</comment>
+    <expr_stmt><expr><name>bgnCluster</name> <operator>=</operator> <operator>*</operator><name>curCluster</name> <operator>+</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+
+    <comment type="line">// don't save new start location</comment>
+    <expr_stmt><expr><name>setStart</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <comment type="line">// start at likely place for free cluster</comment>
+    <expr_stmt><expr><name>bgnCluster</name> <operator>=</operator> <name>allocSearchStart_</name></expr>;</expr_stmt>
+
+    <comment type="line">// save next search start if one cluster</comment>
+    <expr_stmt><expr><name>setStart</name> <operator>=</operator> <literal type="number">1</literal> <operator>==</operator> <name>count</name></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <comment type="line">// end of group</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>endCluster</name> <init>= <expr><name>bgnCluster</name></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// last cluster of FAT</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>fatEnd</name> <init>= <expr><name>clusterCount_</name> <operator>+</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// search the FAT for free clusters</comment>
+  <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>n</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init><condition>;</condition> <incr><expr><name>n</name><operator>++</operator></expr><operator>,</operator> <expr><name>endCluster</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <comment type="line">// can't find space checked all clusters</comment>
+    <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&gt;=</operator> <name>clusterCount_</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// past end - start from beginning of FAT</comment>
+    <if_stmt><if>if <condition>(<expr><name>endCluster</name> <operator>&gt;</operator> <name>fatEnd</name></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>bgnCluster</name> <operator>=</operator> <name>endCluster</name> <operator>=</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>f</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatGet</name><argument_list>(<argument><expr><name>endCluster</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>f</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>f</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <comment type="line">// cluster in use try next cluster as bgnCluster</comment>
+      <expr_stmt><expr><name>bgnCluster</name> <operator>=</operator> <name>endCluster</name> <operator>+</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>(</operator><name>endCluster</name> <operator>-</operator> <name>bgnCluster</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>==</operator> <name>count</name></expr>)</condition> <block>{<block_content>
+      <comment type="line">// done - found space</comment>
+      <break>break;</break>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></for>
+  <comment type="line">// mark end of chain</comment>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatPutEOC</name><argument_list>(<argument><expr><name>endCluster</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// link clusters</comment>
+  <while>while <condition>(<expr><name>endCluster</name> <operator>&gt;</operator> <name>bgnCluster</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatPut</name><argument_list>(<argument><expr><name>endCluster</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name>endCluster</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>endCluster</name><operator>--</operator></expr>;</expr_stmt>
+  </block_content>}</block></while>
+  <if_stmt><if>if <condition>(<expr><operator>*</operator><name>curCluster</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <comment type="line">// connect chains</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatPut</name><argument_list>(<argument><expr><operator>*</operator><name>curCluster</name></expr></argument>, <argument><expr><name>bgnCluster</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// return first cluster number to caller</comment>
+  <expr_stmt><expr><operator>*</operator><name>curCluster</name> <operator>=</operator> <name>bgnCluster</name></expr>;</expr_stmt>
+
+  <comment type="line">// remember possible next free cluster</comment>
+  <if_stmt><if>if <condition>(<expr><name>setStart</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>allocSearchStart_</name> <operator>=</operator> <name>bgnCluster</name> <operator>+</operator> <literal type="number">1</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>cacheFlush</name></name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>cacheDirty_</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>sdCard_</name><operator>-&gt;</operator><name>writeBlock</name></name><argument_list>(<argument><expr><name>cacheBlockNumber_</name></expr></argument>, <argument><expr><name><name>cacheBuffer_</name><operator>.</operator><name>data</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// mirror FAT tables</comment>
+    <if_stmt><if>if <condition>(<expr><name>cacheMirrorBlock_</name></expr>)</condition> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>sdCard_</name><operator>-&gt;</operator><name>writeBlock</name></name><argument_list>(<argument><expr><name>cacheMirrorBlock_</name></expr></argument>, <argument><expr><name><name>cacheBuffer_</name><operator>.</operator><name>data</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><name>cacheMirrorBlock_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>cacheDirty_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>cacheRawBlock</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>blockNumber</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>cacheBlockNumber_</name> <operator>!=</operator> <name>blockNumber</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>cacheFlush</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>sdCard_</name><operator>-&gt;</operator><name>readBlock</name></name><argument_list>(<argument><expr><name>blockNumber</name></expr></argument>, <argument><expr><name><name>cacheBuffer_</name><operator>.</operator><name>data</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>cacheBlockNumber_</name> <operator>=</operator> <name>blockNumber</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><name>cacheDirty_</name> <operator>|=</operator> <name>action</name></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// cache a zero block for blockNumber</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>cacheZeroBlock</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>blockNumber</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>cacheFlush</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// loop take less flash than memset(cacheBuffer_.data, 0, 512);</comment>
+  <for>for <control>(<init><decl><type><name>uint16_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">512</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><name><name>cacheBuffer_</name><operator>.</operator><name>data</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  </block_content>}</block></for>
+  <expr_stmt><expr><name>cacheBlockNumber_</name> <operator>=</operator> <name>blockNumber</name></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>cacheSetDirty</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// return the size in bytes of a cluster chain</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>chainSize</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>cluster</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>size</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>s</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+  <do>do <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatGet</name><argument_list>(<argument><expr><name>cluster</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>cluster</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>s</name> <operator>+=</operator> <literal type="number">512UL</literal> <operator>&lt;&lt;</operator> <name>clusterSizeShift_</name></expr>;</expr_stmt>
+  </block_content>}</block> while <condition>(<expr><operator>!</operator><call><name>isEOC</name><argument_list>(<argument><expr><name>cluster</name></expr></argument>)</argument_list></call></expr>)</condition>;</do>
+  <expr_stmt><expr><operator>*</operator><name>size</name> <operator>=</operator> <name>s</name></expr>;</expr_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// Fetch a FAT entry</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>fatGet</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>cluster</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>value</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>cluster</name> <operator>&gt;</operator> <operator>(</operator><name>clusterCount_</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>lba</name> <init>= <expr><name>fatStartBlock_</name></expr></init></decl>;</decl_stmt>
+  <expr_stmt><expr><name>lba</name> <operator>+=</operator> <ternary><condition><expr><name>fatType_</name> <operator>==</operator> <literal type="number">16</literal></expr> ?</condition><then> <expr><name>cluster</name> <operator>&gt;&gt;</operator> <literal type="number">8</literal></expr> </then><else>: <expr><name>cluster</name> <operator>&gt;&gt;</operator> <literal type="number">7</literal></expr></else></ternary></expr>;</expr_stmt>
+  <if_stmt><if>if <condition>(<expr><name>lba</name> <operator>!=</operator> <name>cacheBlockNumber_</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>cacheRawBlock</name><argument_list>(<argument><expr><name>lba</name></expr></argument>, <argument><expr><name>CACHE_FOR_READ</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name>fatType_</name> <operator>==</operator> <literal type="number">16</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><operator>*</operator><name>value</name> <operator>=</operator> <name><name>cacheBuffer_</name><operator>.</operator><name>fat16</name><index>[<expr><name>cluster</name> <operator>&amp;</operator> <literal type="number">0XFF</literal></expr>]</index></name></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <expr_stmt><expr><operator>*</operator><name>value</name> <operator>=</operator> <name><name>cacheBuffer_</name><operator>.</operator><name>fat32</name><index>[<expr><name>cluster</name> <operator>&amp;</operator> <literal type="number">0X7F</literal></expr>]</index></name> <operator>&amp;</operator> <name>FAT32MASK</name></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// Store a FAT entry</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>fatPut</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>cluster</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>value</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// error if reserved cluster</comment>
+  <if_stmt><if>if <condition>(<expr><name>cluster</name> <operator>&lt;</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// error if not in FAT</comment>
+  <if_stmt><if>if <condition>(<expr><name>cluster</name> <operator>&gt;</operator> <operator>(</operator><name>clusterCount_</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+  <comment type="line">// calculate block address for entry</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>lba</name> <init>= <expr><name>fatStartBlock_</name></expr></init></decl>;</decl_stmt>
+  <expr_stmt><expr><name>lba</name> <operator>+=</operator> <ternary><condition><expr><name>fatType_</name> <operator>==</operator> <literal type="number">16</literal></expr> ?</condition><then> <expr><name>cluster</name> <operator>&gt;&gt;</operator> <literal type="number">8</literal></expr> </then><else>: <expr><name>cluster</name> <operator>&gt;&gt;</operator> <literal type="number">7</literal></expr></else></ternary></expr>;</expr_stmt>
+
+  <if_stmt><if>if <condition>(<expr><name>lba</name> <operator>!=</operator> <name>cacheBlockNumber_</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>cacheRawBlock</name><argument_list>(<argument><expr><name>lba</name></expr></argument>, <argument><expr><name>CACHE_FOR_READ</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></if></if_stmt>
+  <comment type="line">// store entry</comment>
+  <if_stmt><if>if <condition>(<expr><name>fatType_</name> <operator>==</operator> <literal type="number">16</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name><name>cacheBuffer_</name><operator>.</operator><name>fat16</name><index>[<expr><name>cluster</name> <operator>&amp;</operator> <literal type="number">0XFF</literal></expr>]</index></name> <operator>=</operator> <name>value</name></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <expr_stmt><expr><name><name>cacheBuffer_</name><operator>.</operator><name>fat32</name><index>[<expr><name>cluster</name> <operator>&amp;</operator> <literal type="number">0X7F</literal></expr>]</index></name> <operator>=</operator> <name>value</name></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <expr_stmt><expr><call><name>cacheSetDirty</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// mirror second FAT</comment>
+  <if_stmt><if>if <condition>(<expr><name>fatCount_</name> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>cacheMirrorBlock_</name> <operator>=</operator> <name>lba</name> <operator>+</operator> <name>blocksPerFat_</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="line">// free a cluster chain</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>freeChain</name></name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>cluster</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <comment type="line">// clear free cluster location</comment>
+  <expr_stmt><expr><name>allocSearchStart_</name> <operator>=</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+
+  <do>do <block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>next</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatGet</name><argument_list>(<argument><expr><name>cluster</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>next</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// free cluster</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>fatPut</name><argument_list>(<argument><expr><name>cluster</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name>cluster</name> <operator>=</operator> <name>next</name></expr>;</expr_stmt>
+  </block_content>}</block> while <condition>(<expr><operator>!</operator><call><name>isEOC</name><argument_list>(<argument><expr><name>cluster</name></expr></argument>)</argument_list></call></expr>)</condition>;</do>
+
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+<comment type="line">//------------------------------------------------------------------------------</comment>
+<comment type="block" format="doxygen">/**
+ * Initialize a FAT volume.
+ *
+ * \param[in] dev The SD card where the volume is located.
+ *
+ * \param[in] part The partition to be used.  Legal values for \a part are
+ * 1-4 to use the corresponding partition on a device formatted with
+ * a MBR, Master Boot Record, or zero if the device is formatted as
+ * a super floppy with the FAT boot sector in block zero.
+ *
+ * \return The value one, true, is returned for success and
+ * the value zero, false, is returned for failure.  Reasons for
+ * failure include not finding a valid partition, not finding a valid
+ * FAT file system in the specified partition or an I/O error.
+ */</comment>
+<function><type><name>uint8_t</name></type> <name><name>SdVolume</name><operator>::</operator><name>init</name></name><parameter_list>(<parameter><decl><type><name>Sd2Card</name><modifier>*</modifier></type> <name>dev</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>part</name></decl></parameter>)</parameter_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>volumeStartBlock</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+  <expr_stmt><expr><name>sdCard_</name> <operator>=</operator> <name>dev</name></expr>;</expr_stmt>
+  <comment type="line">// if part == 0 assume super floppy with FAT boot sector in block zero</comment>
+  <comment type="line">// if part &gt; 0 assume mbr volume with partition table</comment>
+  <if_stmt><if>if <condition>(<expr><name>part</name></expr>)</condition> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>part</name> <operator>&gt;</operator> <literal type="number">4</literal></expr>)</condition><block type="pseudo"><block_content><return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>cacheRawBlock</name><argument_list>(<argument><expr><name>volumeStartBlock</name></expr></argument>, <argument><expr><name>CACHE_FOR_READ</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>part_t</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><operator>&amp;</operator><name><name>cacheBuffer_</name><operator>.</operator><name>mbr</name><operator>.</operator><name>part</name><index>[<expr><name>part</name><operator>-</operator><literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name><name>p</name><operator>-&gt;</operator><name>boot</name></name> <operator>&amp;</operator> <literal type="number">0X7F</literal><operator>)</operator> <operator>!=</operator><literal type="number">0</literal>  <operator>||</operator>
+      <name><name>p</name><operator>-&gt;</operator><name>totalSectors</name></name> <operator>&lt;</operator> <literal type="number">100</literal> <operator>||</operator>
+      <name><name>p</name><operator>-&gt;</operator><name>firstSector</name></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <comment type="line">// not a valid partition</comment>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>volumeStartBlock</name> <operator>=</operator> <name><name>p</name><operator>-&gt;</operator><name>firstSector</name></name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>cacheRawBlock</name><argument_list>(<argument><expr><name>volumeStartBlock</name></expr></argument>, <argument><expr><name>CACHE_FOR_READ</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  <decl_stmt><decl><type><name>bpb_t</name><modifier>*</modifier></type> <name>bpb</name> <init>= <expr><operator>&amp;</operator><name><name>cacheBuffer_</name><operator>.</operator><name>fbs</name><operator>.</operator><name>bpb</name></name></expr></init></decl>;</decl_stmt>
+  <if_stmt><if>if <condition>(<expr><name><name>bpb</name><operator>-&gt;</operator><name>bytesPerSector</name></name> <operator>!=</operator> <literal type="number">512</literal> <operator>||</operator>
+    <name><name>bpb</name><operator>-&gt;</operator><name>fatCount</name></name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator>
+    <name><name>bpb</name><operator>-&gt;</operator><name>reservedSectorCount</name></name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator>
+    <name><name>bpb</name><operator>-&gt;</operator><name>sectorsPerCluster</name></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+       <comment type="line">// not valid FAT volume</comment>
+      <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+  </block_content>}</block></if></if_stmt>
+  <expr_stmt><expr><name>fatCount_</name> <operator>=</operator> <name><name>bpb</name><operator>-&gt;</operator><name>fatCount</name></name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>blocksPerCluster_</name> <operator>=</operator> <name><name>bpb</name><operator>-&gt;</operator><name>sectorsPerCluster</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// determine shift that is same as multiply by blocksPerCluster_</comment>
+  <expr_stmt><expr><name>clusterSizeShift_</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+  <while>while <condition>(<expr><name>blocksPerCluster_</name> <operator>!=</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>clusterSizeShift_</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+    <comment type="line">// error if not power of 2</comment>
+    <if_stmt><if>if <condition>(<expr><name>clusterSizeShift_</name><operator>++</operator> <operator>&gt;</operator> <literal type="number">7</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+  </block_content>}</block></while>
+  <expr_stmt><expr><name>blocksPerFat_</name> <operator>=</operator> <ternary><condition><expr><name><name>bpb</name><operator>-&gt;</operator><name>sectorsPerFat16</name></name></expr> ?</condition><then>
+                    <expr><name><name>bpb</name><operator>-&gt;</operator><name>sectorsPerFat16</name></name></expr> </then><else>: <expr><name><name>bpb</name><operator>-&gt;</operator><name>sectorsPerFat32</name></name></expr></else></ternary></expr>;</expr_stmt>
+
+  <expr_stmt><expr><name>fatStartBlock_</name> <operator>=</operator> <name>volumeStartBlock</name> <operator>+</operator> <name><name>bpb</name><operator>-&gt;</operator><name>reservedSectorCount</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// count for FAT16 zero for FAT32</comment>
+  <expr_stmt><expr><name>rootDirEntryCount_</name> <operator>=</operator> <name><name>bpb</name><operator>-&gt;</operator><name>rootDirEntryCount</name></name></expr>;</expr_stmt>
+
+  <comment type="line">// directory start for FAT16 dataStart for FAT32</comment>
+  <expr_stmt><expr><name>rootDirStart_</name> <operator>=</operator> <name>fatStartBlock_</name> <operator>+</operator> <name><name>bpb</name><operator>-&gt;</operator><name>fatCount</name></name> <operator>*</operator> <name>blocksPerFat_</name></expr>;</expr_stmt>
+
+  <comment type="line">// data start for FAT16 and FAT32</comment>
+  <expr_stmt><expr><name>dataStartBlock_</name> <operator>=</operator> <name>rootDirStart_</name> <operator>+</operator> <operator>(</operator><operator>(</operator><literal type="number">32</literal> <operator>*</operator> <name><name>bpb</name><operator>-&gt;</operator><name>rootDirEntryCount</name></name> <operator>+</operator> <literal type="number">511</literal><operator>)</operator><operator>/</operator><literal type="number">512</literal><operator>)</operator></expr>;</expr_stmt>
+
+  <comment type="line">// total blocks for FAT16 or FAT32</comment>
+  <decl_stmt><decl><type><name>uint32_t</name></type> <name>totalBlocks</name> <init>= <expr><ternary><condition><expr><name><name>bpb</name><operator>-&gt;</operator><name>totalSectors16</name></name></expr> ?</condition><then>
+                           <expr><name><name>bpb</name><operator>-&gt;</operator><name>totalSectors16</name></name></expr> </then><else>: <expr><name><name>bpb</name><operator>-&gt;</operator><name>totalSectors32</name></name></expr></else></ternary></expr></init></decl>;</decl_stmt>
+  <comment type="line">// total data blocks</comment>
+  <expr_stmt><expr><name>clusterCount_</name> <operator>=</operator> <name>totalBlocks</name> <operator>-</operator> <operator>(</operator><name>dataStartBlock_</name> <operator>-</operator> <name>volumeStartBlock</name><operator>)</operator></expr>;</expr_stmt>
+
+  <comment type="line">// divide by cluster size to get cluster count</comment>
+  <expr_stmt><expr><name>clusterCount_</name> <operator>&gt;&gt;=</operator> <name>clusterSizeShift_</name></expr>;</expr_stmt>
+
+  <comment type="line">// FAT type is determined by cluster count</comment>
+  <if_stmt><if>if <condition>(<expr><name>clusterCount_</name> <operator>&lt;</operator> <literal type="number">4085</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>fatType_</name> <operator>=</operator> <literal type="number">12</literal></expr>;</expr_stmt>
+  </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>clusterCount_</name> <operator>&lt;</operator> <literal type="number">65525</literal></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>fatType_</name> <operator>=</operator> <literal type="number">16</literal></expr>;</expr_stmt>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <expr_stmt><expr><name>rootDirStart_</name> <operator>=</operator> <name><name>bpb</name><operator>-&gt;</operator><name>fat32RootCluster</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fatType_</name> <operator>=</operator> <literal type="number">32</literal></expr>;</expr_stmt>
+  </block_content>}</block></else></if_stmt>
+  <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

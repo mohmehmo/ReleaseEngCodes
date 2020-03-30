@@ -1,0 +1,499 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/app/src/processing/app/SerialPlotter.java"><comment type="block">/* -*- mode: java; c-basic-offset: 2; indent-tabs-mode: nil -*- */</comment>
+
+<comment type="block">/*
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software Foundation,
+  Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/</comment>
+
+<package>package <name><name>processing</name><operator>.</operator><name>app</name></name>;</package>
+
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>BoardPort</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>CircularBuffer</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>helpers</name><operator>.</operator><name>Ticks</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>legacy</name><operator>.</operator><name>PApplet</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>ArrayList</name></name>;</import>
+<import>import <name><name>javax</name><operator>.</operator><name>swing</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>javax</name><operator>.</operator><name>swing</name><operator>.</operator><name>border</name><operator>.</operator><name>EmptyBorder</name></name>;</import>
+<import>import <name><name>javax</name><operator>.</operator><name>swing</name><operator>.</operator><name>text</name><operator>.</operator><name>DefaultEditorKit</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>*</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>event</name><operator>.</operator><name>ActionEvent</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>event</name><operator>.</operator><name>ActionListener</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>event</name><operator>.</operator><name>WindowAdapter</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>event</name><operator>.</operator><name>WindowEvent</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>geom</name><operator>.</operator><name>AffineTransform</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>awt</name><operator>.</operator><name>geom</name><operator>.</operator><name>Rectangle2D</name></name>;</import>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>tr</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>SerialPlotter</name> <super_list><extends>extends <super><name>AbstractMonitor</name></super></extends></super_list> <block>{
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>StringBuffer</name></type> <name>messageBuffer</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name><name>JComboBox</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>serialRates</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Serial</name></type> <name>serial</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>int</name></type> <name>serialRate</name></decl>, <decl><type ref="prev"/><name>xCount</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <name>JLabel</name></type> <name>noLineEndingAlert</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>JTextField</name></type> <name>textField</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>JButton</name></type> <name>sendButton</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name><name>JComboBox</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name></type> <name>lineEndings</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><specifier>private</specifier> <name><name>ArrayList</name><argument_list type="generic">&lt;<argument><name>Graph</name></argument>&gt;</argument_list></name></type> <name>graphs</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <specifier>static</specifier> <name>int</name></type> <name>BUFFER_CAPACITY</name> <init>= <expr><literal type="number">500</literal></expr></init></decl>;</decl_stmt>
+
+  <class><specifier>private</specifier> <specifier>static</specifier> class <name>Graph</name> <block>{
+    <decl_stmt><decl><type><specifier>public</specifier> <name>CircularBuffer</name></type> <name>buffer</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <name>Color</name></type> <name>color</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>public</specifier> <name>String</name></type> <name>label</name></decl>;</decl_stmt>
+
+    <constructor><specifier>public</specifier> <name>Graph</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>id</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><name>buffer</name> <operator>=</operator> <operator>new</operator> <call><name>CircularBuffer</name><argument_list>(<argument><expr><name>BUFFER_CAPACITY</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>color</name> <operator>=</operator> <call><name><name>Theme</name><operator>.</operator><name>getColorCycleColor</name></name><argument_list>(<argument><expr><literal type="string">"plotting.graphcolor"</literal></expr></argument>, <argument><expr><name>id</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+
+    <function><type><specifier>public</specifier> <name>void</name></type> <name>paint</name><parameter_list>(<parameter><decl><type><name>Graphics2D</name></type> <name>g</name></decl></parameter>, <parameter><decl><type><name>float</name></type> <name>xstep</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>minY</name></decl></parameter>, 
+                      <parameter><decl><type><name>double</name></type> <name>maxY</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>rangeY</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>height</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>color</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setStroke</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>BasicStroke</name><argument_list>(<argument><expr><literal type="number">1.0f</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>buffer</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(
+          <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <operator>(</operator><name>i</name> <operator>*</operator> <name>xstep</name><operator>)</operator></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><call><name><name>buffer</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>minY</name></expr></argument>, <argument><expr><name>rangeY</name></expr></argument>, <argument><expr><name>height</name></expr></argument>)</argument_list></call></expr></argument>,
+          <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <operator>(</operator><operator>(</operator><name>i</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>*</operator> <name>xstep</name><operator>)</operator></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><call><name><name>buffer</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>i</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>minY</name></expr></argument>, <argument><expr><name>rangeY</name></expr></argument>, <argument><expr><name>height</name></expr></argument>)</argument_list></call></expr></argument>
+        )</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></for>
+    </block_content>}</block></function>
+
+    <function><type><specifier>private</specifier> <name>float</name></type> <name>transformY</name><parameter_list>(<parameter><decl><type><name>double</name></type> <name>rawY</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>minY</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>rangeY</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>height</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <return>return <expr><operator>(</operator><name>float</name><operator>)</operator> <operator>(</operator><literal type="number">5</literal> <operator>+</operator> <operator>(</operator><name>height</name> <operator>-</operator> <literal type="number">10</literal><operator>)</operator> <operator>*</operator> <operator>(</operator><literal type="number">1.0</literal> <operator>-</operator> <operator>(</operator><name>rawY</name> <operator>-</operator> <name>minY</name><operator>)</operator> <operator>/</operator> <name>rangeY</name><operator>)</operator><operator>)</operator></expr>;</return>
+    </block_content>}</block></function>
+  }</block></class>
+
+  <class><specifier>private</specifier> class <name>GraphPanel</name> <super_list><extends>extends <super><name>JPanel</name></super></extends></super_list> <block>{
+    <decl_stmt><decl><type><specifier>private</specifier> <name>double</name></type> <name>minY</name></decl>, <decl><type ref="prev"/><name>maxY</name></decl>, <decl><type ref="prev"/><name>rangeY</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <name>Rectangle</name></type> <name>bounds</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <name>int</name></type> <name>xOffset</name></decl>, <decl><type ref="prev"/><name>xPadding</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>Font</name></type> <name>font</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>Color</name></type> <name>bgColor</name></decl>, <decl><type ref="prev"/><name>gridColor</name></decl>, <decl><type ref="prev"/><name>boundsColor</name></decl>;</decl_stmt>
+
+    <constructor><specifier>public</specifier> <name>GraphPanel</name><parameter_list>()</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><name>font</name> <operator>=</operator> <call><name><name>Theme</name><operator>.</operator><name>getFont</name></name><argument_list>(<argument><expr><literal type="string">"console.font"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>bgColor</name> <operator>=</operator> <call><name><name>Theme</name><operator>.</operator><name>getColor</name></name><argument_list>(<argument><expr><literal type="string">"plotting.bgcolor"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>gridColor</name> <operator>=</operator> <call><name><name>Theme</name><operator>.</operator><name>getColor</name></name><argument_list>(<argument><expr><literal type="string">"plotting.gridcolor"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>boundsColor</name> <operator>=</operator> <call><name><name>Theme</name><operator>.</operator><name>getColor</name></name><argument_list>(<argument><expr><literal type="string">"plotting.boundscolor"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>xOffset</name> <operator>=</operator> <literal type="number">20</literal></expr>;</expr_stmt>
+      <expr_stmt><expr><name>xPadding</name> <operator>=</operator> <literal type="number">20</literal></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+
+    <function><type><specifier>private</specifier> <name>Ticks</name></type> <name>computeBounds</name><parameter_list>()</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><name>minY</name> <operator>=</operator> <name><name>Double</name><operator>.</operator><name>POSITIVE_INFINITY</name></name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>maxY</name> <operator>=</operator> <name><name>Double</name><operator>.</operator><name>NEGATIVE_INFINITY</name></name></expr>;</expr_stmt>
+      <for>for<control>(<init><decl><type><name>Graph</name></type> <name>g</name> <range>: <expr><name>graphs</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>g</name><operator>.</operator><name>buffer</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>minY</name> <operator>=</operator> <call><name><name>Math</name><operator>.</operator><name>min</name></name><argument_list>(<argument><expr><call><name><name>g</name><operator>.</operator><name>buffer</name><operator>.</operator><name>min</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>minY</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>maxY</name> <operator>=</operator> <call><name><name>Math</name><operator>.</operator><name>max</name></name><argument_list>(<argument><expr><call><name><name>g</name><operator>.</operator><name>buffer</name><operator>.</operator><name>max</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>maxY</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></for>
+
+      <decl_stmt><decl><type><specifier>final</specifier> <name>double</name></type> <name>MIN_DELTA</name> <init>= <expr><literal type="number">10.0</literal></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>maxY</name> <operator>-</operator> <name>minY</name> <operator>&lt;</operator> <name>MIN_DELTA</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>double</name></type> <name>mid</name> <init>= <expr><operator>(</operator><name>maxY</name> <operator>+</operator> <name>minY</name><operator>)</operator> <operator>/</operator> <literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>maxY</name> <operator>=</operator> <name>mid</name> <operator>+</operator> <name>MIN_DELTA</name> <operator>/</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>minY</name> <operator>=</operator> <name>mid</name> <operator>-</operator> <name>MIN_DELTA</name> <operator>/</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+
+      <decl_stmt><decl><type><name>Ticks</name></type> <name>ticks</name> <init>= <expr><operator>new</operator> <call><name>Ticks</name><argument_list>(<argument><expr><name>minY</name></expr></argument>, <argument><expr><name>maxY</name></expr></argument>, <argument><expr><literal type="number">5</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>minY</name> <operator>=</operator> <call><name><name>Math</name><operator>.</operator><name>min</name></name><argument_list>(<argument><expr><name>minY</name></expr></argument>, <argument><expr><call><name><name>ticks</name><operator>.</operator><name>getTick</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>maxY</name> <operator>=</operator> <call><name><name>Math</name><operator>.</operator><name>max</name></name><argument_list>(<argument><expr><name>maxY</name></expr></argument>, <argument><expr><call><name><name>ticks</name><operator>.</operator><name>getTick</name></name><argument_list>(<argument><expr><call><name><name>ticks</name><operator>.</operator><name>getTickCount</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>rangeY</name> <operator>=</operator> <name>maxY</name> <operator>-</operator> <name>minY</name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>minY</name> <operator>-=</operator> <literal type="number">0.05</literal> <operator>*</operator> <name>rangeY</name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>maxY</name> <operator>+=</operator> <literal type="number">0.05</literal> <operator>*</operator> <name>rangeY</name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>rangeY</name> <operator>=</operator> <name>maxY</name> <operator>-</operator> <name>minY</name></expr>;</expr_stmt>
+      <return>return <expr><name>ticks</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><annotation>@<name>Override</name></annotation>
+    <type><specifier>public</specifier> <name>void</name></type> <name>paintComponent</name><parameter_list>(<parameter><decl><type><name>Graphics</name></type> <name>g1</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <decl_stmt><decl><type><name>Graphics2D</name></type> <name>g</name> <init>= <expr><operator>(</operator><name>Graphics2D</name><operator>)</operator> <name>g1</name></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setRenderingHint</name></name><argument_list>(<argument><expr><name><name>RenderingHints</name><operator>.</operator><name>KEY_ANTIALIASING</name></name></expr></argument>, <argument><expr><name><name>RenderingHints</name><operator>.</operator><name>VALUE_ANTIALIAS_ON</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setFont</name></name><argument_list>(<argument><expr><name>font</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>super</name><operator>.</operator><name>paintComponent</name></name><argument_list>(<argument><expr><name>g</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <expr_stmt><expr><name>bounds</name> <operator>=</operator> <call><name><name>g</name><operator>.</operator><name>getClipBounds</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name>setBackground</name><argument_list>(<argument><expr><name>bgColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>graphs</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+      </block_content>}</block></if></if_stmt>
+
+      <decl_stmt><decl><type><name>Ticks</name></type> <name>ticks</name> <init>= <expr><call><name>computeBounds</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setStroke</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>BasicStroke</name><argument_list>(<argument><expr><literal type="number">1.0f</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>FontMetrics</name></type> <name>fm</name> <init>= <expr><call><name><name>g</name><operator>.</operator><name>getFontMetrics</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>ticks</name><operator>.</operator><name>getTickCount</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>double</name></type> <name>tick</name> <init>= <expr><call><name><name>ticks</name><operator>.</operator><name>getTick</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>Rectangle2D</name></type> <name>fRect</name> <init>= <expr><call><name><name>fm</name><operator>.</operator><name>getStringBounds</name></name><argument_list>(<argument><expr><call><name><name>String</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>g</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>xOffset</name> <operator>=</operator> <call><name><name>Math</name><operator>.</operator><name>max</name></name><argument_list>(<argument><expr><name>xOffset</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name><name>fRect</name><operator>.</operator><name>getWidth</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">15</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>boundsColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// draw tick</comment>
+        <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>xOffset</name> <operator>-</operator> <literal type="number">5</literal></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>xOffset</name> <operator>+</operator> <literal type="number">2</literal></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// draw tick label</comment>
+        <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawString</name></name><argument_list>(<argument><expr><call><name><name>String</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>xOffset</name> <operator>-</operator> <operator>(</operator><name>int</name><operator>)</operator> <call><name><name>fRect</name><operator>.</operator><name>getWidth</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">10</literal></expr></argument>, <argument><expr><call><name>transformY</name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call> <operator>-</operator> <operator>(</operator><name>float</name><operator>)</operator> <call><name><name>fRect</name><operator>.</operator><name>getHeight</name></name><argument_list>()</argument_list></call> <operator>*</operator> <literal type="number">0.5f</literal> <operator>+</operator> <call><name><name>fm</name><operator>.</operator><name>getAscent</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// draw horizontal grid lines</comment>
+        <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>gridColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>xOffset</name> <operator>+</operator> <literal type="number">3</literal></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>width</name></name> <operator>-</operator> <name>xPadding</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>tick</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></for>
+
+      <comment type="line">// handle data count</comment>
+      <decl_stmt><decl><type><name>int</name></type> <name>cnt</name> <init>= <expr><name>xCount</name> <operator>-</operator> <name>BUFFER_CAPACITY</name></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>xCount</name> <operator>&lt;</operator> <name>BUFFER_CAPACITY</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>cnt</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        
+      <decl_stmt><decl><type><name>double</name></type> <name>zeroTick</name> <init>= <expr><call><name><name>ticks</name><operator>.</operator><name>getTick</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>double</name></type> <name>lastTick</name> <init>= <expr><call><name><name>ticks</name><operator>.</operator><name>getTick</name></name><argument_list>(<argument><expr><call><name><name>ticks</name><operator>.</operator><name>getTickCount</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>double</name></type> <name>xTickRange</name> <init>= <expr><name>BUFFER_CAPACITY</name> <operator>/</operator> <call><name><name>ticks</name><operator>.</operator><name>getTickCount</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        
+      <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>ticks</name><operator>.</operator><name>getTickCount</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">1</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+          <decl_stmt><decl><type><name>String</name></type> <name>s</name></decl>;</decl_stmt>
+          <decl_stmt><decl><type><name>int</name></type> <name>xValue</name></decl>;</decl_stmt>
+          <decl_stmt><decl><type><name>int</name></type> <name>sWidth</name></decl>;</decl_stmt>
+          <decl_stmt><decl><type><name>Rectangle2D</name></type> <name>fBounds</name></decl>;</decl_stmt>
+          <if_stmt><if>if  <condition>(<expr><name>i</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+              <expr_stmt><expr><name>s</name> <operator>=</operator> <call><name><name>String</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><name>cnt</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+              <expr_stmt><expr><name>fBounds</name> <operator>=</operator> <call><name><name>fm</name><operator>.</operator><name>getStringBounds</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>g</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+              <expr_stmt><expr><name>sWidth</name> <operator>=</operator> <operator>(</operator><name>int</name><operator>)</operator><call><name><name>fBounds</name><operator>.</operator><name>getWidth</name></name><argument_list>()</argument_list></call><operator>/</operator><literal type="number">2</literal></expr>;</expr_stmt>
+              <expr_stmt><expr><name>xValue</name> <operator>=</operator> <name>xOffset</name></expr>;</expr_stmt>
+          </block_content>}</block></if> <else>else <block>{<block_content>
+              <expr_stmt><expr><name>s</name> <operator>=</operator> <call><name><name>String</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name>xTickRange</name> <operator>*</operator> <name>i</name><operator>)</operator><operator>+</operator><name>cnt</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+              <expr_stmt><expr><name>fBounds</name> <operator>=</operator> <call><name><name>fm</name><operator>.</operator><name>getStringBounds</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>g</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+              <expr_stmt><expr><name>sWidth</name> <operator>=</operator> <operator>(</operator><name>int</name><operator>)</operator><call><name><name>fBounds</name><operator>.</operator><name>getWidth</name></name><argument_list>()</argument_list></call><operator>/</operator><literal type="number">2</literal></expr>;</expr_stmt>
+              <expr_stmt><expr><name>xValue</name> <operator>=</operator> <operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><operator>(</operator><name><name>bounds</name><operator>.</operator><name>width</name></name> <operator>-</operator> <name>xOffset</name> <operator>-</operator> <name>xPadding</name><operator>)</operator> <operator>*</operator> <operator>(</operator><operator>(</operator><name>xTickRange</name> <operator>*</operator> <name>i</name><operator>)</operator> <operator>/</operator> <name>BUFFER_CAPACITY</name><operator>)</operator> <operator>+</operator> <name>xOffset</name><operator>)</operator></expr>;</expr_stmt>
+          </block_content>}</block></else></if_stmt>
+          <comment type="line">// draw graph x axis, ticks and labels</comment>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>boundsColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawString</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>xValue</name> <operator>-</operator> <name>sWidth</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <name><name>bounds</name><operator>.</operator><name>y</name></name> <operator>+</operator> <operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="number">15</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>xValue</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator><call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call> <operator>-</operator> <literal type="number">2</literal></expr></argument>, <argument><expr><name>xValue</name></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>y</name></name> <operator>+</operator> <operator>(</operator><name>int</name><operator>)</operator><call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="number">5</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <comment type="line">// draw vertical grid lines</comment>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>gridColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>xValue</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator><call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call> <operator>-</operator> <literal type="number">3</literal></expr></argument>, <argument><expr><name>xValue</name></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>y</name></name> <operator>+</operator> <operator>(</operator><name>int</name><operator>)</operator><call><name>transformY</name><argument_list>(<argument><expr><name>lastTick</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></for>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>boundsColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <comment type="line">// draw major y axis</comment>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name><name>bounds</name><operator>.</operator><name>x</name></name> <operator>+</operator> <name>xOffset</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>lastTick</name></expr></argument>)</argument_list></call> <operator>-</operator> <literal type="number">5</literal></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>x</name></name> <operator>+</operator> <name>xOffset</name></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>y</name></name> <operator>+</operator> <operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="number">5</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <comment type="line">// draw major x axis</comment>
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>xOffset</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator> <call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>width</name></name> <operator>-</operator> <name>xPadding</name></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator><call><name>transformY</name><argument_list>(<argument><expr><name>zeroTick</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        
+      <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setTransform</name></name><argument_list>(<argument><expr><call><name><name>AffineTransform</name><operator>.</operator><name>getTranslateInstance</name></name><argument_list>(<argument><expr><name>xOffset</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>float</name></type> <name>xstep</name> <init>= <expr><operator>(</operator><name>float</name><operator>)</operator> <operator>(</operator><name><name>bounds</name><operator>.</operator><name>width</name></name> <operator>-</operator> <name>xOffset</name> <operator>-</operator> <name>xPadding</name><operator>)</operator> <operator>/</operator> <operator>(</operator><name>float</name><operator>)</operator> <name>BUFFER_CAPACITY</name></expr></init></decl>;</decl_stmt>
+
+      <comment type="line">// draw legend</comment>
+      <decl_stmt><decl><type><name>int</name></type> <name>legendXOffset</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+      <for>for<control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>graphs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>graphs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>paint</name><argument_list>(<argument><expr><name>g</name></expr></argument>, <argument><expr><name>xstep</name></expr></argument>, <argument><expr><name>minY</name></expr></argument>, <argument><expr><name>maxY</name></expr></argument>, <argument><expr><name>rangeY</name></expr></argument>, <argument><expr><name><name>bounds</name><operator>.</operator><name>height</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if<condition>(<expr><call><name><name>graphs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+          <comment type="line">//draw legend rectangle</comment>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>fillRect</name></name><argument_list>(<argument><expr><literal type="number">10</literal> <operator>+</operator> <name>legendXOffset</name></expr></argument>, <argument><expr><literal type="number">10</literal></expr></argument>, <argument><expr><literal type="number">10</literal></expr></argument>, <argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>legendXOffset</name> <operator>+=</operator> <literal type="number">13</literal></expr>;</expr_stmt>
+          <comment type="line">//draw label</comment>
+          <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>setColor</name></name><argument_list>(<argument><expr><name>boundsColor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <decl_stmt><decl><type><name>String</name></type> <name>s</name> <init>= <expr><call><name><name>graphs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>label</name></expr></init></decl>;</decl_stmt>
+          <if_stmt><if>if<condition>(<expr><name>s</name> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>s</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>Rectangle2D</name></type> <name>fBounds</name> <init>= <expr><call><name><name>fm</name><operator>.</operator><name>getStringBounds</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>g</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>sWidth</name> <init>= <expr><operator>(</operator><name>int</name><operator>)</operator><call><name><name>fBounds</name><operator>.</operator><name>getWidth</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>g</name><operator>.</operator><name>drawString</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><literal type="number">10</literal> <operator>+</operator> <name>legendXOffset</name></expr></argument>, <argument><expr><literal type="number">10</literal> <operator>+</operator> <operator>(</operator><name>int</name><operator>)</operator><call><name><name>fBounds</name><operator>.</operator><name>getHeight</name></name><argument_list>()</argument_list></call> <operator>/</operator><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>legendXOffset</name> <operator>+=</operator> <name>sWidth</name> <operator>+</operator> <literal type="number">3</literal></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></for>
+    </block_content>}</block></function>
+
+    <function><type><specifier>private</specifier> <name>float</name></type> <name>transformY</name><parameter_list>(<parameter><decl><type><name>double</name></type> <name>rawY</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <return>return <expr><operator>(</operator><name>float</name><operator>)</operator> <operator>(</operator><literal type="number">5</literal> <operator>+</operator> <operator>(</operator><name><name>bounds</name><operator>.</operator><name>height</name></name> <operator>-</operator> <literal type="number">10</literal><operator>)</operator> <operator>*</operator> <operator>(</operator><literal type="number">1.0</literal> <operator>-</operator> <operator>(</operator><name>rawY</name> <operator>-</operator> <name>minY</name><operator>)</operator> <operator>/</operator> <name>rangeY</name><operator>)</operator><operator>)</operator></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><annotation>@<name>Override</name></annotation>
+    <type><specifier>public</specifier> <name>Dimension</name></type> <name>getMinimumSize</name><parameter_list>()</parameter_list> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name>Dimension</name><argument_list>(<argument><expr><literal type="number">200</literal></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><annotation>@<name>Override</name></annotation>
+    <type><specifier>public</specifier> <name>Dimension</name></type> <name>getPreferredSize</name><parameter_list>()</parameter_list> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name>Dimension</name><argument_list>(<argument><expr><literal type="number">500</literal></expr></argument>, <argument><expr><literal type="number">250</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+  }</block></class>
+
+  <constructor><specifier>public</specifier> <name>SerialPlotter</name><parameter_list>(<parameter><decl><type><name>BoardPort</name></type> <name>port</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>super</name><argument_list>(<argument><expr><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>serialRate</name> <operator>=</operator> <call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.debug_rate"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>serialRates</name><operator>.</operator><name>setSelectedItem</name></name><argument_list>(<argument><expr><name>serialRate</name> <operator>+</operator> <literal type="string">" "</literal> <operator>+</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"baud"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>onSerialRateChange</name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>event</name></decl></parameter></parameter_list> -&gt; <block>{<block_content>
+      <decl_stmt><decl><type><name>String</name></type> <name>wholeString</name> <init>= <expr><operator>(</operator><name>String</name><operator>)</operator> <call><name><name>serialRates</name><operator>.</operator><name>getSelectedItem</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>String</name></type> <name>rateString</name> <init>= <expr><call><name><name>wholeString</name><operator>.</operator><name>substring</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>wholeString</name><operator>.</operator><name>indexOf</name></name><argument_list>(<argument><expr><literal type="char">' '</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><name>serialRate</name> <operator>=</operator> <call><name><name>Integer</name><operator>.</operator><name>parseInt</name></name><argument_list>(<argument><expr><name>rateString</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><literal type="string">"serial.debug_rate"</literal></expr></argument>, <argument><expr><name>rateString</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name>close</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>Thread</name><operator>.</operator><name>sleep</name></name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Wait for serial port to properly close</comment>
+        <expr_stmt><expr><call><name>open</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <comment type="line">// ignore</comment>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>messageBuffer</name> <operator>=</operator> <operator>new</operator> <call><name>StringBuffer</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>graphs</name> <operator>=</operator> <operator>new</operator> <call><name><name>ArrayList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><type><specifier>protected</specifier> <name>void</name></type> <name>onCreateWindow</name><parameter_list>(<parameter><decl><type><name>Container</name></type> <name>mainPane</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>mainPane</name><operator>.</operator><name>setLayout</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>BorderLayout</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>GraphPanel</name></type> <name>graphPanel</name> <init>= <expr><operator>new</operator> <call><name>GraphPanel</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>mainPane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>graphPanel</name></expr></argument>, <argument><expr><name><name>BorderLayout</name><operator>.</operator><name>CENTER</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>JPanel</name></type> <name>pane</name> <init>= <expr><operator>new</operator> <call><name>JPanel</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>setLayout</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>BoxLayout</name><argument_list>(<argument><expr><name>pane</name></expr></argument>, <argument><expr><name><name>BoxLayout</name><operator>.</operator><name>X_AXIS</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>setBorder</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>EmptyBorder</name><argument_list>(<argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>serialRates</name> <operator>=</operator> <operator>new</operator> <call><name><name>JComboBox</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>String</name></type> <name>serialRateString</name> <range>: <expr><name>serialRateStrings</name></expr></range></decl></init>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>serialRates</name><operator>.</operator><name>addItem</name></name><argument_list>(<argument><expr><name>serialRateString</name> <operator>+</operator> <literal type="string">" "</literal> <operator>+</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"baud"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <expr_stmt><expr><call><name><name>serialRates</name><operator>.</operator><name>setMaximumSize</name></name><argument_list>(<argument><expr><call><name><name>serialRates</name><operator>.</operator><name>getMinimumSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><call><name><name>Box</name><operator>.</operator><name>createHorizontalGlue</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><call><name><name>Box</name><operator>.</operator><name>createRigidArea</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Dimension</name><argument_list>(<argument><expr><literal type="number">8</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>serialRates</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>mainPane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>pane</name></expr></argument>, <argument><expr><name><name>BorderLayout</name><operator>.</operator><name>SOUTH</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>textField</name> <operator>=</operator> <operator>new</operator> <call><name>JTextField</name><argument_list>(<argument><expr><literal type="number">40</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// textField is selected every time the window is focused</comment>
+    <expr_stmt><expr><call><name>addWindowFocusListener</name><argument_list>(<argument><expr><operator>new</operator> <class><super><name>WindowAdapter</name></super><argument_list>()</argument_list> <block>{
+      <function><annotation>@<name>Override</name></annotation>
+      <type><specifier>public</specifier> <name>void</name></type> <name>windowGainedFocus</name><parameter_list>(<parameter><decl><type><name>WindowEvent</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>textField</name><operator>.</operator><name>requestFocusInWindow</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></function>
+    }</block></class></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Add cut/copy/paste contextual menu to the text input field.</comment>
+    <decl_stmt><decl><type><name>JPopupMenu</name></type> <name>menu</name> <init>= <expr><operator>new</operator> <call><name>JPopupMenu</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>Action</name></type> <name>cut</name> <init>= <expr><operator>new</operator> <call><name><name>DefaultEditorKit</name><operator>.</operator><name>CutAction</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>cut</name><operator>.</operator><name>putValue</name></name><argument_list>(<argument><expr><name><name>Action</name><operator>.</operator><name>NAME</name></name></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Cut"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>menu</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>cut</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>Action</name></type> <name>copy</name> <init>= <expr><operator>new</operator> <call><name><name>DefaultEditorKit</name><operator>.</operator><name>CopyAction</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>copy</name><operator>.</operator><name>putValue</name></name><argument_list>(<argument><expr><name><name>Action</name><operator>.</operator><name>NAME</name></name></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Copy"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>menu</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>copy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>Action</name></type> <name>paste</name> <init>= <expr><operator>new</operator> <call><name><name>DefaultEditorKit</name><operator>.</operator><name>PasteAction</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>paste</name><operator>.</operator><name>putValue</name></name><argument_list>(<argument><expr><name><name>Action</name><operator>.</operator><name>NAME</name></name></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Paste"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>menu</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>paste</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>textField</name><operator>.</operator><name>setComponentPopupMenu</name></name><argument_list>(<argument><expr><name>menu</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>sendButton</name> <operator>=</operator> <operator>new</operator> <call><name>JButton</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Send"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>JPanel</name></type> <name>lowerPane</name> <init>= <expr><operator>new</operator> <call><name>JPanel</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>lowerPane</name><operator>.</operator><name>setLayout</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>BoxLayout</name><argument_list>(<argument><expr><name>lowerPane</name></expr></argument>, <argument><expr><name><name>BoxLayout</name><operator>.</operator><name>X_AXIS</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>lowerPane</name><operator>.</operator><name>setBorder</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>EmptyBorder</name><argument_list>(<argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>noLineEndingAlert</name> <operator>=</operator> <operator>new</operator> <call><name>JLabel</name><argument_list>(<argument><expr><call><name><name>I18n</name><operator>.</operator><name>format</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"You've pressed {0} but nothing was sent. Should you select a line ending?"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Send"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>setToolTipText</name></name><argument_list>(<argument><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>getText</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>setForeground</name></name><argument_list>(<argument><expr><call><name><name>pane</name><operator>.</operator><name>getBackground</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>Dimension</name></type> <name>minimumSize</name> <init>= <expr><operator>new</operator> <call><name>Dimension</name><argument_list>(<argument><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>getMinimumSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>minimumSize</name><operator>.</operator><name>setSize</name></name><argument_list>(<argument><expr><call><name><name>minimumSize</name><operator>.</operator><name>getWidth</name></name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="number">3</literal></expr></argument>, <argument><expr><call><name><name>minimumSize</name><operator>.</operator><name>getHeight</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>setMinimumSize</name></name><argument_list>(<argument><expr><name>minimumSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+
+    <expr_stmt><expr><name>lineEndings</name> <operator>=</operator> <operator>new</operator> <call><name><name>JComboBox</name><argument_list type="generic">&lt;<argument><name>String</name></argument>&gt;</argument_list></name><argument_list>(<argument><expr><operator>new</operator> <name><name>String</name><index>[]</index></name><block>{<expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"No line ending"</literal></expr></argument>)</argument_list></call></expr>, <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Newline"</literal></expr></argument>)</argument_list></call></expr>, <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Carriage return"</literal></expr></argument>)</argument_list></call></expr>, <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Both NL &amp; CR"</literal></expr></argument>)</argument_list></call></expr>}</block></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>lineEndings</name><operator>.</operator><name>addActionListener</name></name><argument_list>(<argument><expr><lambda><parameter_list>(<parameter><decl><type><name>ActionEvent</name></type> <name>event</name></decl></parameter>)</parameter_list> -&gt; <block>{<block_content>
+      <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>setInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.line_ending"</literal></expr></argument>, <argument><expr><call><name><name>lineEndings</name><operator>.</operator><name>getSelectedIndex</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>setForeground</name></name><argument_list>(<argument><expr><call><name><name>pane</name><operator>.</operator><name>getBackground</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>lineEndings</name><operator>.</operator><name>setMaximumSize</name></name><argument_list>(<argument><expr><call><name><name>lineEndings</name><operator>.</operator><name>getMinimumSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>lowerPane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>textField</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>lowerPane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><call><name><name>Box</name><operator>.</operator><name>createRigidArea</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Dimension</name><argument_list>(<argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>lowerPane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>sendButton</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>lowerPane</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>noLineEndingAlert</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><call><name><name>Box</name><operator>.</operator><name>createRigidArea</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Dimension</name><argument_list>(<argument><expr><literal type="number">8</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pane</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>lineEndings</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>applyPreferences</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>onSendCommand</name><argument_list>(<argument><expr><lambda><parameter_list>(<parameter><decl><type><name>ActionEvent</name></type> <name>event</name></decl></parameter>)</parameter_list> -&gt; <block>{<block_content>
+      <expr_stmt><expr><call><name>send</name><argument_list>(<argument><expr><call><name><name>textField</name><operator>.</operator><name>getText</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>textField</name><operator>.</operator><name>setText</name></name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+ 
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>send</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>string</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>s</name> <init>= <expr><name>string</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>serial</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <switch>switch <condition>(<expr><call><name><name>lineEndings</name><operator>.</operator><name>getSelectedIndex</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <case>case <expr><literal type="number">1</literal></expr>:</case>
+          <expr_stmt><expr><name>s</name> <operator>+=</operator> <literal type="string">"\n"</literal></expr>;</expr_stmt>
+          <break>break;</break>
+        <case>case <expr><literal type="number">2</literal></expr>:</case>
+          <expr_stmt><expr><name>s</name> <operator>+=</operator> <literal type="string">"\r"</literal></expr>;</expr_stmt>
+          <break>break;</break>
+        <case>case <expr><literal type="number">3</literal></expr>:</case>
+          <expr_stmt><expr><name>s</name> <operator>+=</operator> <literal type="string">"\r\n"</literal></expr>;</expr_stmt>
+          <break>break;</break>
+        <default>default:</default>
+          <break>break;</break>
+      </block_content>}</block></switch>
+      <if_stmt><if>if <condition>(<expr><literal type="string">""</literal><operator>.</operator><call><name>equals</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>lineEndings</name><operator>.</operator><name>getSelectedIndex</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>PreferencesData</name><operator>.</operator><name>has</name></name><argument_list>(<argument><expr><literal type="string">"runtime.line.ending.alert.notified"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>noLineEndingAlert</name><operator>.</operator><name>setForeground</name></name><argument_list>(<argument><expr><name><name>Color</name><operator>.</operator><name>RED</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><literal type="string">"runtime.line.ending.alert.notified"</literal></expr></argument>, <argument><expr><literal type="string">"true"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><call><name><name>serial</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>onSendCommand</name><parameter_list>(<parameter><decl><type><name>ActionListener</name></type> <name>listener</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>textField</name><operator>.</operator><name>addActionListener</name></name><argument_list>(<argument><expr><name>listener</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>sendButton</name><operator>.</operator><name>addActionListener</name></name><argument_list>(<argument><expr><name>listener</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>appyPreferences</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <comment type="line">// Apply line endings.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>PreferencesData</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"serial.line_ending"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>lineEndings</name><operator>.</operator><name>setSelectedIndex</name></name><argument_list>(<argument><expr><call><name><name>PreferencesData</name><operator>.</operator><name>getInteger</name></name><argument_list>(<argument><expr><literal type="string">"serial.line_ending"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>protected</specifier> <name>void</name></type> <name>onEnableWindow</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>enable</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>serialRates</name><operator>.</operator><name>setEnabled</name></name><argument_list>(<argument><expr><name>enable</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>textField</name><operator>.</operator><name>setEnabled</name></name><argument_list>(<argument><expr><name>enable</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>sendButton</name><operator>.</operator><name>setEnabled</name></name><argument_list>(<argument><expr><name>enable</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>lineEndings</name><operator>.</operator><name>setEnabled</name></name><argument_list>(<argument><expr><name>enable</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>onSerialRateChange</name><parameter_list>(<parameter><decl><type><name>ActionListener</name></type> <name>listener</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>serialRates</name><operator>.</operator><name>addActionListener</name></name><argument_list>(<argument><expr><name>listener</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>message</name><parameter_list>(<parameter><decl><type><specifier>final</specifier> <name>String</name></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>messageBuffer</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name>int</name></type> <name>linebreak</name> <init>= <expr><call><name><name>messageBuffer</name><operator>.</operator><name>indexOf</name></name><argument_list>(<argument><expr><literal type="string">"\n"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>linebreak</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <break>break;</break>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><name>xCount</name><operator>++</operator></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>String</name></type> <name>line</name> <init>= <expr><call><name><name>messageBuffer</name><operator>.</operator><name>substring</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>linebreak</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>messageBuffer</name><operator>.</operator><name>delete</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>linebreak</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <expr_stmt><expr><name>line</name> <operator>=</operator> <call><name><name>line</name><operator>.</operator><name>trim</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><call><name><name>line</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// the line only contained trimmable characters</comment>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+      <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>parts</name> <init>= <expr><call><name><name>line</name><operator>.</operator><name>split</name></name><argument_list>(<argument><expr><literal type="string">"[, \t]+"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if<condition>(<expr><name><name>parts</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <continue>continue;</continue>
+      </block_content>}</block></if></if_stmt>
+
+      <decl_stmt><decl><type><name>int</name></type> <name>validParts</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>int</name></type> <name>validLabels</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+      <for>for<control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name><name>parts</name><operator>.</operator><name>length</name></name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>Double</name></type> <name>value</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>String</name></type> <name>label</name> <init>= <expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+        
+        <comment type="line">// column formated name value pair</comment>
+        <if_stmt><if>if<condition>(<expr><name><name>parts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>contains</name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <comment type="line">// get label</comment>
+          <decl_stmt><decl><type><name><name>String</name><index>[]</index></name></type> <name>subString</name> <init>= <expr><name><name>parts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>split</name><argument_list>(<argument><expr><literal type="string">"[:]+"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            
+          <if_stmt><if>if<condition>(<expr><name><name>subString</name><operator>.</operator><name>length</name></name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>int</name></type> <name>labelLength</name> <init>= <expr><name><name>subString</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>length</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+              
+            <if_stmt><if>if<condition>(<expr><name>labelLength</name> <operator>&gt;</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>labelLength</name> <operator>=</operator> <literal type="number">32</literal></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name>label</name> <operator>=</operator> <name><name>subString</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>substring</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>labelLength</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><name>label</name> <operator>=</operator> <literal type="string">""</literal></expr>;</expr_stmt>
+          </block_content>}</block></else></if_stmt>
+            
+          <if_stmt><if>if<condition>(<expr><name><name>subString</name><operator>.</operator><name>length</name></name> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>parts</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <name><name>subString</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+          </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><name><name>parts</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <literal type="string">""</literal></expr>;</expr_stmt>
+          </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>value</name> <operator>=</operator> <call><name><name>Double</name><operator>.</operator><name>valueOf</name></name><argument_list>(<argument><expr><name><name>parts</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>NumberFormatException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+          <comment type="line">// ignored</comment>
+        </block_content>}</block></catch></try>
+        <comment type="line">//CSV header</comment>
+        <if_stmt><if>if<condition>(<expr><name>label</name> <operator>==</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <name>value</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name>label</name> <operator>=</operator> <name><name>parts</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        
+        <if_stmt><if>if<condition>(<expr><name>value</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+          <if_stmt><if>if<condition>(<expr><name>validParts</name> <operator>&gt;=</operator> <call><name><name>graphs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>graphs</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Graph</name><argument_list>(<argument><expr><name>validParts</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <expr_stmt><expr><call><name><name>graphs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>validParts</name></expr></argument>)</argument_list></call><operator>.</operator><call><name><name>buffer</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>validParts</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if<condition>(<expr><name>label</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+          <if_stmt><if>if<condition>(<expr><name>validLabels</name> <operator>&gt;=</operator> <call><name><name>graphs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>graphs</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Graph</name><argument_list>(<argument><expr><name>validLabels</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <expr_stmt><expr><call><name><name>graphs</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><name>validLabels</name></expr></argument>)</argument_list></call><operator>.</operator><name>label</name> <operator>=</operator> <name>label</name></expr>;</expr_stmt>
+          <expr_stmt><expr><name>validLabels</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if<condition>(<expr><name>validParts</name> <operator>&gt;</operator> <name>validLabels</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>validLabels</name> <operator>=</operator> <name>validParts</name></expr>;</expr_stmt></block_content></block></if>
+        <if type="elseif">else if<condition>(<expr><name>validLabels</name> <operator>&gt;</operator> <name>validParts</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>validParts</name> <operator>=</operator> <name>validLabels</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+      </block_content>}</block></for>
+    </block_content>}</block></while>
+
+    <expr_stmt><expr><call><name><name>SwingUtilities</name><operator>.</operator><name>invokeLater</name></name><argument_list>(<argument><expr><name><name>SerialPlotter</name><operator>.</operator><name>this</name></name><operator>::</operator><name>repaint</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>open</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>super</name><operator>.</operator><name>open</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>serial</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name>serial</name> <operator>=</operator> <operator>new</operator> <class><super><name>Serial</name></super><argument_list>(<argument><expr><call><name>getBoardPort</name><argument_list>()</argument_list></call><operator>.</operator><call><name>getAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>serialRate</name></expr></argument>)</argument_list> <block>{
+      <function><annotation>@<name>Override</name></annotation>
+      <type><specifier>protected</specifier> <name>void</name></type> <name>message</name><parameter_list>(<parameter><decl><type><name>char</name></type> <name><name>buff</name><index>[]</index></name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>n</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>addToUpdateBuffer</name><argument_list>(<argument><expr><name>buff</name></expr></argument>, <argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></function>
+    }</block></class></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>public</specifier> <name>void</name></type> <name>close</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>serial</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>super</name><operator>.</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name><name>int</name><index>[]</index></name></type> <name>location</name> <init>= <expr><call><name>getPlacement</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>String</name></type> <name>locationStr</name> <init>= <expr><call><name><name>PApplet</name><operator>.</operator><name>join</name></name><argument_list>(<argument><expr><call><name><name>PApplet</name><operator>.</operator><name>str</name></name><argument_list>(<argument><expr><name>location</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="string">","</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>PreferencesData</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><literal type="string">"last.serial.location"</literal></expr></argument>, <argument><expr><name>locationStr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>serial</name><operator>.</operator><name>dispose</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>serial</name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+}</block></class>
+</unit>

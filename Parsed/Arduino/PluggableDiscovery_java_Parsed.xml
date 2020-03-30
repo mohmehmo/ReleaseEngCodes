@@ -1,0 +1,295 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/Arduino/arduino-core/src/cc/arduino/packages/discoverers/PluggableDiscovery.java"><comment type="block">/*
+ * This file is part of Arduino.
+ *
+ * Arduino is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ * As a special exception, you may use this file as part of a free software
+ * library without restriction.  Specifically, if other files instantiate
+ * templates or use macros or inline functions from this file, or you compile
+ * this file and link it with other files to produce an executable, this
+ * file does not by itself cause the resulting executable to be covered by
+ * the GNU General Public License.  This exception does not however
+ * invalidate any other reasons why the executable file might be covered by
+ * the GNU General Public License.
+ *
+ * Copyright 2018 Arduino SA (http://www.arduino.cc/)
+ */</comment>
+
+<package>package <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>discoverers</name></name>;</package>
+
+<import>import static <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>I18n</name><operator>.</operator><name>format</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>InputStream</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>io</name><operator>.</operator><name>OutputStream</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>ArrayList</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>List</name></name>;</import>
+
+<import>import <name><name>org</name><operator>.</operator><name>apache</name><operator>.</operator><name>commons</name><operator>.</operator><name>lang3</name><operator>.</operator><name>StringUtils</name></name>;</import>
+
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>annotation</name><operator>.</operator><name>JsonAutoDetect</name><operator>.</operator><name>Visibility</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>annotation</name><operator>.</operator><name>PropertyAccessor</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>core</name><operator>.</operator><name>JsonFactory</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>core</name><operator>.</operator><name>JsonParser</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>core</name><operator>.</operator><name>JsonProcessingException</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>databind</name><operator>.</operator><name>DeserializationFeature</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>databind</name><operator>.</operator><name>JsonNode</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>fasterxml</name><operator>.</operator><name>jackson</name><operator>.</operator><name>databind</name><operator>.</operator><name>ObjectMapper</name></name>;</import>
+
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>BoardPort</name></name>;</import>
+<import>import <name><name>cc</name><operator>.</operator><name>arduino</name><operator>.</operator><name>packages</name><operator>.</operator><name>Discovery</name></name>;</import>
+<import>import <name><name>processing</name><operator>.</operator><name>app</name><operator>.</operator><name>PreferencesData</name></name>;</import>
+
+<class><specifier>public</specifier> class <name>PluggableDiscovery</name> <super_list><implements>implements <super><name>Discovery</name></super></implements></super_list> <block>{
+
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name>String</name></type> <name>discoveryName</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name><name>String</name><index>[]</index></name></type> <name>cmd</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <specifier>final</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>BoardPort</name></argument>&gt;</argument_list></name></type> <name>portList</name> <init>= <expr><operator>new</operator> <call><name><name>ArrayList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Process</name></type> <name>program</name><init>=<expr><literal type="null">null</literal></expr></init></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>private</specifier> <name>Thread</name></type> <name>pollingThread</name></decl>;</decl_stmt>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>debug</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>x</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>PreferencesData</name><operator>.</operator><name>getBoolean</name></name><argument_list>(<argument><expr><literal type="string">"discovery.debug"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>out</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><name>discoveryName</name> <operator>+</operator> <literal type="string">": "</literal> <operator>+</operator> <name>x</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <constructor><specifier>public</specifier> <name>PluggableDiscovery</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>discoveryName</name></decl></parameter>, <parameter><decl><type><name><name>String</name><index>[]</index></name></type> <name>cmd</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>cmd</name></name> <operator>=</operator> <name>cmd</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>.</operator><name>discoveryName</name></name> <operator>=</operator> <name>discoveryName</name></expr>;</expr_stmt>
+  </block_content>}</block></constructor>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>void</name></type> <name>run</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <comment type="line">// this method is started as a new thread, it will constantly listen</comment>
+    <comment type="line">// to the discovery tool and keep track of the discovered ports</comment>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name>start</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <decl_stmt><decl><type><name>InputStream</name></type> <name>input</name> <init>= <expr><call><name><name>program</name><operator>.</operator><name>getInputStream</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>JsonFactory</name></type> <name>factory</name> <init>= <expr><operator>new</operator> <call><name>JsonFactory</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>JsonParser</name></type> <name>parser</name> <init>= <expr><call><name><name>factory</name><operator>.</operator><name>createParser</name></name><argument_list>(<argument><expr><name>input</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <decl_stmt><decl><type><name>ObjectMapper</name></type> <name>mapper</name> <init>= <expr><operator>new</operator> <call><name>ObjectMapper</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>setVisibility</name></name><argument_list>(<argument><expr><name><name>PropertyAccessor</name><operator>.</operator><name>ALL</name></name></expr></argument>, <argument><expr><name><name>Visibility</name><operator>.</operator><name>NONE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>setVisibility</name></name><argument_list>(<argument><expr><name><name>PropertyAccessor</name><operator>.</operator><name>FIELD</name></name></expr></argument>, <argument><expr><name><name>Visibility</name><operator>.</operator><name>ANY</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>mapper</name><operator>.</operator><name>configure</name></name><argument_list>(<argument><expr><name><name>DeserializationFeature</name><operator>.</operator><name>FAIL_ON_UNKNOWN_PROPERTIES</name></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+      <while>while <condition>(<expr><name>program</name> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>program</name><operator>.</operator><name>isAlive</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>JsonNode</name></type> <name>tree</name> <init>= <expr><call><name><name>mapper</name><operator>.</operator><name>readTree</name></name><argument_list>(<argument><expr><name>parser</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>tree</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+          <if_stmt><if>if <condition>(<expr><name>program</name> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>program</name><operator>.</operator><name>isAlive</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid json message"</literal></expr></argument>, <argument><expr><name>discoveryName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></if></if_stmt>
+          <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"Received json: "</literal> <operator>+</operator> <name>tree</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>processJsonNode</name><argument_list>(<argument><expr><name>mapper</name></expr></argument>, <argument><expr><name>tree</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></while>
+      <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"thread exit normally"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>InterruptedException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"thread exit by interrupt"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"thread exit other exception"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name>stop</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>processJsonNode</name><parameter_list>(<parameter><decl><type><name>ObjectMapper</name></type> <name>mapper</name></decl></parameter>, <parameter><decl><type><name>JsonNode</name></type> <name>node</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>JsonNode</name></type> <name>eventTypeNode</name> <init>= <expr><call><name><name>node</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"eventType"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>eventTypeNode</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid message, missing eventType"</literal></expr></argument>, <argument><expr><name>discoveryName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <switch>switch <condition>(<expr><call><name><name>eventTypeNode</name><operator>.</operator><name>asText</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+    <case>case <expr><literal type="string">"error"</literal></expr>:</case>
+      <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>PluggableDiscoveryMessage</name></type> <name>msg</name> <init>= <expr><call><name><name>mapper</name><operator>.</operator><name>treeToValue</name></name><argument_list>(<argument><expr><name>node</name></expr></argument>, <argument><expr><name><name>PluggableDiscoveryMessage</name><operator>.</operator><name>class</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"error: "</literal> <operator>+</operator> <call><name><name>msg</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>msg</name><operator>.</operator><name>getMessage</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>contains</name><argument_list>(<argument><expr><literal type="string">"START_SYNC"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name>startPolling</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>JsonProcessingException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></catch></try>
+      <return>return;</return>
+
+    <case>case <expr><literal type="string">"list"</literal></expr>:</case>
+      <decl_stmt><decl><type><name>JsonNode</name></type> <name>portsNode</name> <init>= <expr><call><name><name>node</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"ports"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>portsNode</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid message, missing ports list"</literal></expr></argument>, <argument><expr><name>discoveryName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+      </block_content>}</block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>portsNode</name><operator>.</operator><name>isArray</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid message, ports list should be an array"</literal></expr></argument>, <argument><expr><name>discoveryName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+      </block_content>}</block></if></if_stmt>
+
+      <synchronized>synchronized <init>(<expr><name>portList</name></expr>)</init> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>portList</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></synchronized>
+      <expr_stmt><expr><call><name><name>portsNode</name><operator>.</operator><name>forEach</name></name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>portNode</name></decl></parameter></parameter_list> -&gt; <block>{<block_content>
+        <decl_stmt><decl><type><name>BoardPort</name></type> <name>port</name> <init>= <expr><call><name>mapJsonNodeToBoardPort</name><argument_list>(<argument><expr><name>mapper</name></expr></argument>, <argument><expr><name>node</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>port</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><call><name>addOrUpdate</name><argument_list>(<argument><expr><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+      </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+
+    <comment type="line">// Messages for SYNC updates</comment>
+
+    <case>case <expr><literal type="string">"add"</literal></expr>:</case>
+      <decl_stmt><decl><type><name>BoardPort</name></type> <name>addedPort</name> <init>= <expr><call><name>mapJsonNodeToBoardPort</name><argument_list>(<argument><expr><name>mapper</name></expr></argument>, <argument><expr><name>node</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>addedPort</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>addOrUpdate</name><argument_list>(<argument><expr><name>addedPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <return>return;</return>
+
+    <case>case <expr><literal type="string">"remove"</literal></expr>:</case>
+      <decl_stmt><decl><type><name>BoardPort</name></type> <name>removedPort</name> <init>= <expr><call><name>mapJsonNodeToBoardPort</name><argument_list>(<argument><expr><name>mapper</name></expr></argument>, <argument><expr><name>node</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <if_stmt><if>if <condition>(<expr><name>removedPort</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>remove</name><argument_list>(<argument><expr><name>removedPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <return>return;</return>
+
+    <default>default:</default>
+      <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"Invalid event: "</literal> <operator>+</operator> <call><name><name>eventTypeNode</name><operator>.</operator><name>asText</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></switch>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>BoardPort</name></type> <name>mapJsonNodeToBoardPort</name><parameter_list>(<parameter><decl><type><name>ObjectMapper</name></type> <name>mapper</name></decl></parameter>, <parameter><decl><type><name>JsonNode</name></type> <name>node</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <decl_stmt><decl><type><name>BoardPort</name></type> <name>port</name> <init>= <expr><call><name><name>mapper</name><operator>.</operator><name>treeToValue</name></name><argument_list>(<argument><expr><call><name><name>node</name><operator>.</operator><name>get</name></name><argument_list>(<argument><expr><literal type="string">"port"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>BoardPort</name><operator>.</operator><name>class</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <comment type="line">// if no label, use address</comment>
+      <if_stmt><if>if <condition>(<expr><call><name><name>port</name><operator>.</operator><name>getLabel</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>port</name><operator>.</operator><name>getLabel</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>isEmpty</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>setLabel</name></name><argument_list>(<argument><expr><call><name><name>port</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block></if></if_stmt>
+      <expr_stmt><expr><call><name><name>port</name><operator>.</operator><name>searchMatchingBoard</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><name>port</name></expr>;</return>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>JsonProcessingException</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>System</name><operator>.</operator><name>err</name><operator>.</operator><name>println</name></name><argument_list>(<argument><expr><call><name>format</name><argument_list>(<argument><expr><literal type="string">"{0}: Invalid BoardPort message"</literal></expr></argument>, <argument><expr><name>discoveryName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>e</name><operator>.</operator><name>printStackTrace</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><literal type="null">null</literal></expr>;</return>
+    </block_content>}</block></catch></try>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>void</name></type> <name>start</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <try>try <block>{<block_content>
+      <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"Starting: "</literal> <operator>+</operator> <call><name><name>StringUtils</name><operator>.</operator><name>join</name></name><argument_list>(<argument><expr><name>cmd</name></expr></argument>, <argument><expr><literal type="string">" "</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>program</name> <operator>=</operator> <call><name><name>Runtime</name><operator>.</operator><name>getRuntime</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>exec</name><argument_list>(<argument><expr><name>cmd</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      <expr_stmt><expr><name>program</name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+      <return>return;</return>
+    </block_content>}</block></catch></try>
+    <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"START_SYNC"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>write</name><argument_list>(<argument><expr><literal type="string">"START_SYNC\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>pollingThread</name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>startPolling</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <comment type="line">// Discovery tools not supporting START_SYNC require a periodic</comment>
+    <comment type="line">// LIST command.  A second thread is created to send these</comment>
+    <comment type="line">// commands, while the run() thread above listens for the</comment>
+    <comment type="line">// discovery tool output.</comment>
+    <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"START"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>write</name><argument_list>(<argument><expr><literal type="string">"START\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>Thread</name></type> <name>pollingThread</name> <init>= <expr><operator>new</operator> <class><super><name>Thread</name></super><argument_list>()</argument_list> <block>{
+      <function><type><specifier>public</specifier> <name>void</name></type> <name>run</name><parameter_list>()</parameter_list> <block>{<block_content>
+        <try>try <block>{<block_content>
+          <while>while <condition>(<expr><name>program</name> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>program</name><operator>.</operator><name>isAlive</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>debug</name><argument_list>(<argument><expr><literal type="string">"LIST"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>write</name><argument_list>(<argument><expr><literal type="string">"LIST\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>sleep</name><argument_list>(<argument><expr><literal type="number">2500</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          </block_content>}</block></while>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        </block_content>}</block></catch></try>
+      </block_content>}</block></function>
+    }</block></class></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pollingThread</name><operator>.</operator><name>start</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>void</name></type> <name>stop</name><parameter_list>()</parameter_list> <throws>throws <argument><expr><name>Exception</name></expr></argument></throws> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>pollingThread</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>pollingThread</name><operator>.</operator><name>interrupt</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>pollingThread</name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>write</name><argument_list>(<argument><expr><literal type="string">"STOP\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>program</name> <operator>!=</operator> <literal type="null">null</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>program</name><operator>.</operator><name>destroy</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><name>program</name> <operator>=</operator> <literal type="null">null</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>write</name><parameter_list>(<parameter><decl><type><name>String</name></type> <name>command</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>program</name> <operator>!=</operator> <literal type="null">null</literal> <operator>&amp;&amp;</operator> <call><name><name>program</name><operator>.</operator><name>isAlive</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name>OutputStream</name></type> <name>out</name> <init>= <expr><call><name><name>program</name><operator>.</operator><name>getOutputStream</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name><name>out</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><call><name><name>command</name><operator>.</operator><name>getBytes</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>out</name><operator>.</operator><name>flush</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><name>Exception</name></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+      </block_content>}</block></catch></try>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>addOrUpdate</name><parameter_list>(<parameter><decl><type><name>BoardPort</name></type> <name>port</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>address</name> <init>= <expr><call><name><name>port</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>address</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt> <comment type="line">// address required for "add" &amp; "remove"</comment>
+
+    <synchronized>synchronized <init>(<expr><name>portList</name></expr>)</init> <block>{<block_content>
+      <comment type="line">// if address already on the list, discard old info</comment>
+      <expr_stmt><expr><call><name><name>portList</name><operator>.</operator><name>removeIf</name></name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>bp</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>address</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><call><name><name>bp</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <expr_stmt><expr><call><name><name>portList</name><operator>.</operator><name>add</name></name><argument_list>(<argument><expr><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></synchronized>
+  </block_content>}</block></function>
+
+  <function><type><specifier>private</specifier> <name>void</name></type> <name>remove</name><parameter_list>(<parameter><decl><type><name>BoardPort</name></type> <name>port</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>String</name></type> <name>address</name> <init>= <expr><call><name><name>port</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>address</name> <operator>==</operator> <literal type="null">null</literal></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt> <comment type="line">// address required for "add" &amp; "remove"</comment>
+    <synchronized>synchronized <init>(<expr><name>portList</name></expr>)</init> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>portList</name><operator>.</operator><name>removeIf</name></name><argument_list>(<argument><expr><lambda><parameter_list type="pseudo"><parameter><decl><name>bp</name></decl></parameter></parameter_list> -&gt;<block type="pseudo"><block_content> <expr><call><name><name>address</name><operator>.</operator><name>equals</name></name><argument_list>(<argument><expr><call><name><name>bp</name><operator>.</operator><name>getAddress</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></block_content></block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></synchronized>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>BoardPort</name></argument>&gt;</argument_list></name></type> <name>listDiscoveredBoards</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <synchronized>synchronized <init>(<expr><name>portList</name></expr>)</init> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name><name>ArrayList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>(<argument><expr><name>portList</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></synchronized>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name><name>List</name><argument_list type="generic">&lt;<argument><name>BoardPort</name></argument>&gt;</argument_list></name></type> <name>listDiscoveredBoards</name><parameter_list>(<parameter><decl><type><name>boolean</name></type> <name>complete</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// XXX: parameter "complete "is really needed?</comment>
+    <comment type="line">// should be checked on all existing discoveries</comment>
+    <synchronized>synchronized <init>(<expr><name>portList</name></expr>)</init> <block>{<block_content>
+      <return>return <expr><operator>new</operator> <call><name><name>ArrayList</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>(<argument><expr><name>portList</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></synchronized>
+  </block_content>}</block></function>
+
+  <function><annotation>@<name>Override</name></annotation>
+  <type><specifier>public</specifier> <name>String</name></type> <name>toString</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><name>discoveryName</name></expr>;</return>
+  </block_content>}</block></function>
+}</block></class>
+</unit>
