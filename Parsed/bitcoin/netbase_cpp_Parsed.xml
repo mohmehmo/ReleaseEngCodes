@@ -1,0 +1,935 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/netbase.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netbase.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;tinyformat.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;atomic&gt;</cpp:file></cpp:include>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>WIN32</name></cpp:ifndef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;fcntl.h&gt;</cpp:file></cpp:include>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;codecvt&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_POLL</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;poll.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><operator>!</operator><call><name>defined</name><argument_list>(<argument><expr><name>MSG_NOSIGNAL</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>MSG_NOSIGNAL</name></cpp:macro> <cpp:value>0</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="line">// Settings</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>CCriticalSection</name></type> <name>cs_proxyInfos</name></decl>;</decl_stmt>
+<function_decl><type><specifier>static</specifier> <name>proxyType</name> <name><name>proxyInfo</name><index>[<expr><name>NET_MAX</name></expr>]</index></name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_proxyInfos</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>static</specifier> <name>proxyType</name> <name>nameProxy</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_proxyInfos</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<decl_stmt><decl><type><name>int</name></type> <name>nConnectTimeout</name> <init>= <expr><name>DEFAULT_CONNECT_TIMEOUT</name></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>bool</name></type> <name>fNameLookup</name> <init>= <expr><name>DEFAULT_NAME_LOOKUP</name></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Need ample time for negotiation for very slow proxies such as Tor (milliseconds)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>SOCKS5_RECV_TIMEOUT</name> <init>= <expr><literal type="number">20</literal> <operator>*</operator> <literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>interruptSocks5Recv</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<function><type><name><name>enum</name> <name>Network</name></name></type> <name>ParseNetwork</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>net_in</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>net</name> <init>= <expr><call><name>ToLower</name><argument_list>(<argument><expr><name>net_in</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>net</name> <operator>==</operator> <literal type="string">"ipv4"</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>NET_IPV4</name></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>net</name> <operator>==</operator> <literal type="string">"ipv6"</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>NET_IPV6</name></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>net</name> <operator>==</operator> <literal type="string">"onion"</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>NET_ONION</name></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>net</name> <operator>==</operator> <literal type="string">"tor"</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Warning: net name 'tor' is deprecated and will be removed in the future. You should use 'onion' instead.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>NET_ONION</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>NET_UNROUTABLE</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>GetNetworkName</name><parameter_list>(<parameter><decl><type><name><name>enum</name> <name>Network</name></name></type> <name>net</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <switch>switch<condition>(<expr><name>net</name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name>NET_IPV4</name></expr>:</case> <return>return <expr><literal type="string">"ipv4"</literal></expr>;</return>
+    <case>case <expr><name>NET_IPV6</name></expr>:</case> <return>return <expr><literal type="string">"ipv6"</literal></expr>;</return>
+    <case>case <expr><name>NET_ONION</name></expr>:</case> <return>return <expr><literal type="string">"onion"</literal></expr>;</return>
+    <default>default:</default> <return>return <expr><literal type="string">""</literal></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>bool</name> <specifier>static</specifier></type> <name>LookupIntern</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>pszName</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vIP</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nMaxSolutions</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fAllowLookup</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>vIP</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>CNetAddr</name></type> <name>addr</name></decl>;</decl_stmt>
+        <comment type="line">// From our perspective, onion addresses are not hostnames but rather</comment>
+        <comment type="line">// direct encodings of CNetAddr much like IPv4 dotted-decimal notation</comment>
+        <comment type="line">// or IPv6 colon-separated hextet notation. Since we can't use</comment>
+        <comment type="line">// getaddrinfo to decode them and it wouldn't make sense to resolve</comment>
+        <comment type="line">// them, we return a network address representing it instead. See</comment>
+        <comment type="line">// CNetAddr::SetSpecial(const std::string&amp;) for more details.</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>addr</name><operator>.</operator><name>SetSpecial</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><name>pszName</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>vIP</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>addrinfo</name></name></type> <name>aiHint</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>memset</name><argument_list>(<argument><expr><operator>&amp;</operator><name>aiHint</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr>struct <name>addrinfo</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// We want a TCP port, which is a streaming socket type</comment>
+    <expr_stmt><expr><name><name>aiHint</name><operator>.</operator><name>ai_socktype</name></name> <operator>=</operator> <name>SOCK_STREAM</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>aiHint</name><operator>.</operator><name>ai_protocol</name></name> <operator>=</operator> <name>IPPROTO_TCP</name></expr>;</expr_stmt>
+    <comment type="line">// We don't care which address family (IPv4 or IPv6) is returned</comment>
+    <expr_stmt><expr><name><name>aiHint</name><operator>.</operator><name>ai_family</name></name> <operator>=</operator> <name>AF_UNSPEC</name></expr>;</expr_stmt>
+    <comment type="line">// If we allow lookups of hostnames, use the AI_ADDRCONFIG flag to only</comment>
+    <comment type="line">// return addresses whose family we have an address configured for.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// If we don't allow lookups, then use the AI_NUMERICHOST flag for</comment>
+    <comment type="line">// getaddrinfo to only decode numerical network addresses and suppress</comment>
+    <comment type="line">// hostname lookups.</comment>
+    <expr_stmt><expr><name><name>aiHint</name><operator>.</operator><name>ai_flags</name></name> <operator>=</operator> <ternary><condition><expr><name>fAllowLookup</name></expr> ?</condition><then> <expr><name>AI_ADDRCONFIG</name></expr> </then><else>: <expr><name>AI_NUMERICHOST</name></expr></else></ternary></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>addrinfo</name></name> <modifier>*</modifier></type><name>aiRes</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nErr</name> <init>= <expr><call><name>getaddrinfo</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>aiHint</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>aiRes</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nErr</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Traverse the linked list starting with aiTrav, add all non-internal</comment>
+    <comment type="line">// IPv4,v6 addresses to vIP while respecting nMaxSolutions.</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>addrinfo</name></name> <modifier>*</modifier></type><name>aiTrav</name> <init>= <expr><name>aiRes</name></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>aiTrav</name> <operator>!=</operator> <literal type="null">nullptr</literal> <operator>&amp;&amp;</operator> <operator>(</operator><name>nMaxSolutions</name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator> <call><name><name>vIP</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name>nMaxSolutions</name><operator>)</operator></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>CNetAddr</name></type> <name>resolved</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>aiTrav</name><operator>-&gt;</operator><name>ai_family</name></name> <operator>==</operator> <name>AF_INET</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name><name>aiTrav</name><operator>-&gt;</operator><name>ai_addrlen</name></name> <operator>&gt;=</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>sockaddr_in</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>resolved</name> <operator>=</operator> <call><name>CNetAddr</name><argument_list>(<argument><expr><operator>(</operator><operator>(</operator>struct <name>sockaddr_in</name><operator>*</operator><operator>)</operator><operator>(</operator><name><name>aiTrav</name><operator>-&gt;</operator><name>ai_addr</name></name><operator>)</operator><operator>)</operator><operator>-&gt;</operator><name>sin_addr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name><name>aiTrav</name><operator>-&gt;</operator><name>ai_family</name></name> <operator>==</operator> <name>AF_INET6</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name><name>aiTrav</name><operator>-&gt;</operator><name>ai_addrlen</name></name> <operator>&gt;=</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>sockaddr_in6</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name><name>struct</name> <name>sockaddr_in6</name></name><modifier>*</modifier></type> <name>s6</name> <init>= <expr><operator>(</operator>struct <name>sockaddr_in6</name><operator>*</operator><operator>)</operator> <name><name>aiTrav</name><operator>-&gt;</operator><name>ai_addr</name></name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name>resolved</name> <operator>=</operator> <call><name>CNetAddr</name><argument_list>(<argument><expr><name><name>s6</name><operator>-&gt;</operator><name>sin6_addr</name></name></expr></argument>, <argument><expr><name><name>s6</name><operator>-&gt;</operator><name>sin6_scope_id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <comment type="block">/* Never allow resolving to an internal address. Consider any such result invalid */</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>resolved</name><operator>.</operator><name>IsInternal</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>vIP</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>resolved</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><name>aiTrav</name> <operator>=</operator> <name><name>aiTrav</name><operator>-&gt;</operator><name>ai_next</name></name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <expr_stmt><expr><call><name>freeaddrinfo</name><argument_list>(<argument><expr><name>aiRes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><operator>(</operator><call><name><name>vIP</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Resolve a host string to its corresponding network addresses.
+ *
+ * @param pszName The string representing a host. Could be a name or a numerical
+ *                IP address (IPv6 addresses in their bracketed form are
+ *                allowed).
+ * @param[out] vIP The resulting network addresses to which the specified host
+ *                 string resolved.
+ *
+ * @returns Whether or not the specified host string successfully resolved to
+ *          any resulting network addresses.
+ *
+ * @see Lookup(const char *, std::vector&lt;CService&gt;&amp;, int, bool, unsigned int)
+ *      for additional parameter descriptions.
+ */</comment>
+<function><type><name>bool</name></type> <name>LookupHost</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>pszName</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vIP</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nMaxSolutions</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fAllowLookup</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHost</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strHost</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strHost</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="char">'['</literal> <operator>&amp;&amp;</operator> <call><name><name>strHost</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="char">']'</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>strHost</name> <operator>=</operator> <call><name><name>strHost</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><call><name><name>strHost</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><call><name>LookupIntern</name><argument_list>(<argument><expr><call><name><name>strHost</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>vIP</name></expr></argument>, <argument><expr><name>nMaxSolutions</name></expr></argument>, <argument><expr><name>fAllowLookup</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+ <comment type="block" format="doxygen">/**
+ * Resolve a host string to its first corresponding network address.
+ *
+ * @see LookupHost(const char *, std::vector&lt;CNetAddr&gt;&amp;, unsigned int, bool) for
+ *      additional parameter descriptions.
+ */</comment>
+<function><type><name>bool</name></type> <name>LookupHost</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>pszName</name></decl></parameter>, <parameter><decl><type><name>CNetAddr</name><modifier>&amp;</modifier></type> <name>addr</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fAllowLookup</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list></name></type> <name>vIP</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LookupHost</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>vIP</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><name>fAllowLookup</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><call><name><name>vIP</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>addr</name> <operator>=</operator> <call><name><name>vIP</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Resolve a service string to its corresponding service.
+ *
+ * @param pszName The string representing a service. Could be a name or a
+ *                numerical IP address (IPv6 addresses should be in their
+ *                disambiguated bracketed form), optionally followed by a port
+ *                number. (e.g. example.com:8333 or
+ *                [2001:db8:85a3:8d3:1319:8a2e:370:7348]:420)
+ * @param[out] vAddr The resulting services to which the specified service string
+ *                   resolved.
+ * @param portDefault The default port for resulting services if not specified
+ *                    by the service string.
+ * @param fAllowLookup Whether or not hostname lookups are permitted. If yes,
+ *                     external queries may be performed.
+ * @param nMaxSolutions The maximum number of results we want, specifying 0
+ *                      means "as many solutions as we get."
+ *
+ * @returns Whether or not the service string successfully resolved to any
+ *          resulting services.
+ */</comment>
+<function><type><name>bool</name></type> <name>Lookup</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>pszName</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CService</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vAddr</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>portDefault</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fAllowLookup</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nMaxSolutions</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>pszName</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>port</name> <init>= <expr><name>portDefault</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>hostname</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SplitHostPort</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><name>pszName</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>port</name></expr></argument>, <argument><expr><name>hostname</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list></name></type> <name>vIP</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fRet</name> <init>= <expr><call><name>LookupIntern</name><argument_list>(<argument><expr><call><name><name>hostname</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>vIP</name></expr></argument>, <argument><expr><name>nMaxSolutions</name></expr></argument>, <argument><expr><name>fAllowLookup</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fRet</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>vAddr</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>vIP</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>vIP</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>vAddr</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <call><name>CService</name><argument_list>(<argument><expr><name><name>vIP</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Resolve a service string to its first corresponding service.
+ *
+ * @see Lookup(const char *, std::vector&lt;CService&gt;&amp;, int, bool, unsigned int)
+ *      for additional parameter descriptions.
+ */</comment>
+<function><type><name>bool</name></type> <name>Lookup</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>pszName</name></decl></parameter>, <parameter><decl><type><name>CService</name><modifier>&amp;</modifier></type> <name>addr</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>portDefault</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fAllowLookup</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CService</name></expr></argument>&gt;</argument_list></name></type> <name>vService</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fRet</name> <init>= <expr><call><name>Lookup</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>vService</name></expr></argument>, <argument><expr><name>portDefault</name></expr></argument>, <argument><expr><name>fAllowLookup</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fRet</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>addr</name> <operator>=</operator> <name><name>vService</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Resolve a service string with a numeric IP to its first corresponding
+ * service.
+ *
+ * @returns The resulting CService if the resolution was successful, [::]:0
+ *          otherwise.
+ *
+ * @see Lookup(const char *, CService&amp;, int, bool) for additional parameter
+ *      descriptions.
+ */</comment>
+<function><type><name>CService</name></type> <name>LookupNumeric</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>pszName</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>portDefault</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CService</name></type> <name>addr</name></decl>;</decl_stmt>
+    <comment type="line">// "1.2:345" will fail to resolve the ip, but will still set the port.</comment>
+    <comment type="line">// If the ip fails to resolve, re-init the result.</comment>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name>Lookup</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><name>portDefault</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>addr</name> <operator>=</operator> <call><name>CService</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <return>return <expr><name>addr</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>struct</name> <name>timeval</name></name></type> <name>MillisToTimeval</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nTimeout</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>timeout</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>timeout</name><operator>.</operator><name>tv_sec</name></name>  <operator>=</operator> <name>nTimeout</name> <operator>/</operator> <literal type="number">1000</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>timeout</name><operator>.</operator><name>tv_usec</name></name> <operator>=</operator> <operator>(</operator><name>nTimeout</name> <operator>%</operator> <literal type="number">1000</literal><operator>)</operator> <operator>*</operator> <literal type="number">1000</literal></expr>;</expr_stmt>
+    <return>return <expr><name>timeout</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** SOCKS version */</comment>
+<enum>enum <name>SOCKSVersion</name>: <type><name>uint8_t</name></type> <block>{
+    <decl><name>SOCKS4</name> <init>= <expr><literal type="number">0x04</literal></expr></init></decl>,
+    <decl><name>SOCKS5</name> <init>= <expr><literal type="number">0x05</literal></expr></init></decl>
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/** Values defined for METHOD in RFC1928 */</comment>
+<enum>enum <name>SOCKS5Method</name>: <type><name>uint8_t</name></type> <block>{
+    <decl><name>NOAUTH</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>,        <comment type="line" format="doxygen">//!&lt; No authentication required</comment>
+    <decl><name>GSSAPI</name> <init>= <expr><literal type="number">0x01</literal></expr></init></decl>,        <comment type="line" format="doxygen">//!&lt; GSSAPI</comment>
+    <decl><name>USER_PASS</name> <init>= <expr><literal type="number">0x02</literal></expr></init></decl>,     <comment type="line" format="doxygen">//!&lt; Username/password</comment>
+    <decl><name>NO_ACCEPTABLE</name> <init>= <expr><literal type="number">0xff</literal></expr></init></decl>, <comment type="line" format="doxygen">//!&lt; No acceptable methods</comment>
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/** Values defined for CMD in RFC1928 */</comment>
+<enum>enum <name>SOCKS5Command</name>: <type><name>uint8_t</name></type> <block>{
+    <decl><name>CONNECT</name> <init>= <expr><literal type="number">0x01</literal></expr></init></decl>,
+    <decl><name>BIND</name> <init>= <expr><literal type="number">0x02</literal></expr></init></decl>,
+    <decl><name>UDP_ASSOCIATE</name> <init>= <expr><literal type="number">0x03</literal></expr></init></decl>
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/** Values defined for REP in RFC1928 */</comment>
+<enum>enum <name>SOCKS5Reply</name>: <type><name>uint8_t</name></type> <block>{
+    <decl><name>SUCCEEDED</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>,        <comment type="line" format="doxygen">//!&lt; Succeeded</comment>
+    <decl><name>GENFAILURE</name> <init>= <expr><literal type="number">0x01</literal></expr></init></decl>,       <comment type="line" format="doxygen">//!&lt; General failure</comment>
+    <decl><name>NOTALLOWED</name> <init>= <expr><literal type="number">0x02</literal></expr></init></decl>,       <comment type="line" format="doxygen">//!&lt; Connection not allowed by ruleset</comment>
+    <decl><name>NETUNREACHABLE</name> <init>= <expr><literal type="number">0x03</literal></expr></init></decl>,   <comment type="line" format="doxygen">//!&lt; Network unreachable</comment>
+    <decl><name>HOSTUNREACHABLE</name> <init>= <expr><literal type="number">0x04</literal></expr></init></decl>,  <comment type="line" format="doxygen">//!&lt; Network unreachable</comment>
+    <decl><name>CONNREFUSED</name> <init>= <expr><literal type="number">0x05</literal></expr></init></decl>,      <comment type="line" format="doxygen">//!&lt; Connection refused</comment>
+    <decl><name>TTLEXPIRED</name> <init>= <expr><literal type="number">0x06</literal></expr></init></decl>,       <comment type="line" format="doxygen">//!&lt; TTL expired</comment>
+    <decl><name>CMDUNSUPPORTED</name> <init>= <expr><literal type="number">0x07</literal></expr></init></decl>,   <comment type="line" format="doxygen">//!&lt; Command not supported</comment>
+    <decl><name>ATYPEUNSUPPORTED</name> <init>= <expr><literal type="number">0x08</literal></expr></init></decl>, <comment type="line" format="doxygen">//!&lt; Address type not supported</comment>
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/** Values defined for ATYPE in RFC1928 */</comment>
+<enum>enum <name>SOCKS5Atyp</name>: <type><name>uint8_t</name></type> <block>{
+    <decl><name>IPV4</name> <init>= <expr><literal type="number">0x01</literal></expr></init></decl>,
+    <decl><name>DOMAINNAME</name> <init>= <expr><literal type="number">0x03</literal></expr></init></decl>,
+    <decl><name>IPV6</name> <init>= <expr><literal type="number">0x04</literal></expr></init></decl>,
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/** Status codes that can be returned by InterruptibleRecv */</comment>
+<enum type="class">enum class <name>IntrRecvError</name> <block>{
+    <decl><name>OK</name></decl>,
+    <decl><name>Timeout</name></decl>,
+    <decl><name>Disconnected</name></decl>,
+    <decl><name>NetworkError</name></decl>,
+    <decl><name>Interrupted</name></decl>
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/**
+ * Try to read a specified number of bytes from a socket. Please read the "see
+ * also" section for more detail.
+ *
+ * @param data The buffer where the read bytes should be stored.
+ * @param len The number of bytes to read into the specified buffer.
+ * @param timeout The total timeout in milliseconds for this read.
+ * @param hSocket The socket (has to be in non-blocking mode) from which to read
+ *                bytes.
+ *
+ * @returns An IntrRecvError indicating the resulting status of this read.
+ *          IntrRecvError::OK only if all of the specified number of bytes were
+ *          read.
+ *
+ * @see This function can be interrupted by calling InterruptSocks5(bool).
+ *      Sockets can be made non-blocking with SetSocketNonBlocking(const
+ *      SOCKET&amp;, bool).
+ */</comment>
+<function><type><specifier>static</specifier> <name>IntrRecvError</name></type> <name>InterruptibleRecv</name><parameter_list>(<parameter><decl><type><name>uint8_t</name><modifier>*</modifier></type> <name>data</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>len</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>timeout</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>curTime</name> <init>= <expr><call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>endTime</name> <init>= <expr><name>curTime</name> <operator>+</operator> <name>timeout</name></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Maximum time to wait for I/O readiness. It will take up until this time</comment>
+    <comment type="line">// (in millis) to break off in case of an interruption.</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>maxWait</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>len</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>curTime</name> <operator>&lt;</operator> <name>endTime</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>ssize_t</name></type> <name>ret</name> <init>= <expr><call><name>recv</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><name>data</name></expr></argument>, <argument><expr><name>len</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt> <comment type="line">// Optimistically try the recv first</comment>
+        <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>len</name> <operator>-=</operator> <name>ret</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>data</name> <operator>+=</operator> <name>ret</name></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>ret</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Unexpected disconnection</comment>
+            <return>return <expr><name><name>IntrRecvError</name><operator>::</operator><name>Disconnected</name></name></expr>;</return>
+        </block_content>}</block></if> <else>else <block>{<block_content> <comment type="line">// Other error or blocking</comment>
+            <decl_stmt><decl><type><name>int</name></type> <name>nErr</name> <init>= <expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>nErr</name> <operator>==</operator> <name>WSAEINPROGRESS</name> <operator>||</operator> <name>nErr</name> <operator>==</operator> <name>WSAEWOULDBLOCK</name> <operator>||</operator> <name>nErr</name> <operator>==</operator> <name>WSAEINVAL</name></expr>)</condition> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsSelectableSocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <return>return <expr><name><name>IntrRecvError</name><operator>::</operator><name>NetworkError</name></name></expr>;</return>
+                </block_content>}</block></if></if_stmt>
+                <comment type="line">// Only wait at most maxWait milliseconds at a time, unless</comment>
+                <comment type="line">// we're approaching the end of the specified total timeout</comment>
+                <decl_stmt><decl><type><name>int</name></type> <name>timeout_ms</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>endTime</name> <operator>-</operator> <name>curTime</name></expr></argument>, <argument><expr><name>maxWait</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_POLL</name></cpp:ifdef>
+                <decl_stmt><decl><type><name><name>struct</name> <name>pollfd</name></name></type> <name>pollfd</name> <init>= <expr><block>{}</block></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><name><name>pollfd</name><operator>.</operator><name>fd</name></name> <operator>=</operator> <name>hSocket</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pollfd</name><operator>.</operator><name>events</name></name> <operator>=</operator> <name>POLLIN</name></expr>;</expr_stmt>
+                <decl_stmt><decl><type><name>int</name></type> <name>nRet</name> <init>= <expr><call><name>poll</name><argument_list>(<argument><expr><operator>&amp;</operator><name>pollfd</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><name>timeout_ms</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+                <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>tval</name> <init>= <expr><call><name>MillisToTimeval</name><argument_list>(<argument><expr><name>timeout_ms</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>fd_set</name></type> <name>fdset</name></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name>FD_ZERO</name><argument_list>(<argument><expr><operator>&amp;</operator><name>fdset</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>FD_SET</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>fdset</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <decl_stmt><decl><type><name>int</name></type> <name>nRet</name> <init>= <expr><call><name>select</name><argument_list>(<argument><expr><name>hSocket</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>fdset</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>tval</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+                <if_stmt><if>if <condition>(<expr><name>nRet</name> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition> <block>{<block_content>
+                    <return>return <expr><name><name>IntrRecvError</name><operator>::</operator><name>NetworkError</name></name></expr>;</return>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <return>return <expr><name><name>IntrRecvError</name><operator>::</operator><name>NetworkError</name></name></expr>;</return>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></else></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>interruptSocks5Recv</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name><name>IntrRecvError</name><operator>::</operator><name>Interrupted</name></name></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>curTime</name> <operator>=</operator> <call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <return>return <expr><ternary><condition><expr><name>len</name> <operator>==</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr> </then><else>: <expr><name><name>IntrRecvError</name><operator>::</operator><name>Timeout</name></name></expr></else></ternary></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Credentials for proxy authentication */</comment>
+<struct>struct <name>ProxyCredentials</name>
+<block>{<public type="default">
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>username</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>password</name></decl>;</decl_stmt>
+</public>}</block>;</struct>
+
+<comment type="block" format="doxygen">/** Convert SOCKS5 reply to an error message */</comment>
+<function><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>Socks5ErrorString</name><parameter_list>(<parameter><decl><type><name>uint8_t</name></type> <name>err</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <switch>switch<condition>(<expr><name>err</name></expr>)</condition> <block>{<block_content>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>GENFAILURE</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"general failure"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>NOTALLOWED</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"connection not allowed"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>NETUNREACHABLE</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"network unreachable"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>HOSTUNREACHABLE</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"host unreachable"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>CONNREFUSED</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"connection refused"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>TTLEXPIRED</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"TTL expired"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>CMDUNSUPPORTED</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"protocol error"</literal></expr>;</return>
+        <case>case <expr><name><name>SOCKS5Reply</name><operator>::</operator><name>ATYPEUNSUPPORTED</name></name></expr>:</case>
+            <return>return <expr><literal type="string">"address type not supported"</literal></expr>;</return>
+        <default>default:</default>
+            <return>return <expr><literal type="string">"unknown"</literal></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Connect to a specified destination service through an already connected
+ * SOCKS5 proxy.
+ *
+ * @param strDest The destination fully-qualified domain name.
+ * @param port The destination port.
+ * @param auth The credentials with which to authenticate with the specified
+ *             SOCKS5 proxy.
+ * @param hSocket The SOCKS5 proxy socket.
+ *
+ * @returns Whether or not the operation succeeded.
+ *
+ * @note The specified SOCKS5 proxy socket must already be connected to the
+ *       SOCKS5 proxy.
+ *
+ * @see &lt;a href="https://www.ietf.org/rfc/rfc1928.txt"&gt;RFC1928: SOCKS Protocol
+ *      Version 5&lt;/a&gt;
+ */</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>Socks5</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strDest</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>port</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ProxyCredentials</name> <modifier>*</modifier></type><name>auth</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>IntrRecvError</name></type> <name>recvr</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"SOCKS5 connecting %s\n"</literal></expr></argument>, <argument><expr><name>strDest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strDest</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">255</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Hostname too long"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// Construct the version identifier/method selection message</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>vSocks5Init</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKSVersion</name><operator>::</operator><name>SOCKS5</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// We want the SOCK5 protocol</comment>
+    <if_stmt><if>if <condition>(<expr><name>auth</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="number">0x02</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// 2 method identifiers follow...</comment>
+        <expr_stmt><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKS5Method</name><operator>::</operator><name>NOAUTH</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKS5Method</name><operator>::</operator><name>USER_PASS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="number">0x01</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// 1 method identifier follows...</comment>
+        <expr_stmt><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKS5Method</name><operator>::</operator><name>NOAUTH</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <decl_stmt><decl><type><name>ssize_t</name></type> <name>ret</name> <init>= <expr><call><name>send</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator><operator>)</operator><call><name><name>vSocks5Init</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vSocks5Init</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>MSG_NOSIGNAL</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <operator>(</operator><name>ssize_t</name><operator>)</operator><call><name><name>vSocks5Init</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error sending to proxy"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>pchRet1</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet1</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Socks5() connect to %s:%d failed: InterruptibleRecv() timeout or other failure\n"</literal></expr></argument>, <argument><expr><name>strDest</name></expr></argument>, <argument><expr><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>pchRet1</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>!=</operator> <name><name>SOCKSVersion</name><operator>::</operator><name>SOCKS5</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Proxy failed to initialize"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>pchRet1</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>==</operator> <name><name>SOCKS5Method</name><operator>::</operator><name>USER_PASS</name></name> <operator>&amp;&amp;</operator> <name>auth</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Perform username/password authentication (as described in RFC1929)</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>vAuth</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>vAuth</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="number">0x01</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Current (and only) version of user/pass subnegotiation</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>auth</name><operator>-&gt;</operator><name>username</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">255</literal> <operator>||</operator> <call><name><name>auth</name><operator>-&gt;</operator><name>password</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">255</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Proxy username or password too long"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>vAuth</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>auth</name><operator>-&gt;</operator><name>username</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vAuth</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vAuth</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>auth</name><operator>-&gt;</operator><name>username</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>auth</name><operator>-&gt;</operator><name>username</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vAuth</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>auth</name><operator>-&gt;</operator><name>password</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vAuth</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vAuth</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>auth</name><operator>-&gt;</operator><name>password</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>auth</name><operator>-&gt;</operator><name>password</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>send</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator><operator>)</operator><call><name><name>vAuth</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vAuth</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>MSG_NOSIGNAL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <operator>(</operator><name>ssize_t</name><operator>)</operator><call><name><name>vAuth</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error sending authentication to proxy"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>PROXY</name></name></expr></argument>, <argument><expr><literal type="string">"SOCKS5 sending proxy authentication %s:%s\n"</literal></expr></argument>, <argument><expr><name><name>auth</name><operator>-&gt;</operator><name>username</name></name></expr></argument>, <argument><expr><name><name>auth</name><operator>-&gt;</operator><name>password</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>pchRetA</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>(</operator><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRetA</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error reading proxy authentication response"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>pchRetA</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>!=</operator> <literal type="number">0x01</literal> <operator>||</operator> <name><name>pchRetA</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>!=</operator> <literal type="number">0x00</literal></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Proxy authentication unsuccessful"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>pchRet1</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>==</operator> <name><name>SOCKS5Method</name><operator>::</operator><name>NOAUTH</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Perform no authentication</comment>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Proxy requested wrong authentication method %02x"</literal></expr></argument>, <argument><expr><name><name>pchRet1</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>vSocks5</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKSVersion</name><operator>::</operator><name>SOCKS5</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// VER protocol version</comment>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKS5Command</name><operator>::</operator><name>CONNECT</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// CMD CONNECT</comment>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="number">0x00</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// RSV Reserved must be 0</comment>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>SOCKS5Atyp</name><operator>::</operator><name>DOMAINNAME</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// ATYP DOMAINNAME</comment>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>strDest</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Length&lt;=255 is checked at beginning of function</comment>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vSocks5</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>strDest</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>strDest</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>port</name> <operator>&gt;&gt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>vSocks5</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>port</name> <operator>&gt;&gt;</operator> <literal type="number">0</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>send</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator><operator>)</operator><call><name><name>vSocks5</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vSocks5</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>MSG_NOSIGNAL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <operator>(</operator><name>ssize_t</name><operator>)</operator><call><name><name>vSocks5</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error sending to proxy"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>pchRet2</name><index>[<expr><literal type="number">4</literal></expr>]</index></name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet2</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>recvr</name> <operator>==</operator> <name><name>IntrRecvError</name><operator>::</operator><name>Timeout</name></name></expr>)</condition> <block>{<block_content>
+            <comment type="block">/* If a timeout happens here, this effectively means we timed out while connecting
+             * to the remote node. This is very common for Tor, so do not print an
+             * error message. */</comment>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error while reading proxy response"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>pchRet2</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>!=</operator> <name><name>SOCKSVersion</name><operator>::</operator><name>SOCKS5</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Proxy failed to accept request"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>pchRet2</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>!=</operator> <name><name>SOCKS5Reply</name><operator>::</operator><name>SUCCEEDED</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Failures to connect to a peer that are not proxy errors</comment>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Socks5() connect to %s:%d failed: %s\n"</literal></expr></argument>, <argument><expr><name>strDest</name></expr></argument>, <argument><expr><name>port</name></expr></argument>, <argument><expr><call><name>Socks5ErrorString</name><argument_list>(<argument><expr><name><name>pchRet2</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>pchRet2</name><index>[<expr><literal type="number">2</literal></expr>]</index></name> <operator>!=</operator> <literal type="number">0x00</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Reserved field must be 0</comment>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error: malformed proxy response"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>pchRet3</name><index>[<expr><literal type="number">256</literal></expr>]</index></name></decl>;</decl_stmt>
+    <switch>switch <condition>(<expr><name><name>pchRet2</name><index>[<expr><literal type="number">3</literal></expr>]</index></name></expr>)</condition>
+    <block>{<block_content>
+        <case>case <expr><name><name>SOCKS5Atyp</name><operator>::</operator><name>IPV4</name></name></expr>:</case> <expr_stmt><expr><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet3</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+        <case>case <expr><name><name>SOCKS5Atyp</name><operator>::</operator><name>IPV6</name></name></expr>:</case> <expr_stmt><expr><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet3</name></expr></argument>, <argument><expr><literal type="number">16</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+        <case>case <expr><name><name>SOCKS5Atyp</name><operator>::</operator><name>DOMAINNAME</name></name></expr>:</case>
+        <block>{<block_content>
+            <expr_stmt><expr><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet3</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>recvr</name> <operator>!=</operator> <name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr>)</condition> <block>{<block_content>
+                <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error reading from proxy"</literal></expr></argument>)</argument_list></call></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>nRecv</name> <init>= <expr><name><name>pchRet3</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet3</name></expr></argument>, <argument><expr><name>nRecv</name></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        </block_content>}</block>
+        <default>default:</default> <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error: malformed proxy response"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></switch>
+    <if_stmt><if>if <condition>(<expr><name>recvr</name> <operator>!=</operator> <name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error reading from proxy"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>recvr</name> <operator>=</operator> <call><name>InterruptibleRecv</name><argument_list>(<argument><expr><name>pchRet3</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>, <argument><expr><name>SOCKS5_RECV_TIMEOUT</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <name><name>IntrRecvError</name><operator>::</operator><name>OK</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"Error reading from proxy"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"SOCKS5 connected %s\n"</literal></expr></argument>, <argument><expr><name>strDest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Try to create a socket file descriptor with specific properties in the
+ * communications domain (address family) of the specified service.
+ *
+ * For details on the desired properties, see the inline comments in the source
+ * code.
+ */</comment>
+<function><type><name>SOCKET</name></type> <name>CreateSocket</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CService</name> <modifier>&amp;</modifier></type><name>addrConnect</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Create a sockaddr from the specified service.</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>sockaddr_storage</name></name></type> <name>sockaddr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>socklen_t</name></type> <name>len</name> <init>= <expr><sizeof>sizeof<argument_list>(<argument><expr><name>sockaddr</name></expr></argument>)</argument_list></sizeof></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>addrConnect</name><operator>.</operator><name>GetSockAddr</name></name><argument_list>(<argument><expr><operator>(</operator>struct <name>sockaddr</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>sockaddr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>len</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Cannot create socket for %s: unsupported network\n"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>INVALID_SOCKET</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Create a TCP socket in the address family of the specified service.</comment>
+    <decl_stmt><decl><type><name>SOCKET</name></type> <name>hSocket</name> <init>= <expr><call><name>socket</name><argument_list>(<argument><expr><operator>(</operator><operator>(</operator>struct <name>sockaddr</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>sockaddr</name><operator>)</operator><operator>-&gt;</operator><name>sa_family</name></expr></argument>, <argument><expr><name>SOCK_STREAM</name></expr></argument>, <argument><expr><name>IPPROTO_TCP</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>hSocket</name> <operator>==</operator> <name>INVALID_SOCKET</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>INVALID_SOCKET</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Ensure that waiting for I/O on this socket won't result in undefined</comment>
+    <comment type="line">// behavior.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsSelectableSocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>CloseSocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Cannot create connection: non-selectable socket created (fd &gt;= FD_SETSIZE ?)\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>INVALID_SOCKET</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>SO_NOSIGPIPE</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>int</name></type> <name>set</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Set the no-sigpipe option on the socket for BSD systems, other UNIXes</comment>
+    <comment type="line">// should use the MSG_NOSIGNAL flag for every send.</comment>
+    <expr_stmt><expr><call><name>setsockopt</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>SOL_SOCKET</name></expr></argument>, <argument><expr><name>SO_NOSIGPIPE</name></expr></argument>, <argument><expr><operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>set</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>int</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="line">// Set the no-delay option (disable Nagle's algorithm) on the TCP socket.</comment>
+    <expr_stmt><expr><call><name>SetSocketNoDelay</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Set the non-blocking option on the socket.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>SetSocketNonBlocking</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>CloseSocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"CreateSocket: Setting socket to non-blocking failed, error %s\n"</literal></expr></argument>, <argument><expr><call><name>NetworkErrorString</name><argument_list>(<argument><expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>hSocket</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><template>template<parameter_list>&lt;<parameter><type><name>typename</name><modifier>...</modifier></type> <name>Args</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>void</name></type> <name>LogConnectFailure</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>manual_connection</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>fmt</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Args</name><modifier>&amp;</modifier><modifier>...</modifier></type> <name>args</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>error_message</name> <init>= <expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name>fmt</name></expr></argument>, <argument><expr><name>args</name><operator>...</operator></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>manual_connection</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>error_message</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>error_message</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Try to connect to the specified service on the specified socket.
+ *
+ * @param addrConnect The service to which to connect.
+ * @param hSocket The socket on which to connect.
+ * @param nTimeout Wait this many milliseconds for the connection to be
+ *                 established.
+ * @param manual_connection Whether or not the connection was manually requested
+ *                          (e.g. through the addnode RPC)
+ *
+ * @returns Whether or not a connection was successfully made.
+ */</comment>
+<function><type><name>bool</name></type> <name>ConnectSocketDirectly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CService</name> <modifier>&amp;</modifier></type><name>addrConnect</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nTimeout</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>manual_connection</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Create a sockaddr from the specified service.</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>sockaddr_storage</name></name></type> <name>sockaddr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>socklen_t</name></type> <name>len</name> <init>= <expr><sizeof>sizeof<argument_list>(<argument><expr><name>sockaddr</name></expr></argument>)</argument_list></sizeof></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>hSocket</name> <operator>==</operator> <name>INVALID_SOCKET</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Cannot connect to %s: invalid socket\n"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>addrConnect</name><operator>.</operator><name>GetSockAddr</name></name><argument_list>(<argument><expr><operator>(</operator>struct <name>sockaddr</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>sockaddr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>len</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Cannot connect to %s: unsupported network\n"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Connect to the addrConnect service on the hSocket socket.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>connect</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>(</operator>struct <name>sockaddr</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>sockaddr</name></expr></argument>, <argument><expr><name>len</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nErr</name> <init>= <expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">// WSAEINVAL is here because some legacy version of winsock uses it</comment>
+        <if_stmt><if>if <condition>(<expr><name>nErr</name> <operator>==</operator> <name>WSAEINPROGRESS</name> <operator>||</operator> <name>nErr</name> <operator>==</operator> <name>WSAEWOULDBLOCK</name> <operator>||</operator> <name>nErr</name> <operator>==</operator> <name>WSAEINVAL</name></expr>)</condition>
+        <block>{<block_content>
+            <comment type="line">// Connection didn't actually fail, but is being established</comment>
+            <comment type="line">// asynchronously. Thus, use async I/O api (select/poll)</comment>
+            <comment type="line">// synchronously to check for successful connection with a timeout.</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_POLL</name></cpp:ifdef>
+            <decl_stmt><decl><type><name><name>struct</name> <name>pollfd</name></name></type> <name>pollfd</name> <init>= <expr><block>{}</block></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name><name>pollfd</name><operator>.</operator><name>fd</name></name> <operator>=</operator> <name>hSocket</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>pollfd</name><operator>.</operator><name>events</name></name> <operator>=</operator> <name>POLLIN</name> <operator>|</operator> <name>POLLOUT</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>nRet</name> <init>= <expr><call><name>poll</name><argument_list>(<argument><expr><operator>&amp;</operator><name>pollfd</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><name>nTimeout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+            <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>timeout</name> <init>= <expr><call><name>MillisToTimeval</name><argument_list>(<argument><expr><name>nTimeout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>fd_set</name></type> <name>fdset</name></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>FD_ZERO</name><argument_list>(<argument><expr><operator>&amp;</operator><name>fdset</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>FD_SET</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>fdset</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>nRet</name> <init>= <expr><call><name>select</name><argument_list>(<argument><expr><name>hSocket</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>fdset</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>timeout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+            <comment type="line">// Upon successful completion, both select and poll return the total</comment>
+            <comment type="line">// number of file descriptors that have been selected. A value of 0</comment>
+            <comment type="line">// indicates that the call timed out and no file descriptors have</comment>
+            <comment type="line">// been selected.</comment>
+            <if_stmt><if>if <condition>(<expr><name>nRet</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"connection to %s timeout\n"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><name>nRet</name> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"select() for %s failed: %s\n"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>NetworkErrorString</name><argument_list>(<argument><expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Even if the select/poll was successful, the connect might not</comment>
+            <comment type="line">// have been successful. The reason for this failure is hidden away</comment>
+            <comment type="line">// in the SO_ERROR for the socket in modern systems. We read it into</comment>
+            <comment type="line">// nRet here.</comment>
+            <decl_stmt><decl><type><name>socklen_t</name></type> <name>nRetSize</name> <init>= <expr><sizeof>sizeof<argument_list>(<argument><expr><name>nRet</name></expr></argument>)</argument_list></sizeof></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name>getsockopt</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>SOL_SOCKET</name></expr></argument>, <argument><expr><name>SO_ERROR</name></expr></argument>, <argument><expr><operator>(</operator><name>sockopt_arg_type</name><operator>)</operator><operator>&amp;</operator><name>nRet</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>nRetSize</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"getsockopt() for %s failed: %s\n"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>NetworkErrorString</name><argument_list>(<argument><expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><name>nRet</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LogConnectFailure</name><argument_list>(<argument><expr><name>manual_connection</name></expr></argument>, <argument><expr><literal type="string">"connect() to %s failed after select(): %s"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>NetworkErrorString</name><argument_list>(<argument><expr><name>nRet</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+        <if type="elseif">else if <condition>(<expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call> <operator>!=</operator> <name>WSAEISCONN</name></expr>)</condition><block type="pseudo"><block_content>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+        <if_stmt><else>else
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>LogConnectFailure</name><argument_list>(<argument><expr><name>manual_connection</name></expr></argument>, <argument><expr><literal type="string">"connect() to %s failed: %s"</literal></expr></argument>, <argument><expr><call><name><name>addrConnect</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>NetworkErrorString</name><argument_list>(<argument><expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></else></if_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>SetProxy</name><parameter_list>(<parameter><decl><type><name><name>enum</name> <name>Network</name></name></type> <name>net</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>proxyType</name> <modifier>&amp;</modifier></type><name>addrProxy</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>net</name> <operator>&gt;=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>net</name> <operator>&lt;</operator> <name>NET_MAX</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>addrProxy</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_proxyInfos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>proxyInfo</name><index>[<expr><name>net</name></expr>]</index></name> <operator>=</operator> <name>addrProxy</name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>GetProxy</name><parameter_list>(<parameter><decl><type><name><name>enum</name> <name>Network</name></name></type> <name>net</name></decl></parameter>, <parameter><decl><type><name>proxyType</name> <modifier>&amp;</modifier></type><name>proxyInfoOut</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>net</name> <operator>&gt;=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>net</name> <operator>&lt;</operator> <name>NET_MAX</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_proxyInfos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>proxyInfo</name><index>[<expr><name>net</name></expr>]</index></name><operator>.</operator><call><name>IsValid</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>proxyInfoOut</name> <operator>=</operator> <name><name>proxyInfo</name><index>[<expr><name>net</name></expr>]</index></name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Set the name proxy to use for all connections to nodes specified by a
+ * hostname. After setting this proxy, connecting to a node specified by a
+ * hostname won't result in a local lookup of said hostname, rather, connect to
+ * the node by asking the name proxy for a proxy connection to the hostname,
+ * effectively delegating the hostname lookup to the specified proxy.
+ *
+ * This delegation increases privacy for those who set the name proxy as they no
+ * longer leak their external hostname queries to their DNS servers.
+ *
+ * @returns Whether or not the operation succeeded.
+ *
+ * @note SOCKS5's support for UDP-over-SOCKS5 has been considered, but no SOCK5
+ *       server in common use (most notably Tor) actually implements UDP
+ *       support, and a DNS resolver is beyond the scope of this project.
+ */</comment>
+<function><type><name>bool</name></type> <name>SetNameProxy</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>proxyType</name> <modifier>&amp;</modifier></type><name>addrProxy</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>addrProxy</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_proxyInfos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nameProxy</name> <operator>=</operator> <name>addrProxy</name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>GetNameProxy</name><parameter_list>(<parameter><decl><type><name>proxyType</name> <modifier>&amp;</modifier></type><name>nameProxyOut</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_proxyInfos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>nameProxy</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>nameProxyOut</name> <operator>=</operator> <name>nameProxy</name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>HaveNameProxy</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_proxyInfos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>nameProxy</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsProxy</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CNetAddr</name> <modifier>&amp;</modifier></type><name>addr</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_proxyInfos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>NET_MAX</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>addr</name> <operator>==</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name><name>proxyInfo</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>proxy</name></expr></argument>)</argument_list></cast></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Connect to a specified destination service through a SOCKS5 proxy by first
+ * connecting to the SOCKS5 proxy.
+ *
+ * @param proxy The SOCKS5 proxy.
+ * @param strDest The destination service to which to connect.
+ * @param port The destination port.
+ * @param hSocket The socket on which to connect to the SOCKS5 proxy.
+ * @param nTimeout Wait this many milliseconds for the connection to the SOCKS5
+ *                 proxy to be established.
+ * @param outProxyConnectionFailed[out] Whether or not the connection to the
+ *                                      SOCKS5 proxy failed.
+ *
+ * @returns Whether or not the operation succeeded.
+ */</comment>
+<function><type><name>bool</name></type> <name>ConnectThroughProxy</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>proxyType</name> <modifier>&amp;</modifier></type><name>proxy</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strDest</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>port</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nTimeout</name></decl></parameter>, <parameter><decl><type><name>bool</name> <modifier>*</modifier></type><name>outProxyConnectionFailed</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// first connect to proxy server</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ConnectSocketDirectly</name><argument_list>(<argument><expr><name><name>proxy</name><operator>.</operator><name>proxy</name></name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>nTimeout</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>outProxyConnectionFailed</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><operator>*</operator><name>outProxyConnectionFailed</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// do socks negotiation</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>proxy</name><operator>.</operator><name>randomize_credentials</name></name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>ProxyCredentials</name></type> <name>random_auth</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic_int</name></name></type> <name>counter</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>random_auth</name><operator>.</operator><name>username</name></name> <operator>=</operator> <name><name>random_auth</name><operator>.</operator><name>password</name></name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%i"</literal></expr></argument>, <argument><expr><name>counter</name><operator>++</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>Socks5</name><argument_list>(<argument><expr><name>strDest</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>short</name><operator>)</operator><name>port</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>random_auth</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>Socks5</name><argument_list>(<argument><expr><name>strDest</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>short</name><operator>)</operator><name>port</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></else></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Parse and resolve a specified subnet string into the appropriate internal
+ * representation.
+ *
+ * @param pszName A string representation of a subnet of the form `network
+ *                address [ "/", ( CIDR-style suffix | netmask ) ]`(e.g.
+ *                `2001:db8::/32`, `192.0.2.0/255.255.255.0`, or `8.8.8.8`).
+ * @param ret The resulting internal representation of a subnet.
+ *
+ * @returns Whether the operation succeeded or not.
+ */</comment>
+<function><type><name>bool</name></type> <name>LookupSubNet</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><name>CSubNet</name><modifier>&amp;</modifier></type> <name>ret</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strSubnet</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>slash</name> <init>= <expr><call><name><name>strSubnet</name><operator>.</operator><name>find_last_of</name></name><argument_list>(<argument><expr><literal type="char">'/'</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list></name></type> <name>vIP</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strAddress</name> <init>= <expr><call><name><name>strSubnet</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>slash</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="line">// TODO: Use LookupHost(const char *, CNetAddr&amp;, bool) instead to just get</comment>
+    <comment type="line">//       one CNetAddr.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>LookupHost</name><argument_list>(<argument><expr><call><name><name>strAddress</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>vIP</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>CNetAddr</name></type> <name>network</name> <init>= <expr><name><name>vIP</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>slash</name> <operator>!=</operator> <name><name>strSubnet</name><operator>.</operator><name>npos</name></name></expr>)</condition>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strNetmask</name> <init>= <expr><call><name><name>strSubnet</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>slash</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int32_t</name></type> <name>n</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name>ParseInt32</name><argument_list>(<argument><expr><name>strNetmask</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>n</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <comment type="line">// If valid number, assume CIDR variable-length subnet masking</comment>
+                <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>CSubNet</name><argument_list>(<argument><expr><name>network</name></expr></argument>, <argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><call><name><name>ret</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>;</return>
+            </block_content>}</block></if>
+            <else>else <comment type="line">// If not a valid number, try full netmask syntax</comment>
+            <block>{<block_content>
+                <comment type="line">// Never allow lookup for netmask</comment>
+                <if_stmt><if>if <condition>(<expr><call><name>LookupHost</name><argument_list>(<argument><expr><call><name><name>strNetmask</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>vIP</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>CSubNet</name><argument_list>(<argument><expr><name>network</name></expr></argument>, <argument><expr><name><name>vIP</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <return>return <expr><call><name><name>ret</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>;</return>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if>
+        <else>else
+        <block>{<block_content>
+            <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>CSubNet</name><argument_list>(<argument><expr><name>network</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><call><name><name>ret</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>;</return>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>NetworkErrorString</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>err</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>wchar_t</name></type> <name><name>buf</name><index>[<expr><literal type="number">256</literal></expr>]</index></name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>buf</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><call><name>FormatMessageW</name><argument_list>(<argument><expr><name>FORMAT_MESSAGE_FROM_SYSTEM</name> <operator>|</operator> <name>FORMAT_MESSAGE_IGNORE_INSERTS</name> <operator>|</operator> <name>FORMAT_MESSAGE_MAX_WIDTH_MASK</name></expr></argument>,
+            <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>err</name></expr></argument>, <argument><expr><call><name>MAKELANGID</name><argument_list>(<argument><expr><name>LANG_NEUTRAL</name></expr></argument>, <argument><expr><name>SUBLANG_DEFAULT</name></expr></argument>)</argument_list></call></expr></argument>,
+            <argument><expr><name>buf</name></expr></argument>, <argument><expr><call><name>ARRAYSIZE</name><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <return>return <expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%s (%d)"</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>wstring_convert</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>codecvt_utf8_utf16</name><argument_list type="generic">&lt;<argument><expr><name>wchar_t</name></expr></argument>&gt;</argument_list></name></expr></argument>,<argument><expr><name>wchar_t</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>to_bytes</name><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>err</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if>
+    <else>else
+    <block>{<block_content>
+        <return>return <expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"Unknown error (%d)"</literal></expr></argument>, <argument><expr><name>err</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>NetworkErrorString</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>err</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>buf</name><index>[<expr><literal type="number">256</literal></expr>]</index></name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>buf</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <comment type="block">/* Too bad there are two incompatible implementations of the
+     * thread-safe strerror. */</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>s</name></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>STRERROR_R_CHAR_P</name></cpp:ifdef> <comment type="block">/* GNU variant can return a pointer outside the passed buffer */</comment>
+    <expr_stmt><expr><name>s</name> <operator>=</operator> <call><name>strerror_r</name><argument_list>(<argument><expr><name>err</name></expr></argument>, <argument><expr><name>buf</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else> <comment type="block">/* POSIX variant always returns message in buffer */</comment>
+    <expr_stmt><expr><name>s</name> <operator>=</operator> <name>buf</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>strerror_r</name><argument_list>(<argument><expr><name>err</name></expr></argument>, <argument><expr><name>buf</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>buf</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <return>return <expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%s (%d)"</literal></expr></argument>, <argument><expr><name>s</name></expr></argument>, <argument><expr><name>err</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><name>bool</name></type> <name>CloseSocket</name><parameter_list>(<parameter><decl><type><name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>hSocket</name> <operator>==</operator> <name>INVALID_SOCKET</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name>closesocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name>close</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <if_stmt><if>if <condition>(<expr><name>ret</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Socket close failed: %d. Error: %s\n"</literal></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>, <argument><expr><call><name>NetworkErrorString</name><argument_list>(<argument><expr><call><name>WSAGetLastError</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>hSocket</name> <operator>=</operator> <name>INVALID_SOCKET</name></expr>;</expr_stmt>
+    <return>return <expr><name>ret</name> <operator>!=</operator> <name>SOCKET_ERROR</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>SetSocketNonBlocking</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fNonBlocking</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>fNonBlocking</name></expr>)</condition> <block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+        <decl_stmt><decl><type><name>u_long</name></type> <name>nOne</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>ioctlsocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>FIONBIO</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>nOne</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition> <block>{<block_content>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+        <decl_stmt><decl><type><name>int</name></type> <name>fFlags</name> <init>= <expr><call><name>fcntl</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>F_GETFL</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>fcntl</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>F_SETFL</name></expr></argument>, <argument><expr><name>fFlags</name> <operator>|</operator> <name>O_NONBLOCK</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition> <block>{<block_content>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+        <decl_stmt><decl><type><name>u_long</name></type> <name>nZero</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>ioctlsocket</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>FIONBIO</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>nZero</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition> <block>{<block_content>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+        <decl_stmt><decl><type><name>int</name></type> <name>fFlags</name> <init>= <expr><call><name>fcntl</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>F_GETFL</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>fcntl</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>F_SETFL</name></expr></argument>, <argument><expr><name>fFlags</name> <operator>&amp;</operator> <operator>~</operator><name>O_NONBLOCK</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>SOCKET_ERROR</name></expr>)</condition> <block>{<block_content>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></else></if_stmt>
+
+<function><type><name>bool</name></type> <name>SetSocketNoDelay</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SOCKET</name><modifier>&amp;</modifier></type> <name>hSocket</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>set</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>rc</name> <init>= <expr><call><name>setsockopt</name><argument_list>(<argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>IPPROTO_TCP</name></expr></argument>, <argument><expr><name>TCP_NODELAY</name></expr></argument>, <argument><expr><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>set</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>int</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><name>rc</name> <operator>==</operator> <literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>InterruptSocks5</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>interrupt</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>interruptSocks5Recv</name> <operator>=</operator> <name>interrupt</name></expr>;</expr_stmt>
+</block_content>}</block></function></block_content></block></if></if_stmt></block_content></block></function>
+</unit>

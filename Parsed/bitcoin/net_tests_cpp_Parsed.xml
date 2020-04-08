@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/net_tests.cpp"><comment type="line">// Copyright (c) 2012-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;addrdb.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;addrman.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;clientversion.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;net.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netbase.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/memory.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+
+<class>class <name>CAddrManSerializationMock</name> <super_list>: <super><specifier>public</specifier> <name>CAddrMan</name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <function_decl><type><specifier>virtual</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>CDataStream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <specifier>const</specifier> = <literal type="number">0</literal>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Ensure that bucket placement is always the same for testing purposes.</comment>
+    <function><type><name>void</name></type> <name>MakeDeterministic</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>nKey</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>insecure_rand</name> <operator>=</operator> <call><name>FastRandomContext</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<class>class <name>CAddrManUncorrupted</name> <super_list>: <super><specifier>public</specifier> <name>CAddrManSerializationMock</name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <function><type><name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>CDataStream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>CAddrMan</name><operator>::</operator><name>Serialize</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<class>class <name>CAddrManCorrupted</name> <super_list>: <super><specifier>public</specifier> <name>CAddrManSerializationMock</name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <function><type><name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>CDataStream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier>
+    <block>{<block_content>
+        <comment type="line">// Produces corrupt output that claims addrman has 20 addrs when it only has one addr.</comment>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>nVersion</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>nVersion</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <operator>(</operator><operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator><literal type="number">32</literal><operator>)</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>nKey</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <literal type="number">10</literal></expr>;</expr_stmt> <comment type="line">// nNew</comment>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <literal type="number">10</literal></expr>;</expr_stmt> <comment type="line">// nTried</comment>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>nUBuckets</name> <init>= <expr><name>ADDRMAN_NEW_BUCKET_COUNT</name> <operator>^</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">30</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>nUBuckets</name></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>CService</name></type> <name>serv</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>Lookup</name><argument_list>(<argument><expr><literal type="string">"252.1.1.1"</literal></expr></argument>, <argument><expr><name>serv</name></expr></argument>, <argument><expr><literal type="number">7777</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CAddress</name></type> <name>addr</name> <init>= <expr><call><name>CAddress</name><argument_list>(<argument><expr><name>serv</name></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>CNetAddr</name></type> <name>resolved</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>LookupHost</name><argument_list>(<argument><expr><literal type="string">"252.2.2.2"</literal></expr></argument>, <argument><expr><name>resolved</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CAddrInfo</name></type> <name>info</name> <init>= <expr><call><name>CAddrInfo</name><argument_list>(<argument><expr><name>addr</name></expr></argument>, <argument><expr><name>resolved</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>info</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<function><type><specifier>static</specifier> <name>CDataStream</name></type> <name>AddrmanToStream</name><parameter_list>(<parameter><decl><type><name>CAddrManSerializationMock</name><modifier>&amp;</modifier></type> <name>_addrman</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssPeersIn</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>ssPeersIn</name> <operator>&lt;&lt;</operator> <call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>MessageStart</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>ssPeersIn</name> <operator>&lt;&lt;</operator> <name>_addrman</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>str</name> <init>= <expr><call><name><name>ssPeersIn</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vchData</name><argument_list>(<argument><expr><call><name><name>str</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>str</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><call><name>CDataStream</name><argument_list>(<argument><expr><name>vchData</name></expr></argument>, <argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<macro><name>BOOST_FIXTURE_TEST_SUITE</name><argument_list>(<argument>net_tests</argument>, <argument>BasicTestingSetup</argument>)</argument_list></macro>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>cnode_listen_port</argument>)</argument_list></macro>
+<block>{<block_content>
+    <comment type="line">// test default</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>short</name></type> <name>port</name> <init>= <expr><call><name>GetListenPort</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>port</name> <operator>==</operator> <call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetDefaultPort</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// test set port</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>short</name></type> <name>altPort</name> <init>= <expr><literal type="number">12345</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>gArgs</name><operator>.</operator><name>SoftSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-port"</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>to_string</name></name><argument_list>(<argument><expr><name>altPort</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>port</name> <operator>=</operator> <call><name>GetListenPort</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>port</name> <operator>==</operator> <name>altPort</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>caddrdb_read</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CAddrManUncorrupted</name></type> <name>addrmanUncorrupted</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>addrmanUncorrupted</name><operator>.</operator><name>MakeDeterministic</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>CService</name></type> <name>addr1</name></decl>, <decl><type ref="prev"/><name>addr2</name></decl>, <decl><type ref="prev"/><name>addr3</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>Lookup</name><argument_list>(<argument><expr><literal type="string">"250.7.1.1"</literal></expr></argument>, <argument><expr><name>addr1</name></expr></argument>, <argument><expr><literal type="number">8333</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>Lookup</name><argument_list>(<argument><expr><literal type="string">"250.7.2.2"</literal></expr></argument>, <argument><expr><name>addr2</name></expr></argument>, <argument><expr><literal type="number">9999</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>Lookup</name><argument_list>(<argument><expr><literal type="string">"250.7.3.3"</literal></expr></argument>, <argument><expr><name>addr3</name></expr></argument>, <argument><expr><literal type="number">9999</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Add three addresses to new table.</comment>
+    <decl_stmt><decl><type><name>CService</name></type> <name>source</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>Lookup</name><argument_list>(<argument><expr><literal type="string">"252.5.1.1"</literal></expr></argument>, <argument><expr><name>source</name></expr></argument>, <argument><expr><literal type="number">8333</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrmanUncorrupted</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><call><name>CAddress</name><argument_list>(<argument><expr><name>addr1</name></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>source</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrmanUncorrupted</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><call><name>CAddress</name><argument_list>(<argument><expr><name>addr2</name></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>source</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrmanUncorrupted</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><call><name>CAddress</name><argument_list>(<argument><expr><name>addr3</name></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>source</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Test that the de-serialization does not throw an exception.</comment>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssPeers1</name> <init>= <expr><call><name>AddrmanToStream</name><argument_list>(<argument><expr><name>addrmanUncorrupted</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>exceptionThrown</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAddrMan</name></type> <name>addrman1</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman1</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>pchMsgTmp</name><index>[<expr><literal type="number">4</literal></expr>]</index></name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssPeers1</name> <operator>&gt;&gt;</operator> <name>pchMsgTmp</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>ssPeers1</name> <operator>&gt;&gt;</operator> <name>addrman1</name></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>exceptionThrown</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman1</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>exceptionThrown</name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Test that CAddrDB::Read creates an addrman with the correct number of addrs.</comment>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssPeers2</name> <init>= <expr><call><name>AddrmanToStream</name><argument_list>(<argument><expr><name>addrmanUncorrupted</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CAddrMan</name></type> <name>addrman2</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman2</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>CAddrDB</name><operator>::</operator><name>Read</name></name><argument_list>(<argument><expr><name>addrman2</name></expr></argument>, <argument><expr><name>ssPeers2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman2</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>caddrdb_read_corrupted</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CAddrManCorrupted</name></type> <name>addrmanCorrupted</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>addrmanCorrupted</name><operator>.</operator><name>MakeDeterministic</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Test that the de-serialization of corrupted addrman throws an exception.</comment>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssPeers1</name> <init>= <expr><call><name>AddrmanToStream</name><argument_list>(<argument><expr><name>addrmanCorrupted</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>exceptionThrown</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAddrMan</name></type> <name>addrman1</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman1</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>pchMsgTmp</name><index>[<expr><literal type="number">4</literal></expr>]</index></name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssPeers1</name> <operator>&gt;&gt;</operator> <name>pchMsgTmp</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>ssPeers1</name> <operator>&gt;&gt;</operator> <name>addrman1</name></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>exceptionThrown</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+    <comment type="line">// Even through de-serialization failed addrman is not left in a clean state.</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman1</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>exceptionThrown</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Test that CAddrDB::Read leaves addrman in a clean state if de-serialization fails.</comment>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssPeers2</name> <init>= <expr><call><name>AddrmanToStream</name><argument_list>(<argument><expr><name>addrmanCorrupted</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CAddrMan</name></type> <name>addrman2</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman2</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>CAddrDB</name><operator>::</operator><name>Read</name></name><argument_list>(<argument><expr><name>addrman2</name></expr></argument>, <argument><expr><name>ssPeers2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>addrman2</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>cnode_simple_test</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>SOCKET</name></type> <name>hSocket</name> <init>= <expr><name>INVALID_SOCKET</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>NodeId</name></type> <name>id</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>height</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>in_addr</name></type> <name>ipv4Addr</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>ipv4Addr</name><operator>.</operator><name>s_addr</name></name> <operator>=</operator> <literal type="number">0xa0b0c001</literal></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr</name> <init>= <expr><call><name>CAddress</name><argument_list>(<argument><expr><call><name>CService</name><argument_list>(<argument><expr><name>ipv4Addr</name></expr></argument>, <argument><expr><literal type="number">7777</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>pszDest</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fInboundIn</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Test that fFeeler is false by default.</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name></expr></argument>&gt;</argument_list></name></type> <name>pnode1</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><name>height</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>pszDest</name></expr></argument>, <argument><expr><name>fInboundIn</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>pnode1</name><operator>-&gt;</operator><name>fInbound</name></name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>pnode1</name><operator>-&gt;</operator><name>fFeeler</name></name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>fInboundIn</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name></expr></argument>&gt;</argument_list></name></type> <name>pnode2</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><name>height</name></expr></argument>, <argument><expr><name>hSocket</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>pszDest</name></expr></argument>, <argument><expr><name>fInboundIn</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>pnode2</name><operator>-&gt;</operator><name>fInbound</name></name> <operator>==</operator> <literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>pnode2</name><operator>-&gt;</operator><name>fFeeler</name></name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<comment type="line">// prior to PR #14728, this test triggers an undefined behavior</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>ipv4_peer_with_ipv6_addrMe_test</argument>)</argument_list></macro>
+<block>{<block_content>
+    <comment type="line">// set up local addresses; all that's necessary to reproduce the bug is</comment>
+    <comment type="line">// that a normal IPv4 address is among the entries, but if this address is</comment>
+    <comment type="line">// !IsRoutable the undefined behavior is easier to trigger deterministically</comment>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_mapLocalHost</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>in_addr</name></type> <name>ipv4AddrLocal</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>ipv4AddrLocal</name><operator>.</operator><name>s_addr</name></name> <operator>=</operator> <literal type="number">0x0100007f</literal></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CNetAddr</name></type> <name>addr</name> <init>= <expr><call><name>CNetAddr</name><argument_list>(<argument><expr><name>ipv4AddrLocal</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>LocalServiceInfo</name></type> <name>lsi</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>lsi</name><operator>.</operator><name>nScore</name></name> <operator>=</operator> <literal type="number">23</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>lsi</name><operator>.</operator><name>nPort</name></name> <operator>=</operator> <literal type="number">42</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>mapLocalHost</name><index>[<expr><name>addr</name></expr>]</index></name> <operator>=</operator> <name>lsi</name></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <comment type="line">// create a peer with an IPv4 address</comment>
+    <decl_stmt><decl><type><name>in_addr</name></type> <name>ipv4AddrPeer</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>ipv4AddrPeer</name><operator>.</operator><name>s_addr</name></name> <operator>=</operator> <literal type="number">0xa0b0c001</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr</name> <init>= <expr><call><name>CAddress</name><argument_list>(<argument><expr><call><name>CService</name><argument_list>(<argument><expr><name>ipv4AddrPeer</name></expr></argument>, <argument><expr><literal type="number">7777</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name></expr></argument>&gt;</argument_list></name></type> <name>pnode</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>{}</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>{}</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pnode</name><operator>-&gt;</operator><name>fSuccessfullyConnected</name><operator>.</operator><name>store</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// the peer claims to be reaching us via IPv6</comment>
+    <decl_stmt><decl><type><name>in6_addr</name></type> <name>ipv6AddrLocal</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>memset</name><argument_list>(<argument><expr><name><name>ipv6AddrLocal</name><operator>.</operator><name>s6_addr</name></name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">16</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>ipv6AddrLocal</name><operator>.</operator><name>s6_addr</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0xcc</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addrLocal</name> <init>= <expr><call><name>CAddress</name><argument_list>(<argument><expr><call><name>CService</name><argument_list>(<argument><expr><name>ipv6AddrLocal</name></expr></argument>, <argument><expr><literal type="number">7777</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pnode</name><operator>-&gt;</operator><name>SetAddrLocal</name></name><argument_list>(<argument><expr><name>addrLocal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// before patch, this causes undefined behavior detectable with clang's -fsanitize=memory</comment>
+    <expr_stmt><expr><call><name>AdvertiseLocal</name><argument_list>(<argument><expr><operator>&amp;</operator><operator>*</operator><name>pnode</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// suppress no-checks-run warning; if this test fails, it's by triggering a sanitizer</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>LimitedAndReachable_Network</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_IPV6</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV6</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_IPV6</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV6</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_IPV6</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>LimitedAndReachable_NetworkCaseUnroutableAndInternal</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_UNROUTABLE</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_INTERNAL</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_UNROUTABLE</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_INTERNAL</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_UNROUTABLE</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Ignored for both networks</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>NET_INTERNAL</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<function><type><name>CNetAddr</name></type> <name>UtilBuildAddress</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>p1</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>p2</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>p3</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>p4</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>ip</name><index>[]</index></name> <init>= <expr><block>{<expr><name>p1</name></expr>, <expr><name>p2</name></expr>, <expr><name>p3</name></expr>, <expr><name>p4</name></expr>}</block></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>sockaddr_in</name></name></type> <name>sa</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>memset</name><argument_list>(<argument><expr><operator>&amp;</operator><name>sa</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>sockaddr_in</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// initialize the memory block</comment>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><operator>&amp;</operator><operator>(</operator><name><name>sa</name><operator>.</operator><name>sin_addr</name></name><operator>)</operator></expr></argument>, <argument><expr><operator>&amp;</operator><name>ip</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>ip</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>CNetAddr</name><argument_list>(<argument><expr><name><name>sa</name><operator>.</operator><name>sin_addr</name></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>LimitedAndReachable_CNetAddr</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CNetAddr</name></type> <name>addr</name> <init>= <expr><call><name>UtilBuildAddress</name><argument_list>(<argument><expr><literal type="number">0x001</literal></expr></argument>, <argument><expr><literal type="number">0x001</literal></expr></argument>, <argument><expr><literal type="number">0x001</literal></expr></argument>, <argument><expr><literal type="number">0x001</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt> <comment type="line">// 1.1.1.1</comment>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsReachable</name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// have to reset this, because this is stateful.</comment>
+</block_content>}</block>
+
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>LocalAddress_BasicLifecycle</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CService</name></type> <name>addr</name> <init>= <expr><call><name>CService</name><argument_list>(<argument><expr><call><name>UtilBuildAddress</name><argument_list>(<argument><expr><literal type="number">0x002</literal></expr></argument>, <argument><expr><literal type="number">0x001</literal></expr></argument>, <argument><expr><literal type="number">0x001</literal></expr></argument>, <argument><expr><literal type="number">0x001</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">1000</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt> <comment type="line">// 2.1.1.1:1000</comment>
+
+    <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_IPV4</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsLocal</name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>AddLocal</name><argument_list>(<argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="number">1000</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsLocal</name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>RemoveLocal</name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name>IsLocal</name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>PoissonNextSend</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><name>g_mock_deterministic_tests</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>now</name> <init>= <expr><literal type="number">5000</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>average_interval_seconds</name> <init>= <expr><literal type="number">600</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>auto</name></type> <name>poisson</name> <init>= <expr><call><name><operator>::</operator><name>PoissonNextSend</name></name><argument_list>(<argument><expr><name>now</name></expr></argument>, <argument><expr><name>average_interval_seconds</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name></type> <name>poisson_chrono</name> <init>= <expr><call><name><operator>::</operator><name>PoissonNextSend</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name><argument_list>{<argument><expr><name>now</name></expr></argument>}</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name></name><argument_list>{<argument><expr><name>average_interval_seconds</name></expr></argument>}</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><name>poisson</name></expr></argument>, <argument><expr><call><name><name>poisson_chrono</name><operator>.</operator><name>count</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>g_mock_deterministic_tests</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+</unit>

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/pow.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pow.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;arith_uint256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/block.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name>GetNextWorkRequired</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexLast</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockHeader</name> <modifier>*</modifier></type><name>pblock</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>pindexLast</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nProofOfWorkLimit</name> <init>= <expr><call><name>UintToArith256</name><argument_list>(<argument><expr><name><name>params</name><operator>.</operator><name>powLimit</name></name></expr></argument>)</argument_list></call><operator>.</operator><call><name>GetCompact</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Only change once per difficulty adjustment interval</comment>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name><name>pindexLast</name><operator>-&gt;</operator><name>nHeight</name></name><operator>+</operator><literal type="number">1</literal><operator>)</operator> <operator>%</operator> <call><name><name>params</name><operator>.</operator><name>DifficultyAdjustmentInterval</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>params</name><operator>.</operator><name>fPowAllowMinDifficultyBlocks</name></name></expr>)</condition>
+        <block>{<block_content>
+            <comment type="line">// Special difficulty rule for testnet:</comment>
+            <comment type="line">// If the new block's timestamp is more than 2* 10 minutes</comment>
+            <comment type="line">// then allow mining of a min-difficulty block.</comment>
+            <if_stmt><if>if <condition>(<expr><call><name><name>pblock</name><operator>-&gt;</operator><name>GetBlockTime</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <call><name><name>pindexLast</name><operator>-&gt;</operator><name>GetBlockTime</name></name><argument_list>()</argument_list></call> <operator>+</operator> <name><name>params</name><operator>.</operator><name>nPowTargetSpacing</name></name><operator>*</operator><literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name>nProofOfWorkLimit</name></expr>;</return></block_content></block></if>
+            <else>else
+            <block>{<block_content>
+                <comment type="line">// Return the last non-special-min-difficulty-rules-block</comment>
+                <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindex</name> <init>= <expr><name>pindexLast</name></expr></init></decl>;</decl_stmt>
+                <while>while <condition>(<expr><name><name>pindex</name><operator>-&gt;</operator><name>pprev</name></name> <operator>&amp;&amp;</operator> <name><name>pindex</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>%</operator> <call><name><name>params</name><operator>.</operator><name>DifficultyAdjustmentInterval</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>pindex</name><operator>-&gt;</operator><name>nBits</name></name> <operator>==</operator> <name>nProofOfWorkLimit</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><name>pindex</name> <operator>=</operator> <name><name>pindex</name><operator>-&gt;</operator><name>pprev</name></name></expr>;</expr_stmt></block_content></block></while>
+                <return>return <expr><name><name>pindex</name><operator>-&gt;</operator><name>nBits</name></name></expr>;</return>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <return>return <expr><name><name>pindexLast</name><operator>-&gt;</operator><name>nBits</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Go back by what we want to be 14 days worth of blocks</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>nHeightFirst</name> <init>= <expr><name><name>pindexLast</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <operator>(</operator><call><name><name>params</name><operator>.</operator><name>DifficultyAdjustmentInterval</name></name><argument_list>()</argument_list></call><operator>-</operator><literal type="number">1</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>nHeightFirst</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexFirst</name> <init>= <expr><call><name><name>pindexLast</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name>nHeightFirst</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>pindexFirst</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><call><name>CalculateNextWorkRequired</name><argument_list>(<argument><expr><name>pindexLast</name></expr></argument>, <argument><expr><call><name><name>pindexFirst</name><operator>-&gt;</operator><name>GetBlockTime</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name>CalculateNextWorkRequired</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexLast</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nFirstBlockTime</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>params</name><operator>.</operator><name>fPowNoRetargeting</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>pindexLast</name><operator>-&gt;</operator><name>nBits</name></name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Limit adjustment step</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nActualTimespan</name> <init>= <expr><call><name><name>pindexLast</name><operator>-&gt;</operator><name>GetBlockTime</name></name><argument_list>()</argument_list></call> <operator>-</operator> <name>nFirstBlockTime</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nActualTimespan</name> <operator>&lt;</operator> <name><name>params</name><operator>.</operator><name>nPowTargetTimespan</name></name><operator>/</operator><literal type="number">4</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nActualTimespan</name> <operator>=</operator> <name><name>params</name><operator>.</operator><name>nPowTargetTimespan</name></name><operator>/</operator><literal type="number">4</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nActualTimespan</name> <operator>&gt;</operator> <name><name>params</name><operator>.</operator><name>nPowTargetTimespan</name></name><operator>*</operator><literal type="number">4</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nActualTimespan</name> <operator>=</operator> <name><name>params</name><operator>.</operator><name>nPowTargetTimespan</name></name><operator>*</operator><literal type="number">4</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Retarget</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>arith_uint256</name></type> <name>bnPowLimit</name> <init>= <expr><call><name>UintToArith256</name><argument_list>(<argument><expr><name><name>params</name><operator>.</operator><name>powLimit</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>arith_uint256</name></type> <name>bnNew</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>bnNew</name><operator>.</operator><name>SetCompact</name></name><argument_list>(<argument><expr><name><name>pindexLast</name><operator>-&gt;</operator><name>nBits</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>bnNew</name> <operator>*=</operator> <name>nActualTimespan</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>bnNew</name> <operator>/=</operator> <name><name>params</name><operator>.</operator><name>nPowTargetTimespan</name></name></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>bnNew</name> <operator>&gt;</operator> <name>bnPowLimit</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>bnNew</name> <operator>=</operator> <name>bnPowLimit</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name><name>bnNew</name><operator>.</operator><name>GetCompact</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>CheckProofOfWork</name><parameter_list>(<parameter><decl><type><name>uint256</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBits</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fNegative</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fOverflow</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>arith_uint256</name></type> <name>bnTarget</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>bnTarget</name><operator>.</operator><name>SetCompact</name></name><argument_list>(<argument><expr><name>nBits</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>fNegative</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>fOverflow</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Check range</comment>
+    <if_stmt><if>if <condition>(<expr><name>fNegative</name> <operator>||</operator> <name>bnTarget</name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator> <name>fOverflow</name> <operator>||</operator> <name>bnTarget</name> <operator>&gt;</operator> <call><name>UintToArith256</name><argument_list>(<argument><expr><name><name>params</name><operator>.</operator><name>powLimit</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Check proof of work matches claimed amount</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>UintToArith256</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <name>bnTarget</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,529 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/optionsmodel.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/optionsmodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/bitcoinunits.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiconstants.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiutil.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/node.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include> <comment type="line">// For DEFAULT_SCRIPTCHECK_THREADS</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;net.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netbase.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;txdb.h&gt;</cpp:file></cpp:include> <comment type="line">// for -dbcache defaults</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QDebug&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QSettings&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QStringList&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>DEFAULT_GUI_PROXY_HOST</name> <init>= <expr><literal type="string">"127.0.0.1"</literal></expr></init></decl>;</decl_stmt>
+
+<function_decl><type><specifier>static</specifier> <specifier>const</specifier> <name>QString</name></type> <name>GetDefaultProxyAddress</name><parameter_list>()</parameter_list>;</function_decl>
+
+<constructor><name><name>OptionsModel</name><operator>::</operator><name>OptionsModel</name></name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Node</name></name><modifier>&amp;</modifier></type> <name>node</name></decl></parameter>, <parameter><decl><type><name>QObject</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>resetSettings</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QAbstractListModel</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>, <call><name>m_node</name><argument_list>(<argument><expr><name>node</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><call><name>Init</name><argument_list>(<argument><expr><name>resetSettings</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>addOverriddenOption</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>option</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>strOverriddenByCommandLine</name> <operator>+=</operator> <call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name>option</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"="</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><name>option</name></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" "</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// Writes all missing QSettings with their default values</comment>
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>Init</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>resetSettings</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>resetSettings</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>Reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>checkAndMigrate</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+
+    <comment type="line">// Ensure restart flag is unset on client startup</comment>
+    <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// These are Qt-only settings:</comment>
+
+    <comment type="line">// Window</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fHideTrayIcon"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fHideTrayIcon"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>fHideTrayIcon</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fHideTrayIcon"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>hideTrayIconChanged</name><argument_list>(<argument><expr><name>fHideTrayIcon</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeToTray"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeToTray"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>fMinimizeToTray</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeToTray"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><name>fHideTrayIcon</name></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeOnClose"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeOnClose"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>fMinimizeOnClose</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeOnClose"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Display</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"nDisplayUnit"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nDisplayUnit"</literal></expr></argument>, <argument><expr><name><name>BitcoinUnits</name><operator>::</operator><name>BTC</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>nDisplayUnit</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nDisplayUnit"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toInt</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"strThirdPartyTxUrls"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"strThirdPartyTxUrls"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>strThirdPartyTxUrls</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"strThirdPartyTxUrls"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fCoinControlFeatures"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fCoinControlFeatures"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>fCoinControlFeatures</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fCoinControlFeatures"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// These are shared with the core or have a command-line parameter</comment>
+    <comment type="line">// and we want command-line parameters to overwrite the GUI settings.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// If setting doesn't exist create it with defaults.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// If gArgs.SoftSetArg() or gArgs.SoftSetBoolArg() return false we were overridden</comment>
+    <comment type="line">// by command-line and show this in the UI.</comment>
+
+    <comment type="line">// Main</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"nPruneSize"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nPruneSize"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>SetPrune</name><argument_list>(<argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>, <argument><expr><operator>(</operator><name>qint64</name><operator>)</operator><name>nDefaultDbCache</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-dbcache"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>toStdString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-dbcache"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"nThreadsScriptVerif"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nThreadsScriptVerif"</literal></expr></argument>, <argument><expr><name>DEFAULT_SCRIPTCHECK_THREADS</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-par"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nThreadsScriptVerif"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>toStdString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-par"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"strDataDir"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"strDataDir"</literal></expr></argument>, <argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>getDefaultDataDirectory</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Wallet</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_WALLET</name></cpp:ifdef>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"bSpendZeroConfChange"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"bSpendZeroConfChange"</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-spendzeroconfchange"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"bSpendZeroConfChange"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-spendzeroconfchange"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="line">// Network</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fUseUPnP"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fUseUPnP"</literal></expr></argument>, <argument><expr><name>DEFAULT_UPNP</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-upnp"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseUPnP"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-upnp"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fListen"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fListen"</literal></expr></argument>, <argument><expr><name>DEFAULT_LISTEN</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-listen"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fListen"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-listen"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"addrProxy"</literal></expr></argument>, <argument><expr><call><name>GetDefaultProxyAddress</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <comment type="line">// Only try to set -proxy, if user has enabled fUseProxy</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-proxy"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>toStdString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-proxy"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if<condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-proxy"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>empty</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-proxy"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>, <argument><expr><call><name>GetDefaultProxyAddress</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <comment type="line">// Only try to set -onion, if user has enabled fUseSeparateProxyTor</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-onion"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>toStdString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-onion"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if<condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-onion"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>empty</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-onion"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Display</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-lang"</literal></expr></argument>, <argument><expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>toStdString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-lang"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name>language</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Helper function to copy contents from one QSettings to another.
+ * By using allKeys this also covers nested settings in a hierarchy.
+ */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CopySettings</name><parameter_list>(<parameter><decl><type><name>QSettings</name><modifier>&amp;</modifier></type> <name>dst</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QSettings</name><modifier>&amp;</modifier></type> <name>src</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>QString</name><modifier>&amp;</modifier></type> <name>key</name> <range>: <expr><call><name><name>src</name><operator>.</operator><name>allKeys</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>dst</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><call><name><name>src</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Back up a QSettings to an ini-formatted file. */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>BackupSettings</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>filename</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QSettings</name><modifier>&amp;</modifier></type> <name>src</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>qInfo</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"Backing up GUI settings to"</literal> <operator>&lt;&lt;</operator> <call><name><name>GUIUtil</name><operator>::</operator><name>boostPathToQString</name></name><argument_list>(<argument><expr><name>filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>dst</name><argument_list>(<argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>boostPathToQString</name></name><argument_list>(<argument><expr><name>filename</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>QSettings</name><operator>::</operator><name>IniFormat</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dst</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>CopySettings</name><argument_list>(<argument><expr><name>dst</name></expr></argument>, <argument><expr><name>src</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>Reset</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+
+    <comment type="line">// Backup old settings to chain-specific datadir for troubleshooting</comment>
+    <expr_stmt><expr><call><name>BackupSettings</name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="string">"guisettings.ini.bak"</literal></expr></argument>, <argument><expr><name>settings</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Save the strDataDir setting</comment>
+    <decl_stmt><decl><type><name>QString</name></type> <name>dataDir</name> <init>= <expr><call><name><name>GUIUtil</name><operator>::</operator><name>getDefaultDataDirectory</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>dataDir</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"strDataDir"</literal></expr></argument>, <argument><expr><name>dataDir</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Remove all entries from our QSettings object</comment>
+    <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Set strDataDir</comment>
+    <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"strDataDir"</literal></expr></argument>, <argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Set that this was reset</comment>
+    <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fReset"</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// default setting for OptionsModel::StartAtStartup - disabled</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>GUIUtil</name><operator>::</operator><name>GetStartOnSystemStartup</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>GUIUtil</name><operator>::</operator><name>SetStartOnSystemStartup</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>OptionsModel</name><operator>::</operator><name>rowCount</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type> <name>parent</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><name>OptionIDRowCount</name></expr>;</return>
+</block_content>}</block></function>
+
+<struct>struct <name>ProxySetting</name> <block>{<public type="default">
+    <decl_stmt><decl><type><name>bool</name></type> <name>is_set</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>ip</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>port</name></decl>;</decl_stmt>
+</public>}</block>;</struct>
+
+<function><type><specifier>static</specifier> <name>ProxySetting</name></type> <name>GetProxySetting</name><parameter_list>(<parameter><decl><type><name>QSettings</name> <modifier>&amp;</modifier></type><name>settings</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>name</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>ProxySetting</name></type> <name>default_val</name> <init>= <expr><block>{<expr><literal type="boolean">false</literal></expr>, <expr><name>DEFAULT_GUI_PROXY_HOST</name></expr>, <expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"%1"</literal></expr></argument>)</argument_list></call><operator>.</operator><macro><name>arg</name><argument_list>(<argument>DEFAULT_GUI_PROXY_PORT</argument>)</argument_list></macro></expr>}</block></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Handle the case that the setting is not set at all</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name>default_val</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// contains IP at index 0 and port at index 1</comment>
+    <decl_stmt><decl><type><name>QStringList</name></type> <name>ip_port</name> <init>= <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>split</name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>, <argument><expr><name><name>QString</name><operator>::</operator><name>SkipEmptyParts</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>ip_port</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">2</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><block>{<expr><literal type="boolean">true</literal></expr>, <expr><call><name><name>ip_port</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>, <macro><name>ip_port</name></macro><expr><operator>.</operator><macro><name>at</name><argument_list>(<argument><literal type="number">1</literal></argument>)</argument_list></macro></expr>}</block></expr>;</return>
+    </block_content>}</block></if> <else>else <block>{<block_content> <comment type="line">// Invalid: return default</comment>
+        <return>return <expr><name>default_val</name></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SetProxySetting</name><parameter_list>(<parameter><decl><type><name>QSettings</name> <modifier>&amp;</modifier></type><name>settings</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ProxySetting</name> <modifier>&amp;</modifier></type><name>ip_port</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>, <argument><expr><name><name>ip_port</name><operator>.</operator><name>ip</name></name> <operator>+</operator> <literal type="string">":"</literal> <operator>+</operator> <name><name>ip_port</name><operator>.</operator><name>port</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>const</specifier> <name>QString</name></type> <name>GetDefaultProxyAddress</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"%1:%2"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>DEFAULT_GUI_PROXY_HOST</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>DEFAULT_GUI_PROXY_PORT</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>SetPrune</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>prune</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>force</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>, <argument><expr><name>prune</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Convert prune size from GB to MiB:</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint64_t</name></type> <name>nPruneSizeMiB</name> <init>= <expr><operator>(</operator><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nPruneSize"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toInt</name><argument_list>()</argument_list></call> <operator>*</operator> <name>GB_BYTES</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">20</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>prune_val</name> <init>= <expr><ternary><condition><expr><name>prune</name></expr> ?</condition><then> <expr><call><name><name>std</name><operator>::</operator><name>to_string</name></name><argument_list>(<argument><expr><name>nPruneSizeMiB</name></expr></argument>)</argument_list></call></expr> </then><else>: <expr><literal type="string">"0"</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>force</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>m_node</name><operator>.</operator><name>forceSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-prune"</literal></expr></argument>, <argument><expr><name>prune_val</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-prune"</literal></expr></argument>, <argument><expr><name>prune_val</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>addOverriddenOption</name><argument_list>(<argument><expr><literal type="string">"-prune"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// read QSettings values and return them</comment>
+<function><type><name>QVariant</name></type> <name><name>OptionsModel</name><operator>::</operator><name>data</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type> <name>index</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>role</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><name>role</name> <operator>==</operator> <name><name>Qt</name><operator>::</operator><name>EditRole</name></name></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+        <switch>switch<condition>(<expr><call><name><name>index</name><operator>.</operator><name>row</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>StartAtStartup</name></expr>:</case>
+            <return>return <expr><call><name><name>GUIUtil</name><operator>::</operator><name>GetStartOnSystemStartup</name></name><argument_list>()</argument_list></call></expr>;</return>
+        <case>case <expr><name>HideTrayIcon</name></expr>:</case>
+            <return>return <expr><name>fHideTrayIcon</name></expr>;</return>
+        <case>case <expr><name>MinimizeToTray</name></expr>:</case>
+            <return>return <expr><name>fMinimizeToTray</name></expr>;</return>
+        <case>case <expr><name>MapPortUPnP</name></expr>:</case>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_UPNP</name></cpp:ifdef>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseUPnP"</literal></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <case>case <expr><name>MinimizeOnClose</name></expr>:</case>
+            <return>return <expr><name>fMinimizeOnClose</name></expr>;</return>
+
+        <comment type="line">// default proxy</comment>
+        <case>case <expr><name>ProxyUse</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>ProxyIP</name></expr>:</case>
+            <return>return <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>ip</name></expr>;</return>
+        <case>case <expr><name>ProxyPort</name></expr>:</case>
+            <return>return <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>port</name></expr>;</return>
+
+        <comment type="line">// separate Tor proxy</comment>
+        <case>case <expr><name>ProxyUseTor</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>ProxyIPTor</name></expr>:</case>
+            <return>return <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>ip</name></expr>;</return>
+        <case>case <expr><name>ProxyPortTor</name></expr>:</case>
+            <return>return <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>port</name></expr>;</return>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_WALLET</name></cpp:ifdef>
+        <case>case <expr><name>SpendZeroConfChange</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"bSpendZeroConfChange"</literal></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <case>case <expr><name>DisplayUnit</name></expr>:</case>
+            <return>return <expr><name>nDisplayUnit</name></expr>;</return>
+        <case>case <expr><name>ThirdPartyTxUrls</name></expr>:</case>
+            <return>return <expr><name>strThirdPartyTxUrls</name></expr>;</return>
+        <case>case <expr><name>Language</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>CoinControlFeatures</name></expr>:</case>
+            <return>return <expr><name>fCoinControlFeatures</name></expr>;</return>
+        <case>case <expr><name>Prune</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>PruneSize</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nPruneSize"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>DatabaseCache</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>ThreadsScriptVerif</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nThreadsScriptVerif"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Listen</name></expr>:</case>
+            <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fListen"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <default>default:</default>
+            <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return>
+        </block_content>}</block></switch>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// write QSettings values</comment>
+<function><type><name>bool</name></type> <name><name>OptionsModel</name><operator>::</operator><name>setData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type> <name>index</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QVariant</name> <modifier>&amp;</modifier></type> <name>value</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>role</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>successful</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt> <comment type="block">/* set to false on parse error */</comment>
+    <if_stmt><if>if<condition>(<expr><name>role</name> <operator>==</operator> <name><name>Qt</name><operator>::</operator><name>EditRole</name></name></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+        <switch>switch<condition>(<expr><call><name><name>index</name><operator>.</operator><name>row</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>StartAtStartup</name></expr>:</case>
+            <expr_stmt><expr><name>successful</name> <operator>=</operator> <call><name><name>GUIUtil</name><operator>::</operator><name>SetStartOnSystemStartup</name></name><argument_list>(<argument><expr><call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        <case>case <expr><name>HideTrayIcon</name></expr>:</case>
+            <expr_stmt><expr><name>fHideTrayIcon</name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fHideTrayIcon"</literal></expr></argument>, <argument><expr><name>fHideTrayIcon</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    		<decl_stmt><decl><type><name>Q_EMIT</name></type> <name>hideTrayIconChanged</name><argument_list>(<argument><expr><name>fHideTrayIcon</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <break>break;</break>
+        <case>case <expr><name>MinimizeToTray</name></expr>:</case>
+            <expr_stmt><expr><name>fMinimizeToTray</name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeToTray"</literal></expr></argument>, <argument><expr><name>fMinimizeToTray</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        <case>case <expr><name>MapPortUPnP</name></expr>:</case> <comment type="line">// core option - can be changed on-the-fly</comment>
+            <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fUseUPnP"</literal></expr></argument>, <argument><expr><call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>m_node</name><operator>.</operator><name>mapPort</name></name><argument_list>(<argument><expr><call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        <case>case <expr><name>MinimizeOnClose</name></expr>:</case>
+            <expr_stmt><expr><name>fMinimizeOnClose</name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fMinimizeOnClose"</literal></expr></argument>, <argument><expr><name>fMinimizeOnClose</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+
+        <comment type="line">// default proxy</comment>
+        <case>case <expr><name>ProxyUse</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fUseProxy"</literal></expr></argument>, <argument><expr><call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>ProxyIP</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>auto</name></type> <name>ip_port</name> <init>= <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>ip_port</name><operator>.</operator><name>is_set</name></name> <operator>||</operator> <name><name>ip_port</name><operator>.</operator><name>ip</name></name> <operator>!=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>ip_port</name><operator>.</operator><name>ip</name></name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>SetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrProxy"</literal></expr></argument>, <argument><expr><name>ip_port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block>
+        <break>break;</break>
+        <case>case <expr><name>ProxyPort</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>auto</name></type> <name>ip_port</name> <init>= <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>ip_port</name><operator>.</operator><name>is_set</name></name> <operator>||</operator> <name><name>ip_port</name><operator>.</operator><name>port</name></name> <operator>!=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>ip_port</name><operator>.</operator><name>port</name></name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>SetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrProxy"</literal></expr></argument>, <argument><expr><name>ip_port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block>
+        <break>break;</break>
+
+        <comment type="line">// separate Tor proxy</comment>
+        <case>case <expr><name>ProxyUseTor</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fUseSeparateProxyTor"</literal></expr></argument>, <argument><expr><call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>ProxyIPTor</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>auto</name></type> <name>ip_port</name> <init>= <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>ip_port</name><operator>.</operator><name>is_set</name></name> <operator>||</operator> <name><name>ip_port</name><operator>.</operator><name>ip</name></name> <operator>!=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>ip_port</name><operator>.</operator><name>ip</name></name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>SetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>, <argument><expr><name>ip_port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block>
+        <break>break;</break>
+        <case>case <expr><name>ProxyPortTor</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>auto</name></type> <name>ip_port</name> <init>= <expr><call><name>GetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>ip_port</name><operator>.</operator><name>is_set</name></name> <operator>||</operator> <name><name>ip_port</name><operator>.</operator><name>port</name></name> <operator>!=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>ip_port</name><operator>.</operator><name>port</name></name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>SetProxySetting</name><argument_list>(<argument><expr><name>settings</name></expr></argument>, <argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>, <argument><expr><name>ip_port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block>
+        <break>break;</break>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_WALLET</name></cpp:ifdef>
+        <case>case <expr><name>SpendZeroConfChange</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"bSpendZeroConfChange"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"bSpendZeroConfChange"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <case>case <expr><name>DisplayUnit</name></expr>:</case>
+            <expr_stmt><expr><call><name>setDisplayUnit</name><argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        <case>case <expr><name>ThirdPartyTxUrls</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><name>strThirdPartyTxUrls</name> <operator>!=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>strThirdPartyTxUrls</name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toString</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"strThirdPartyTxUrls"</literal></expr></argument>, <argument><expr><name>strThirdPartyTxUrls</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>Language</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"language"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>CoinControlFeatures</name></expr>:</case>
+            <expr_stmt><expr><name>fCoinControlFeatures</name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toBool</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fCoinControlFeatures"</literal></expr></argument>, <argument><expr><name>fCoinControlFeatures</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>coinControlFeaturesChanged</name><argument_list>(<argument><expr><name>fCoinControlFeatures</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <break>break;</break>
+        <case>case <expr><name>Prune</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"bPrune"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>PruneSize</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nPruneSize"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nPruneSize"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>DatabaseCache</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>ThreadsScriptVerif</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nThreadsScriptVerif"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nThreadsScriptVerif"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>Listen</name></expr>:</case>
+            <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fListen"</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fListen"</literal></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setRestartRequired</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <default>default:</default>
+            <break>break;</break>
+        </block_content>}</block></switch>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>dataChanged</name><argument_list>(<argument><expr><name>index</name></expr></argument>, <argument><expr><name>index</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <return>return <expr><name>successful</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Updates current unit in memory, settings and emits displayUnitChanged(newUnit) signal */</comment>
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>setDisplayUnit</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QVariant</name> <modifier>&amp;</modifier></type><name>value</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>value</name><operator>.</operator><name>isNull</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>nDisplayUnit</name> <operator>=</operator> <call><name><name>value</name><operator>.</operator><name>toInt</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nDisplayUnit"</literal></expr></argument>, <argument><expr><name>nDisplayUnit</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>displayUnitChanged</name><argument_list>(<argument><expr><name>nDisplayUnit</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>setRestartRequired</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>fRequired</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+    <return>return <expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fRestartRequired"</literal></expr></argument>, <argument><expr><name>fRequired</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>OptionsModel</name><operator>::</operator><name>isRestartRequired</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+    <return>return <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fRestartRequired"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>OptionsModel</name><operator>::</operator><name>checkAndMigrate</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Migration of default values</comment>
+    <comment type="line">// Check if the QSettings container was already loaded with this client version</comment>
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name><name>strSettingsVersionKey</name><index>[]</index></name> <init>= <expr><literal type="string">"nSettingsVersion"</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>settingsVersion</name> <init>= <expr><ternary><condition><expr><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name>strSettingsVersionKey</name></expr></argument>)</argument_list></call></expr> ?</condition><then> <expr><call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><name>strSettingsVersionKey</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>toInt</name><argument_list>()</argument_list></call></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>settingsVersion</name> <operator>&lt;</operator> <name>CLIENT_VERSION</name></expr>)</condition>
+    <block>{<block_content>
+        <comment type="line">// -dbcache was bumped from 100 to 300 in 0.13</comment>
+        <comment type="line">// see https://github.com/bitcoin/bitcoin/pull/8273</comment>
+        <comment type="line">// force people to upgrade to the new value if they are using 100MB</comment>
+        <if_stmt><if>if <condition>(<expr><name>settingsVersion</name> <operator>&lt;</operator> <literal type="number">130000</literal> <operator>&amp;&amp;</operator> <call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toLongLong</name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">100</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"nDatabaseCache"</literal></expr></argument>, <argument><expr><operator>(</operator><name>qint64</name><operator>)</operator><name>nDefaultDbCache</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><name>strSettingsVersionKey</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Overwrite the 'addrProxy' setting in case it has been set to an illegal</comment>
+    <comment type="line">// default value (see issue #12623; PR #12650).</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"addrProxy"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>endsWith</name><argument_list>(<argument><expr><literal type="string">"%2"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"addrProxy"</literal></expr></argument>, <argument><expr><call><name>GetDefaultProxyAddress</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Overwrite the 'addrSeparateProxyTor' setting in case it has been set to an illegal</comment>
+    <comment type="line">// default value (see issue #12623; PR #12650).</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>settings</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call><operator>.</operator><call><name>endsWith</name><argument_list>(<argument><expr><literal type="string">"%2"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"addrSeparateProxyTor"</literal></expr></argument>, <argument><expr><call><name>GetDefaultProxyAddress</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+</unit>

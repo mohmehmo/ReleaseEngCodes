@@ -1,0 +1,448 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" revision="1.0.0" language="Java" filename="/home/mmm/Projects/bitcoin/src/secp256k1/src/java/org/bitcoin/NativeSecp256k1.java"><comment type="block">/*
+ * Copyright 2013 Google Inc.
+ * Copyright 2014-2016 the libsecp256k1 contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */</comment>
+
+<package>package <name><name>org</name><operator>.</operator><name>bitcoin</name></name>;</package>
+
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>ByteBuffer</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>nio</name><operator>.</operator><name>ByteOrder</name></name>;</import>
+
+<import>import <name><name>java</name><operator>.</operator><name>math</name><operator>.</operator><name>BigInteger</name></name>;</import>
+<import>import <name><name>com</name><operator>.</operator><name>google</name><operator>.</operator><name>common</name><operator>.</operator><name>base</name><operator>.</operator><name>Preconditions</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>concurrent</name><operator>.</operator><name>locks</name><operator>.</operator><name>Lock</name></name>;</import>
+<import>import <name><name>java</name><operator>.</operator><name>util</name><operator>.</operator><name>concurrent</name><operator>.</operator><name>locks</name><operator>.</operator><name>ReentrantReadWriteLock</name></name>;</import>
+<import>import static <name><name>org</name><operator>.</operator><name>bitcoin</name><operator>.</operator><name>NativeSecp256k1Util</name><operator>.</operator><name>*</name></name>;</import>
+
+<comment type="block" format="javadoc">/**
+ * &lt;p&gt;This class holds native methods to handle ECDSA verification.&lt;/p&gt;
+ *
+ * &lt;p&gt;You can find an example library that can be used for this at https://github.com/bitcoin/secp256k1&lt;/p&gt;
+ *
+ * &lt;p&gt;To build secp256k1 for use with bitcoinj, run
+ * `./configure --enable-jni --enable-experimental --enable-module-ecdh`
+ * and `make` then copy `.libs/libsecp256k1.so` to your system library path
+ * or point the JVM to the folder containing it with -Djava.library.path
+ * &lt;/p&gt;
+ */</comment>
+<class><specifier>public</specifier> class <name>NativeSecp256k1</name> <block>{
+
+    <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>final</specifier> <name>ReentrantReadWriteLock</name></type> <name>rwl</name> <init>= <expr><operator>new</operator> <call><name>ReentrantReadWriteLock</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>final</specifier> <name>Lock</name></type> <name>r</name> <init>= <expr><call><name><name>rwl</name><operator>.</operator><name>readLock</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>final</specifier> <name>Lock</name></type> <name>w</name> <init>= <expr><call><name><name>rwl</name><operator>.</operator><name>writeLock</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>private</specifier> <specifier>static</specifier> <name><name>ThreadLocal</name><argument_list type="generic">&lt;<argument><name>ByteBuffer</name></argument>&gt;</argument_list></name></type> <name>nativeECDSABuffer</name> <init>= <expr><operator>new</operator> <call><name><name>ThreadLocal</name><argument_list type="generic">&lt;<argument><name>ByteBuffer</name></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="javadoc">/**
+     * Verifies the given secp256k1 signature in native code.
+     * Calling when enabled == false is undefined (probably library not loaded)
+     *
+     * @param data The data which was signed, must be exactly 32 bytes
+     * @param signature The signature
+     * @param pub The public key which did the signing
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name>boolean</name></type> <name>verify</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>data</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>signature</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pub</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>data</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal> <operator>&amp;&amp;</operator> <name><name>signature</name><operator>.</operator><name>length</name></name> <operator>&lt;=</operator> <literal type="number">520</literal> <operator>&amp;&amp;</operator> <name><name>pub</name><operator>.</operator><name>length</name></name> <operator>&lt;=</operator> <literal type="number">520</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">520</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><literal type="number">520</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>signature</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>pub</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <return>return <expr><call><name>secp256k1_ecdsa_verify</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>, <argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>signature</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name><name>pub</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>;</return>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 Create an ECDSA signature.
+     *
+     * @param data Message hash, 32 bytes
+     * @param key Secret key, 32 bytes
+     *
+     * Return values
+     * @param sig byte array of signature
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>sign</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>data</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>sec</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>data</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal> <operator>&amp;&amp;</operator> <name><name>sec</name><operator>.</operator><name>length</name></name> <operator>&lt;=</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">32</literal> <operator>+</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><literal type="number">32</literal> <operator>+</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>sec</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_ecdsa_sign</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>, <argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>sigArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>sigLen</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>sigArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name>sigLen</name></expr></argument>, <argument><expr><literal type="string">"Got bad signature length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><ternary><condition><expr><name>retVal</name> <operator>==</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><operator>new</operator> <name><name>byte</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> </then><else>: <expr><name>sigArr</name></expr></else></ternary></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 Seckey Verify - returns 1 if valid, 0 if invalid
+     *
+     * @param seckey ECDSA Secret key, 32 bytes
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name>boolean</name></type> <name>secKeyVerify</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>seckey</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>seckey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>seckey</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>seckey</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>seckey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <return>return <expr><call><name>secp256k1_ec_seckey_verify</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>,<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>;</return>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+    </block_content>}</block></function>
+
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 Compute Pubkey - computes public key from secret key
+     *
+     * @param seckey ECDSA Secret key, 32 bytes
+     *
+     * Return values
+     * @param pubkey ECDSA Public key, 33 or 65 bytes
+     */</comment>
+    <comment type="line">//TODO add a 'compressed' arg</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>computePubkey</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>seckey</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>seckey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>seckey</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>seckey</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>seckey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_ec_pubkey_create</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>, <argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pubArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>pubLen</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>pubArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name>pubLen</name></expr></argument>, <argument><expr><literal type="string">"Got bad pubkey length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><ternary><condition><expr><name>retVal</name> <operator>==</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><operator>new</operator> <name><name>byte</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></then><else>: <expr><name>pubArr</name></expr></else></ternary></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 Cleanup - This destroys the secp256k1 context object
+     * This should be called at the end of the program for proper cleanup of the context.
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <specifier>synchronized</specifier> <name>void</name></type> <name>cleanup</name><parameter_list>()</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>w</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><call><name>secp256k1_destroy_context</name><argument_list>(<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>w</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+    </block_content>}</block></function>
+
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name>long</name></type> <name>cloneContext</name><parameter_list>()</parameter_list> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+       <try>try <block>{<block_content>
+        <return>return <expr><call><name>secp256k1_ctx_clone</name><argument_list>(<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+       </block_content>}</block> <finally>finally <block>{<block_content> <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block></finally></try>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 PrivKey Tweak-Mul - Tweak privkey by multiplying to it
+     *
+     * @param tweak some bytes to tweak with
+     * @param seckey 32-byte seckey
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>privKeyTweakMul</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>privkey</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>tweak</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>privkey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>privkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>privkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>privkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>tweak</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_privkey_tweak_mul</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>,<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>privArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>privLen</name> <init>= <expr><operator>(</operator><name>byte</name><operator>)</operator> <operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>privArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name>privLen</name></expr></argument>, <argument><expr><literal type="string">"Got bad pubkey length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name>retVal</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="string">"Failed return value check."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><name>privArr</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 PrivKey Tweak-Add - Tweak privkey by adding to it
+     *
+     * @param tweak some bytes to tweak with
+     * @param seckey 32-byte seckey
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>privKeyTweakAdd</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>privkey</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>tweak</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>privkey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>privkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>privkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>privkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>tweak</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_privkey_tweak_add</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>,<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>privArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>privLen</name> <init>= <expr><operator>(</operator><name>byte</name><operator>)</operator> <operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>privArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name>privLen</name></expr></argument>, <argument><expr><literal type="string">"Got bad pubkey length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name>retVal</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="string">"Failed return value check."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><name>privArr</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 PubKey Tweak-Add - Tweak pubkey by adding to it
+     *
+     * @param tweak some bytes to tweak with
+     * @param pubkey 32-byte seckey
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>pubKeyTweakAdd</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pubkey</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>tweak</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">33</literal> <operator>||</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">65</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>tweak</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_pubkey_tweak_add</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>,<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pubArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>pubLen</name> <init>= <expr><operator>(</operator><name>byte</name><operator>)</operator> <operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>pubArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name>pubLen</name></expr></argument>, <argument><expr><literal type="string">"Got bad pubkey length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name>retVal</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="string">"Failed return value check."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><name>pubArr</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 PubKey Tweak-Mul - Tweak pubkey by multiplying to it
+     *
+     * @param tweak some bytes to tweak with
+     * @param pubkey 32-byte seckey
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>pubKeyTweakMul</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pubkey</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>tweak</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">33</literal> <operator>||</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">65</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>+</operator> <name><name>tweak</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>tweak</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_pubkey_tweak_mul</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>,<argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pubArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>pubLen</name> <init>= <expr><operator>(</operator><name>byte</name><operator>)</operator> <operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>pubArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><name>pubLen</name></expr></argument>, <argument><expr><literal type="string">"Got bad pubkey length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name>retVal</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="string">"Failed return value check."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><name>pubArr</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 create ECDH secret - constant time ECDH calculation
+     *
+     * @param seckey byte array of secret key used in exponentiaion
+     * @param pubkey byte array of public key used in exponentiaion
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <name><name>byte</name><index>[]</index></name></type> <name>createECDHSecret</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>seckey</name></decl></parameter>, <parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>pubkey</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>seckey</name><operator>.</operator><name>length</name></name> <operator>&lt;=</operator> <literal type="number">32</literal> <operator>&amp;&amp;</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name> <operator>&lt;=</operator> <literal type="number">65</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">32</literal> <operator>+</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><literal type="number">32</literal> <operator>+</operator> <name><name>pubkey</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>seckey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>retByteArray</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <expr_stmt><expr><name>retByteArray</name> <operator>=</operator> <call><name>secp256k1_ecdh</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>, <argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>pubkey</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>r</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+
+        <decl_stmt><decl><type><name><name>byte</name><index>[]</index></name></type> <name>resArr</name> <init>= <expr><name><name>retByteArray</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>retVal</name> <init>= <expr><operator>new</operator> <call><name>BigInteger</name><argument_list>(<argument><expr><operator>new</operator> <name><name>byte</name><index>[]</index></name> <block>{ <expr><name><name>retByteArray</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr> }</block></expr></argument>)</argument_list></call><operator>.</operator><call><name>intValue</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name><name>resArr</name><operator>.</operator><name>length</name></name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>, <argument><expr><literal type="string">"Got bad result length."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>assertEquals</name><argument_list>(<argument><expr><name>retVal</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="string">"Failed return value check."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><name>resArr</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="javadoc">/**
+     * libsecp256k1 randomize - updates the context randomization
+     *
+     * @param seed 32-byte random seed
+     */</comment>
+    <function><type><specifier>public</specifier> <specifier>static</specifier> <specifier>synchronized</specifier> <name>boolean</name></type> <name>randomize</name><parameter_list>(<parameter><decl><type><name><name>byte</name><index>[]</index></name></type> <name>seed</name></decl></parameter>)</parameter_list> <throws>throws <argument><expr><name>AssertFailException</name></expr></argument></throws><block>{<block_content>
+        <expr_stmt><expr><call><name><name>Preconditions</name><operator>.</operator><name>checkArgument</name></name><argument_list>(<argument><expr><name><name>seed</name><operator>.</operator><name>length</name></name> <operator>==</operator> <literal type="number">32</literal> <operator>||</operator> <name>seed</name> <operator>==</operator> <literal type="null">null</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name> <init>= <expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>byteBuff</name> <operator>==</operator> <literal type="null">null</literal> <operator>||</operator> <call><name><name>byteBuff</name><operator>.</operator><name>capacity</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name><name>seed</name><operator>.</operator><name>length</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>byteBuff</name> <operator>=</operator> <call><name><name>ByteBuffer</name><operator>.</operator><name>allocateDirect</name></name><argument_list>(<argument><expr><name><name>seed</name><operator>.</operator><name>length</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>order</name></name><argument_list>(<argument><expr><call><name><name>ByteOrder</name><operator>.</operator><name>nativeOrder</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>nativeECDSABuffer</name><operator>.</operator><name>set</name></name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>rewind</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>byteBuff</name><operator>.</operator><name>put</name></name><argument_list>(<argument><expr><name>seed</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>w</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <try>try <block>{<block_content>
+          <return>return <expr><call><name>secp256k1_context_randomize</name><argument_list>(<argument><expr><name>byteBuff</name></expr></argument>, <argument><expr><call><name><name>Secp256k1Context</name><operator>.</operator><name>getContext</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>;</return>
+        </block_content>}</block> <finally>finally <block>{<block_content>
+          <expr_stmt><expr><call><name><name>w</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></finally></try>
+    </block_content>}</block></function>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name>long</name></type> <name>secp256k1_ctx_clone</name><parameter_list>(<parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name>int</name></type> <name>secp256k1_context_randomize</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_privkey_tweak_add</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_privkey_tweak_mul</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_pubkey_tweak_add</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>pubLen</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_pubkey_tweak_mul</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>pubLen</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name>void</name></type> <name>secp256k1_destroy_context</name><parameter_list>(<parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name>int</name></type> <name>secp256k1_ecdsa_verify</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>sigLen</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>pubLen</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_ecdsa_sign</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name>int</name></type> <name>secp256k1_ec_seckey_verify</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_ec_pubkey_create</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_ec_pubkey_parse</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>inputLen</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><specifier>private</specifier> <specifier>static</specifier> <specifier>native</specifier> <name><name>byte</name><index>[]</index><index>[]</index></name></type> <name>secp256k1_ecdh</name><parameter_list>(<parameter><decl><type><name>ByteBuffer</name></type> <name>byteBuff</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>context</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>inputLen</name></decl></parameter>)</parameter_list>;</function_decl>
+
+}</block></class>
+</unit>

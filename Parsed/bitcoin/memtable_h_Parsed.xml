@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/leveldb/db/memtable.h"><comment type="line">// Copyright (c) 2011 The LevelDB Authors. All rights reserved.</comment>
+<comment type="line">// Use of this source code is governed by a BSD-style license that can be</comment>
+<comment type="line">// found in the LICENSE file. See the AUTHORS file for names of contributors.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>STORAGE_LEVELDB_DB_MEMTABLE_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORAGE_LEVELDB_DB_MEMTABLE_H_</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"leveldb/db.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"db/dbformat.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"db/skiplist.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"util/arena.h"</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>leveldb</name> <block>{<block_content>
+
+<decl_stmt><decl><type><name>class</name></type> <name>InternalKeyComparator</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>Mutex</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>MemTableIterator</name></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>MemTable</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <comment type="line">// MemTables are reference counted.  The initial reference count</comment>
+  <comment type="line">// is zero and the caller must call Ref() at least once.</comment>
+  <function_decl><type><name>explicit</name></type> <name>MemTable</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>InternalKeyComparator</name><modifier>&amp;</modifier></type> <name>comparator</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Increase reference count.</comment>
+  <function><type><name>void</name></type> <name>Ref</name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><operator>++</operator><name>refs_</name></expr>;</expr_stmt> </block_content>}</block></function>
+
+  <comment type="line">// Drop reference count.  Delete if no more references exist.</comment>
+  <function><type><name>void</name></type> <name>Unref</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><operator>--</operator><name>refs_</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>refs_</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>refs_</name> <operator>&lt;=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <decl_stmt><decl><type><name>delete</name></type> <name>this</name></decl>;</decl_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <comment type="line">// Returns an estimate of the number of bytes of data in use by this</comment>
+  <comment type="line">// data structure. It is safe to call when MemTable is being modified.</comment>
+  <function_decl><type><name>size_t</name></type> <name>ApproximateMemoryUsage</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Return an iterator that yields the contents of the memtable.</comment>
+  <comment type="line">//</comment>
+  <comment type="line">// The caller must ensure that the underlying MemTable remains live</comment>
+  <comment type="line">// while the returned iterator is live.  The keys returned by this</comment>
+  <comment type="line">// iterator are internal keys encoded by AppendInternalKey in the</comment>
+  <comment type="line">// db/format.{h,cc} module.</comment>
+  <function_decl><type><name>Iterator</name><modifier>*</modifier></type> <name>NewIterator</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Add an entry into memtable that maps key to value at the</comment>
+  <comment type="line">// specified sequence number and with the specified type.</comment>
+  <comment type="line">// Typically value will be empty if type==kTypeDeletion.</comment>
+  <function_decl><type><name>void</name></type> <name>Add</name><parameter_list>(<parameter><decl><type><name>SequenceNumber</name></type> <name>seq</name></decl></parameter>, <parameter><decl><type><name>ValueType</name></type> <name>type</name></decl></parameter>,
+           <parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>,
+           <parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>&amp;</modifier></type> <name>value</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// If memtable contains a value for key, store it in *value and return true.</comment>
+  <comment type="line">// If memtable contains a deletion for key, store a NotFound() error</comment>
+  <comment type="line">// in *status and return true.</comment>
+  <comment type="line">// Else, return false.</comment>
+  <decl_stmt><decl><type><name>bool</name></type> <name>Get</name><argument_list>(<argument><expr><specifier>const</specifier> <name>LookupKey</name><operator>&amp;</operator> <name>key</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>*</operator> <name>value</name></expr></argument>, <argument><expr><name>Status</name><operator>*</operator> <name>s</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+ <label><name>private</name>:</label>
+  <expr_stmt><expr><operator>~</operator><call><name>MemTable</name><argument_list>()</argument_list></call></expr>;</expr_stmt>  <comment type="line">// Private since only Unref() should be used to delete it</comment>
+
+  <struct>struct <name>KeyComparator</name> <block>{
+    <decl_stmt><decl><type><specifier>const</specifier> <name>InternalKeyComparator</name></type> <name>comparator</name></decl>;</decl_stmt>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>KeyComparator</name><argument_list>(<argument><expr><specifier>const</specifier> <name>InternalKeyComparator</name><operator>&amp;</operator> <name>c</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>comparator</name><argument_list>(<argument>c</argument>)</argument_list></macro> <block>{ }</block>
+    <name>int</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>char</name><operator>*</operator> <name>b</name><operator>)</operator> <specifier>const</specifier></expr>;</expr_stmt>
+  }</block>;</struct>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>MemTableIterator</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>MemTableBackwardIterator</name></decl>;</decl_stmt>
+
+  <typedef>typedef <type><name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>char</name><modifier>*</modifier></expr></argument>, <argument><expr><name>KeyComparator</name></expr></argument>&gt;</argument_list></name></type> <name>Table</name>;</typedef>
+
+  <decl_stmt><decl><type><name>KeyComparator</name></type> <name>comparator_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>int</name></type> <name>refs_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>Arena</name></type> <name>arena_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>Table</name></type> <name>table_</name></decl>;</decl_stmt>
+
+  <comment type="line">// No copying allowed</comment>
+  <expr_stmt><expr><call><name>MemTable</name><argument_list>(<argument><expr><specifier>const</specifier> <name>MemTable</name><operator>&amp;</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>void</name></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>MemTable</name><operator>&amp;</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+</block_content>}</block></decl></decl_stmt>  <comment type="line">// namespace leveldb</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// STORAGE_LEVELDB_DB_MEMTABLE_H_</comment>
+</unit>

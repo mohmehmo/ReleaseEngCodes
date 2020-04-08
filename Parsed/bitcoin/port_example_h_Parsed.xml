@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/leveldb/port/port_example.h"><comment type="line">// Copyright (c) 2011 The LevelDB Authors. All rights reserved.</comment>
+<comment type="line">// Use of this source code is governed by a BSD-style license that can be</comment>
+<comment type="line">// found in the LICENSE file. See the AUTHORS file for names of contributors.</comment>
+<comment type="line">//</comment>
+<comment type="line">// This file contains the specification, but not the implementations,</comment>
+<comment type="line">// of the types/operations/etc. that should be defined by a platform</comment>
+<comment type="line">// specific port_&lt;platform&gt;.h file.  Use this file as a reference for</comment>
+<comment type="line">// how to port this package to a new platform.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>STORAGE_LEVELDB_PORT_PORT_EXAMPLE_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORAGE_LEVELDB_PORT_PORT_EXAMPLE_H_</name></cpp:macro></cpp:define>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>leveldb</name> <block>{<block_content>
+<decl_stmt><decl><type><name>namespace</name></type> <name>port</name> <block>{<block_content>
+
+<comment type="line">// TODO(jorlow): Many of these belong more in the environment class rather than</comment>
+<comment type="line">//               here. We should try moving them and see if it affects perf.</comment>
+
+<comment type="line">// The following boolean constant must be true on a little-endian machine</comment>
+<comment type="line">// and false otherwise.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>bool</name></type> <name>kLittleEndian</name> <init>= <expr><name>true</name></expr></init></decl> <comment type="block">/* or some other expression */</comment>;</decl_stmt>
+
+<comment type="line">// ------------------ Threading -------------------</comment>
+
+<comment type="line">// A Mutex represents an exclusive lock.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>Mutex</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <expr_stmt><expr><call><name>Mutex</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><operator>~</operator><call><name>Mutex</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// Lock the mutex.  Waits until other lockers have exited.</comment>
+  <comment type="line">// Will deadlock if the mutex is already locked by this thread.</comment>
+  <function_decl><type><name>void</name></type> <name>Lock</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Unlock the mutex.</comment>
+  <comment type="line">// REQUIRES: This mutex was locked by this thread.</comment>
+  <function_decl><type><name>void</name></type> <name>Unlock</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Optionally crash if this thread does not hold this mutex.</comment>
+  <comment type="line">// The implementation must be fast, especially if NDEBUG is</comment>
+  <comment type="line">// defined.  The implementation is allowed to skip all checks.</comment>
+  <function_decl><type><name>void</name></type> <name>AssertHeld</name><parameter_list>()</parameter_list>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CondVar</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <function_decl><type><name>explicit</name></type> <name>CondVar</name><parameter_list>(<parameter><decl><type><name>Mutex</name><modifier>*</modifier></type> <name>mu</name></decl></parameter>)</parameter_list>;</function_decl>
+  <expr_stmt><expr><operator>~</operator><call><name>CondVar</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// Atomically release *mu and block on this condition variable until</comment>
+  <comment type="line">// either a call to SignalAll(), or a call to Signal() that picks</comment>
+  <comment type="line">// this thread to wakeup.</comment>
+  <comment type="line">// REQUIRES: this thread holds *mu</comment>
+  <function_decl><type><name>void</name></type> <name>Wait</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// If there are some threads waiting, wake up at least one of them.</comment>
+  <function_decl><type><name>void</name></type> <name>Signal</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Wake up all waiting threads.</comment>
+  <function_decl><type><name>void</name></type> <name>SignallAll</name><parameter_list>()</parameter_list>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Thread-safe initialization.</comment>
+<comment type="line">// Used as follows:</comment>
+<comment type="line">//      static port::OnceType init_control = LEVELDB_ONCE_INIT;</comment>
+<comment type="line">//      static void Initializer() { ... do something ...; }</comment>
+<comment type="line">//      ...</comment>
+<comment type="line">//      port::InitOnce(&amp;init_control, &amp;Initializer);</comment>
+<typedef>typedef <type><name>intptr_t</name></type> <name>OnceType</name>;</typedef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LEVELDB_ONCE_INIT</name></cpp:macro> <cpp:value>0</cpp:value></cpp:define>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>void</name></type> <name>InitOnce</name><argument_list>(<argument><expr><name>port</name><operator>::</operator><name>OnceType</name><operator>*</operator></expr></argument>, <argument><expr><call><call><name>void</name> <argument_list>(<argument><expr><operator>*</operator><name>initializer</name></expr></argument>)</argument_list></call><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="line">// A type that holds a pointer that can be read or written atomically</comment>
+<comment type="line">// (i.e., without word-tearing.)</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>AtomicPointer</name> <block>{<block_content>
+ <label><name>private</name>:</label>
+  <decl_stmt><decl><type><name>intptr_t</name></type> <name>rep_</name></decl>;</decl_stmt>
+ <label><name>public</name>:</label>
+  <comment type="line">// Initialize to arbitrary value</comment>
+  <expr_stmt><expr><call><name>AtomicPointer</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// Initialize to hold v</comment>
+  <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>AtomicPointer</name><argument_list>(<argument><expr><name>void</name><operator>*</operator> <name>v</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>rep_</name><argument_list>(<argument>v</argument>)</argument_list></macro> <block>{ }</block>
+
+  <comment type="line">// Read and return the stored pointer with the guarantee that no</comment>
+  <comment type="line">// later memory access (read or write) by this thread can be</comment>
+  <comment type="line">// reordered ahead of this read.</comment>
+  <name>void</name><operator>*</operator> <macro><name>Acquire_Load</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+  <comment type="line">// Set v as the stored pointer with the guarantee that no earlier</comment>
+  <comment type="line">// memory access (read or write) by this thread can be reordered</comment>
+  <comment type="line">// after this store.</comment>
+  <function_decl><type><name>void</name></type> <name>Release_Store</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>v</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Read the stored pointer with no ordering guarantees.</comment>
+  <expr_stmt><expr><name>void</name><operator>*</operator> <macro><name>NoBarrier_Load</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+  <comment type="line">// Set va as the stored pointer with no ordering guarantees.</comment>
+  <function_decl><type><name>void</name></type> <name>NoBarrier_Store</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>v</name></decl></parameter>)</parameter_list>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// ------------------ Compression -------------------</comment>
+
+<comment type="line">// Store the snappy compression of "input[0,input_length-1]" in *output.</comment>
+<comment type="line">// Returns false if snappy is not supported by this port.</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>bool</name></type> <name>Snappy_Compress</name><argument_list>(<argument><expr><specifier>const</specifier> <name>char</name><operator>*</operator> <name>input</name></expr></argument>, <argument><expr><name>size_t</name> <name>input_length</name></expr></argument>,
+                            <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>*</operator> <name>output</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="line">// If input[0,input_length-1] looks like a valid snappy compressed</comment>
+<comment type="line">// buffer, store the size of the uncompressed data in *result and</comment>
+<comment type="line">// return true.  Else return false.</comment>
+<function_decl><type><specifier>extern</specifier> <name>bool</name></type> <name>Snappy_GetUncompressedLength</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>input</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>length</name></decl></parameter>,
+                                         <parameter><decl><type><name>size_t</name><modifier>*</modifier></type> <name>result</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// Attempt to snappy uncompress input[0,input_length-1] into *output.</comment>
+<comment type="line">// Returns true if successful, false if the input is invalid lightweight</comment>
+<comment type="line">// compressed data.</comment>
+<comment type="line">//</comment>
+<comment type="line">// REQUIRES: at least the first "n" bytes of output[] must be writable</comment>
+<comment type="line">// where "n" is the result of a successful call to</comment>
+<comment type="line">// Snappy_GetUncompressedLength.</comment>
+<function_decl><type><specifier>extern</specifier> <name>bool</name></type> <name>Snappy_Uncompress</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>input_data</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>input_length</name></decl></parameter>,
+                              <parameter><decl><type><name>char</name><modifier>*</modifier></type> <name>output</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// ------------------ Miscellaneous -------------------</comment>
+
+<comment type="line">// If heap profiling is not supported, returns false.</comment>
+<comment type="line">// Else repeatedly calls (*func)(arg, data, n) and then returns true.</comment>
+<comment type="line">// The concatenation of all "data[0,n-1]" fragments is the heap profile.</comment>
+<function_decl><type><specifier>extern</specifier> <name>bool</name></type> <name>GetHeapProfile</name><parameter_list>(<parameter><function_decl><type><name>void</name></type> (<modifier>*</modifier><name>func</name>)<parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><name>int</name></type></decl></parameter>)</parameter_list></function_decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>arg</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// Determine whether a working accelerated crc32 implementation exists</comment>
+<comment type="line">// Returns true if AcceleratedCRC32C is safe to call</comment>
+<function_decl><type><name>bool</name></type> <name>HasAcceleratedCRC32C</name><parameter_list>()</parameter_list>;</function_decl>
+
+<comment type="line">// Extend the CRC to include the first n bytes of buf.</comment>
+<comment type="line">//</comment>
+<comment type="line">// Returns zero if the CRC cannot be extended using acceleration, else returns</comment>
+<comment type="line">// the newly extended CRC value (which may also be zero).</comment>
+<function_decl><type><name>uint32_t</name></type> <name>AcceleratedCRC32C</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>crc</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>buf</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>;</function_decl>
+
+</block_content>}</block></decl></decl_stmt>  <comment type="line">// namespace port</comment>
+</block_content>}</block></decl></decl_stmt>  <comment type="line">// namespace leveldb</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// STORAGE_LEVELDB_PORT_PORT_EXAMPLE_H_</comment>
+</unit>

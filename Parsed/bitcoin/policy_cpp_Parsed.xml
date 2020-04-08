@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/policy/policy.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<comment type="line">// NOTE: This file is intended to be customised by the end user, and includes only local node policy logic</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/policy.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;coins.h&gt;</cpp:file></cpp:include>
+
+
+<function><type><name>CAmount</name></type> <name>GetDustThreshold</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CFeeRate</name><modifier>&amp;</modifier></type> <name>dustRelayFeeIn</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// "Dust" is defined in terms of dustRelayFee,</comment>
+    <comment type="line">// which has units satoshis-per-kilobyte.</comment>
+    <comment type="line">// If you'd pay more in fees than the value of the output</comment>
+    <comment type="line">// to spend something, then we consider it dust.</comment>
+    <comment type="line">// A typical spendable non-segwit txout is 34 bytes big, and will</comment>
+    <comment type="line">// need a CTxIn of at least 148 bytes to spend:</comment>
+    <comment type="line">// so dust is a spendable txout less than</comment>
+    <comment type="line">// 182*dustRelayFee/1000 (in satoshis).</comment>
+    <comment type="line">// 546 satoshis at the default rate of 3000 sat/kB.</comment>
+    <comment type="line">// A typical spendable segwit txout is 31 bytes big, and will</comment>
+    <comment type="line">// need a CTxIn of at least 67 bytes to spend:</comment>
+    <comment type="line">// so dust is a spendable txout less than</comment>
+    <comment type="line">// 98*dustRelayFee/1000 (in satoshis).</comment>
+    <comment type="line">// 294 satoshis at the default rate of 3000 sat/kB.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>txout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>IsUnspendable</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>nSize</name> <init>= <expr><call><name>GetSerializeSize</name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>witnessversion</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>witnessprogram</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>txout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>IsWitnessProgram</name></name><argument_list>(<argument><expr><name>witnessversion</name></expr></argument>, <argument><expr><name>witnessprogram</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// sum the sizes of the parts of a transaction input</comment>
+        <comment type="line">// with 75% segwit discount applied to the script size.</comment>
+        <expr_stmt><expr><name>nSize</name> <operator>+=</operator> <operator>(</operator><literal type="number">32</literal> <operator>+</operator> <literal type="number">4</literal> <operator>+</operator> <literal type="number">1</literal> <operator>+</operator> <operator>(</operator><literal type="number">107</literal> <operator>/</operator> <name>WITNESS_SCALE_FACTOR</name><operator>)</operator> <operator>+</operator> <literal type="number">4</literal><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name>nSize</name> <operator>+=</operator> <operator>(</operator><literal type="number">32</literal> <operator>+</operator> <literal type="number">4</literal> <operator>+</operator> <literal type="number">1</literal> <operator>+</operator> <literal type="number">107</literal> <operator>+</operator> <literal type="number">4</literal><operator>)</operator></expr>;</expr_stmt> <comment type="line">// the 148 mentioned above</comment>
+    </block_content>}</block></else></if_stmt>
+
+    <return>return <expr><call><name><name>dustRelayFeeIn</name><operator>.</operator><name>GetFee</name></name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsDust</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CFeeRate</name><modifier>&amp;</modifier></type> <name>dustRelayFeeIn</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>(</operator><name><name>txout</name><operator>.</operator><name>nValue</name></name> <operator>&lt;</operator> <call><name>GetDustThreshold</name><argument_list>(<argument><expr><name>txout</name></expr></argument>, <argument><expr><name>dustRelayFeeIn</name></expr></argument>)</argument_list></call><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsStandard</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptPubKey</name></decl></parameter>, <parameter><decl><type><name>txnouttype</name><modifier>&amp;</modifier></type> <name>whichType</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>vSolutions</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>whichType</name> <operator>=</operator> <call><name>Solver</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>, <argument><expr><name>vSolutions</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>whichType</name> <operator>==</operator> <name>TX_NONSTANDARD</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>whichType</name> <operator>==</operator> <name>TX_MULTISIG</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>m</name> <init>= <expr><call><name><name>vSolutions</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call><index>[<expr><literal type="number">0</literal></expr>]</index></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>n</name> <init>= <expr><call><name><name>vSolutions</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><index>[<expr><literal type="number">0</literal></expr>]</index></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Support up to x-of-3 multisig txns as standard</comment>
+        <if_stmt><if>if <condition>(<expr><name><name>n</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal> <operator>||</operator> <name>n</name></expr></argument> &gt;</argument_list></name> <literal type="number">3</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>m</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal> <operator>||</operator> <name>m</name></expr></argument> &gt;</argument_list></name> <name>n</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>whichType</name> <operator>==</operator> <name>TX_NULL_DATA</name> <operator>&amp;&amp;</operator>
+               <operator>(</operator><operator>!</operator><name>fAcceptDatacarrier</name> <operator>||</operator> <call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>nMaxDatacarrierBytes</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+          <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsStandardTx</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>permit_bare_multisig</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CFeeRate</name><modifier>&amp;</modifier></type> <name>dust_relay_fee</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>reason</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>tx</name><operator>.</operator><name>nVersion</name></name> <operator>&gt;</operator> <name><name>CTransaction</name><operator>::</operator><name>MAX_STANDARD_VERSION</name></name> <operator>||</operator> <name><name>tx</name><operator>.</operator><name>nVersion</name></name> <operator>&lt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"version"</literal></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Extremely large transactions with lots of inputs can cost the network</comment>
+    <comment type="line">// almost as much to process as they cost the sender in fees, because</comment>
+    <comment type="line">// computing signature hashes is O(ninputs*txsize). Limiting transactions</comment>
+    <comment type="line">// to MAX_STANDARD_TX_WEIGHT mitigates CPU exhaustion attacks.</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>sz</name> <init>= <expr><call><name>GetTransactionWeight</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>sz</name> <operator>&gt;</operator> <name>MAX_STANDARD_TX_WEIGHT</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"tx-size"</literal></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <comment type="line">// Biggest 'standard' txin is a 15-of-15 P2SH multisig with compressed</comment>
+        <comment type="line">// keys (remember the 520 byte limit on redeemScript size). That works</comment>
+        <comment type="line">// out to a (15*(33+1))+3=513 byte redeemScript, 513+1+15*(73+1)+3=1627</comment>
+        <comment type="line">// bytes of scriptSig, which we round off to 1650 bytes for some minor</comment>
+        <comment type="line">// future-proofing. That's also enough to spend a 20-of-20</comment>
+        <comment type="line">// CHECKMULTISIG scriptPubKey, though such a scriptPubKey is not</comment>
+        <comment type="line">// considered standard.</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1650</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"scriptsig-size"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>IsPushOnly</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"scriptsig-not-pushonly"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nDataOut</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>txnouttype</name></type> <name>whichType</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vout</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><operator>::</operator><name>IsStandard</name></name><argument_list>(<argument><expr><name><name>txout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>whichType</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"scriptpubkey"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>whichType</name> <operator>==</operator> <name>TX_NULL_DATA</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>nDataOut</name><operator>++</operator></expr>;</expr_stmt></block_content></block></if>
+        <if type="elseif">else if <condition>(<expr><operator>(</operator><name>whichType</name> <operator>==</operator> <name>TX_MULTISIG</name><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><operator>!</operator><name>permit_bare_multisig</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"bare-multisig"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name>IsDust</name><argument_list>(<argument><expr><name>txout</name></expr></argument>, <argument><expr><name>dust_relay_fee</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"dust"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// only one OP_RETURN txout is permitted</comment>
+    <if_stmt><if>if <condition>(<expr><name>nDataOut</name> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>reason</name> <operator>=</operator> <literal type="string">"multi-op-return"</literal></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Check transaction inputs to mitigate two
+ * potential denial-of-service attacks:
+ *
+ * 1. scriptSigs with extra data stuffed into them,
+ *    not consumed by scriptPubKey (or P2SH script)
+ * 2. P2SH scripts with a crazy number of expensive
+ *    CHECKSIG/CHECKMULTISIG operations
+ *
+ * Why bother? To avoid denial-of-service attacks; an attacker
+ * can submit a standard HASH... OP_EQUAL transaction,
+ * which will get accepted into blocks. The redemption
+ * script can be anything; an attacker could use a very
+ * expensive-to-check-upon-redemption script like:
+ *   DUP CHECKSIG DROP ... repeated 100 times... OP_1
+ */</comment>
+<function><type><name>bool</name></type> <name>AreInputsStandard</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>mapInputs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>IsCoinBase</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt> <comment type="line">// Coinbases don't use vin normally</comment>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>prev</name> <init>= <expr><call><name><name>mapInputs</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prevout</name></expr></argument>)</argument_list></call><operator>.</operator><name>out</name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>vSolutions</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>txnouttype</name></type> <name>whichType</name> <init>= <expr><call><name>Solver</name><argument_list>(<argument><expr><name><name>prev</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>vSolutions</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>whichType</name> <operator>==</operator> <name>TX_NONSTANDARD</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>whichType</name> <operator>==</operator> <name>TX_SCRIPTHASH</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>stack</name></decl>;</decl_stmt>
+            <comment type="line">// convert the scriptSig into a stack, so we can inspect the redeemScript</comment>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>EvalScript</name><argument_list>(<argument><expr><name>stack</name></expr></argument>, <argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptSig</name></expr></argument>, <argument><expr><name>SCRIPT_VERIFY_NONE</name></expr></argument>, <argument><expr><call><name>BaseSignatureChecker</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>SigVersion</name><operator>::</operator><name>BASE</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>stack</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <decl_stmt><decl><type><name>CScript</name></type> <name>subscript</name><argument_list>(<argument><expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>end</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>subscript</name><operator>.</operator><name>GetSigOpCount</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call> <operator>&gt;</operator> <name>MAX_P2SH_SIGOPS</name></expr>)</condition> <block>{<block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsWitnessStandard</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>mapInputs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>IsCoinBase</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt> <comment type="line">// Coinbases are skipped</comment>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <comment type="line">// We don't care if witness for this input is empty, since it must not be bloated.</comment>
+        <comment type="line">// If the script is invalid without witness, it would be caught sooner or later during validation.</comment>
+        <if_stmt><if>if <condition>(<expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>scriptWitness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <continue>continue;</continue></block_content></block></if></if_stmt>
+
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name> <modifier>&amp;</modifier></type><name>prev</name> <init>= <expr><call><name><name>mapInputs</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prevout</name></expr></argument>)</argument_list></call><operator>.</operator><name>out</name></expr></init></decl>;</decl_stmt>
+
+        <comment type="line">// get the scriptPubKey corresponding to this input:</comment>
+        <decl_stmt><decl><type><name>CScript</name></type> <name>prevScript</name> <init>= <expr><name><name>prev</name><operator>.</operator><name>scriptPubKey</name></name></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>prevScript</name><operator>.</operator><name>IsPayToScriptHash</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name> <argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>stack</name></decl>;</decl_stmt>
+            <comment type="line">// If the scriptPubKey is P2SH, we try to extract the redeemScript casually by converting the scriptSig</comment>
+            <comment type="line">// into a stack. We do not check IsPushOnly nor compare the hash as these will be done later anyway.</comment>
+            <comment type="line">// If the check fails at this stage, we know that this txid must be a bad one.</comment>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>EvalScript</name><argument_list>(<argument><expr><name>stack</name></expr></argument>, <argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptSig</name></expr></argument>, <argument><expr><name>SCRIPT_VERIFY_NONE</name></expr></argument>, <argument><expr><call><name>BaseSignatureChecker</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>SigVersion</name><operator>::</operator><name>BASE</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>stack</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><name>prevScript</name> <operator>=</operator> <call><name>CScript</name><argument_list>(<argument><expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>end</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>witnessversion</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>witnessprogram</name></decl>;</decl_stmt>
+
+        <comment type="line">// Non-witness program must not be associated with any witness</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>prevScript</name><operator>.</operator><name>IsWitnessProgram</name></name><argument_list>(<argument><expr><name>witnessversion</name></expr></argument>, <argument><expr><name>witnessprogram</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+        <comment type="line">// Check P2WSH standard limits</comment>
+        <if_stmt><if>if <condition>(<expr><name>witnessversion</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name><name>witnessprogram</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>WITNESS_V0_SCRIPTHASH_SIZE</name></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>scriptWitness</name><operator>.</operator><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_STANDARD_P2WSH_SCRIPT_SIZE</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <decl_stmt><decl><type><name>size_t</name></type> <name>sizeWitnessStack</name> <init>= <expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>scriptWitness</name><operator>.</operator><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>sizeWitnessStack</name> <operator>&gt;</operator> <name>MAX_STANDARD_P2WSH_STACK_ITEMS</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <name>sizeWitnessStack</name></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name><name>scriptWitness</name><operator>.</operator><name>stack</name><index>[<expr><name>j</name></expr>]</index></name><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_STANDARD_P2WSH_STACK_ITEM_SIZE</name></expr>)</condition><block type="pseudo"><block_content>
+                    <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            </block_content>}</block></for>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetVirtualTransactionSize</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nWeight</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nSigOpCost</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>bytes_per_sigop</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>(</operator><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>nWeight</name></expr></argument>, <argument><expr><name>nSigOpCost</name> <operator>*</operator> <name>bytes_per_sigop</name></expr></argument>)</argument_list></call> <operator>+</operator> <name>WITNESS_SCALE_FACTOR</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator> <operator>/</operator> <name>WITNESS_SCALE_FACTOR</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetVirtualTransactionSize</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nSigOpCost</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>bytes_per_sigop</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>GetVirtualTransactionSize</name><argument_list>(<argument><expr><call><name>GetTransactionWeight</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>nSigOpCost</name></expr></argument>, <argument><expr><name>bytes_per_sigop</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetVirtualTransactionInputSize</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nSigOpCost</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>bytes_per_sigop</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>GetVirtualTransactionSize</name><argument_list>(<argument><expr><call><name>GetTransactionInputWeight</name><argument_list>(<argument><expr><name>txin</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>nSigOpCost</name></expr></argument>, <argument><expr><name>bytes_per_sigop</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+</unit>

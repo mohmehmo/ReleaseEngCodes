@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/merkleblock.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_MERKLEBLOCK_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_MERKLEBLOCK_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/block.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;bloom.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** Data structure that represents a partial merkle tree.
+ *
+ * It represents a subset of the txid's of a known block, in a way that
+ * allows recovery of the list of txid's and the merkle root, in an
+ * authenticated way.
+ *
+ * The encoding works as follows: we traverse the tree in depth-first order,
+ * storing a bit for each traversed node, signifying whether the node is the
+ * parent of at least one matched leaf txid (or a matched txid itself). In
+ * case we are at the leaf level, or this bit is 0, its merkle node hash is
+ * stored, and its children are not explored further. Otherwise, no hash is
+ * stored, but we recurse into both (or the only) child branch. During
+ * decoding, the same depth-first traversal is performed, consuming bits and
+ * hashes as they written during encoding.
+ *
+ * The serialization is fixed and provides a hard guarantee about the
+ * encoded size:
+ *
+ *   SIZE &lt;= 10 + ceil(32.25*N)
+ *
+ * Where N represents the number of leaf nodes of the partial tree. N itself
+ * is bounded by:
+ *
+ *   N &lt;= total_transactions
+ *   N &lt;= 1 + matched_transactions*tree_height
+ *
+ * The serialization format:
+ *  - uint32     total_transactions (4 bytes)
+ *  - varint     number of hashes   (1-3 bytes)
+ *  - uint256[]  hashes in depth-first order (&lt;= 32*N bytes)
+ *  - varint     number of bytes of flag bits (1-3 bytes)
+ *  - byte[]     flag bits, packed per 8 in a byte, least significant bit first (&lt;= 2*N-1 bits)
+ * The size constraints follow from this.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CPartialMerkleTree</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <comment type="block" format="doxygen">/** the total number of transactions in the block */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nTransactions</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** node-is-parent-of-matched-txid bits */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <name>vBits</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** txids and internal hashes */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <name>vHash</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** flag set when encountering invalid data */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fBad</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** helper function to efficiently calculate the number of nodes at given height in the merkle tree */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>CalcTreeWidth</name><argument_list>(<argument><expr><name>int</name> <name>height</name></expr></argument>)</argument_list> const <block>{<block_content>
+        <return>return <expr><operator>(</operator><name>nTransactions</name><operator>+</operator><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>height</name><operator>)</operator><operator>-</operator><literal type="number">1</literal><operator>)</operator> <operator>&gt;&gt;</operator> <name>height</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <comment type="block" format="doxygen">/** calculate the hash of a node in the merkle tree (at leaf level: the txid's themselves) */</comment>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>CalcHash</name><argument_list>(<argument><expr><name>int</name> <name>height</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>pos</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vTxid</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** recursive function that traverses tree nodes, storing the data as bits and hashes */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>TraverseAndBuild</name><argument_list>(<argument><expr><name>int</name> <name>height</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>pos</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vTxid</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vMatch</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * recursive function that traverses tree nodes, consuming the bits and hashes produced by TraverseAndBuild.
+     * it returns the hash of the respective node and its respective index.
+     */</comment>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>TraverseAndExtract</name><argument_list>(<argument><expr><name>int</name> <name>height</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>pos</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <operator>&amp;</operator><name>nBitsUsed</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <operator>&amp;</operator><name>nHashUsed</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vMatch</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vnIndex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+
+    <comment type="block" format="doxygen">/** serialization implementation */</comment>
+    <expr_stmt><expr><name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nTransactions</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vHash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>vBytes</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>ser_action</name><operator>.</operator><name>ForRead</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vBytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CPartialMerkleTree</name> <modifier>&amp;</modifier></type><name>us</name> <init>= <expr><operator>*</operator><operator>(</operator><call><name><name>const_cast</name><argument_list type="generic">&lt;<argument><expr><name>CPartialMerkleTree</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>us</name><operator>.</operator><name>vBits</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>vBytes</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <literal type="number">8</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>p</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>p</name> <operator>&lt;</operator> <call><name><name>us</name><operator>.</operator><name>vBits</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>p</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><name><name>us</name><operator>.</operator><name>vBits</name><index>[<expr><name>p</name></expr>]</index></name> <operator>=</operator> <operator>(</operator><name><name>vBytes</name><index>[<expr><name>p</name> <operator>/</operator> <literal type="number">8</literal></expr>]</index></name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <operator>(</operator><name>p</name> <operator>%</operator> <literal type="number">8</literal><operator>)</operator><operator>)</operator><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr>;</expr_stmt></block_content></block></for>
+            <expr_stmt><expr><name><name>us</name><operator>.</operator><name>fBad</name></name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name><name>vBytes</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><operator>(</operator><call><name><name>vBits</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call><operator>+</operator><literal type="number">7</literal><operator>)</operator><operator>/</operator><literal type="number">8</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>p</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>p</name> <operator>&lt;</operator> <call><name><name>vBits</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>p</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><name><name>vBytes</name><index>[<expr><name>p</name> <operator>/</operator> <literal type="number">8</literal></expr>]</index></name> <operator>|=</operator> <name><name>vBits</name><index>[<expr><name>p</name></expr>]</index></name> <operator>&lt;&lt;</operator> <operator>(</operator><name>p</name> <operator>%</operator> <literal type="number">8</literal><operator>)</operator></expr>;</expr_stmt></block_content></block></for>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vBytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Construct a partial merkle tree from a list of transaction ids, and a mask that selects a subset of them */</comment>
+    <expr_stmt><expr><call><name>CPartialMerkleTree</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vTxid</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vMatch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>CPartialMerkleTree</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * extract the matching txid's represented by this partial merkle tree
+     * and their respective indices within the partial tree.
+     * returns the merkle root, or 0 in case of failure
+     */</comment>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>ExtractMatches</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vMatch</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vnIndex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Get number of transactions the merkle proof is indicating for cross-reference with
+     * local blockchain knowledge.
+     */</comment>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>GetNumTransactions</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nTransactions</name></expr>;</return> }</block></expr></expr_stmt><empty_stmt>;</empty_stmt>
+
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+
+<comment type="block" format="doxygen">/**
+ * Used to relay blocks as header + vector&lt;merkle branch&gt;
+ * to filtered nodes.
+ *
+ * NOTE: The class assumes that the given CBlock has *at least* 1 transaction. If the CBlock has 0 txs, it will hit an assertion.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CMerkleBlock</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Public only for unit testing */</comment>
+    <decl_stmt><decl><type><name>CBlockHeader</name></type> <name>header</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CPartialMerkleTree</name></type> <name>txn</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Public only for unit testing and relay testing (not relayed).
+     *
+     * Used only when a bloom filter is specified to allow
+     * testing the transactions which matched the bloom filter.
+     */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>int</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name> <name>vMatchedTxn</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Create from a CBlock, filtering transactions according to filter
+     * Note that this will call IsRelevantAndUpdate on the filter for each transaction,
+     * thus the filter will likely be modified.
+     */</comment>
+    <expr_stmt><expr><call><name>CMerkleBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlock</name><operator>&amp;</operator> <name>block</name></expr></argument>, <argument><expr><name>CBloomFilter</name><operator>&amp;</operator> <name>filter</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>CMerkleBlock</name><argument_list>(<argument>block</argument>, <argument>&amp;filter</argument>, <argument>nullptr</argument>)</argument_list></macro> <block>{ }</block>
+
+    <comment type="line">// Create from a CBlock, matching the txids in the set</comment>
+    <call><name>CMerkleBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlock</name><operator>&amp;</operator> <name>block</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>txids</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>CMerkleBlock</name><argument_list>(<argument>block</argument>, <argument>nullptr</argument>, <argument>&amp;txids</argument>)</argument_list></macro> <block>{ }</block>
+
+    <macro><name>CMerkleBlock</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+    <name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>header</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>txn</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+<label><name>private</name>:</label>
+    <comment type="line">// Combined constructor to consolidate code</comment>
+    <expr_stmt><expr><call><name>CMerkleBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlock</name><operator>&amp;</operator> <name>block</name></expr></argument>, <argument><expr><name>CBloomFilter</name><operator>*</operator> <name>filter</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>txids</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_MERKLEBLOCK_H</comment>
+</unit>

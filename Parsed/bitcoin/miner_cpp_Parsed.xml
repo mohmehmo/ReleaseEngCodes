@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/miner.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;miner.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;amount.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;coins.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/consensus.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/merkle.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/tx_verify.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/feerate.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/policy.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pow.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;timedata.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/moneystr.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/validation.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+
+<function><type><name>int64_t</name></type> <name>UpdateTime</name><parameter_list>(<parameter><decl><type><name>CBlockHeader</name><modifier>*</modifier></type> <name>pblock</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>consensusParams</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nOldTime</name> <init>= <expr><name><name>pblock</name><operator>-&gt;</operator><name>nTime</name></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nNewTime</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call><operator>+</operator><literal type="number">1</literal></expr></argument>, <argument><expr><call><name>GetAdjustedTime</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>nOldTime</name> <operator>&lt;</operator> <name>nNewTime</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nTime</name></name> <operator>=</operator> <name>nNewTime</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Updating time can change work required on testnet:</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>consensusParams</name><operator>.</operator><name>fPowAllowMinDifficultyBlocks</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nBits</name></name> <operator>=</operator> <call><name>GetNextWorkRequired</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><name>pblock</name></expr></argument>, <argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <return>return <expr><name>nNewTime</name> <operator>-</operator> <name>nOldTime</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>BlockAssembler</name><operator>::</operator><name>Options</name><operator>::</operator><name>Options</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name>blockMinFeeRate</name> <operator>=</operator> <call><name>CFeeRate</name><argument_list>(<argument><expr><name>DEFAULT_BLOCK_MIN_TX_FEE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nBlockMaxWeight</name> <operator>=</operator> <name>DEFAULT_BLOCK_MAX_WEIGHT</name></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<constructor><name><name>BlockAssembler</name><operator>::</operator><name>BlockAssembler</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CChainParams</name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Options</name><modifier>&amp;</modifier></type> <name>options</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>chainparams</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>blockMinFeeRate</name> <operator>=</operator> <name><name>options</name><operator>.</operator><name>blockMinFeeRate</name></name></expr>;</expr_stmt>
+    <comment type="line">// Limit weight to between 4K and MAX_BLOCK_WEIGHT-4K for sanity:</comment>
+    <expr_stmt><expr><name>nBlockMaxWeight</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>max</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">4000</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>min</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>MAX_BLOCK_WEIGHT</name> <operator>-</operator> <literal type="number">4000</literal></expr></argument>, <argument><expr><name><name>options</name><operator>.</operator><name>nBlockMaxWeight</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><specifier>static</specifier> <name><name>BlockAssembler</name><operator>::</operator><name>Options</name></name></type> <name>DefaultOptions</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Block resource limits</comment>
+    <comment type="line">// If -blockmaxweight is not given, limit to DEFAULT_BLOCK_MAX_WEIGHT</comment>
+    <decl_stmt><decl><type><name><name>BlockAssembler</name><operator>::</operator><name>Options</name></name></type> <name>options</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>nBlockMaxWeight</name></name> <operator>=</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-blockmaxweight"</literal></expr></argument>, <argument><expr><name>DEFAULT_BLOCK_MAX_WEIGHT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>n</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-blockmintxfee"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>ParseMoney</name><argument_list>(<argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-blockmintxfee"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>options</name><operator>.</operator><name>blockMinFeeRate</name></name> <operator>=</operator> <call><name>CFeeRate</name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name><name>options</name><operator>.</operator><name>blockMinFeeRate</name></name> <operator>=</operator> <call><name>CFeeRate</name><argument_list>(<argument><expr><name>DEFAULT_BLOCK_MIN_TX_FEE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <return>return <expr><name>options</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>BlockAssembler</name><operator>::</operator><name>BlockAssembler</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CChainParams</name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>BlockAssembler</name><argument_list>(<argument><expr><name>params</name></expr></argument>, <argument><expr><call><name>DefaultOptions</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>resetBlock</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>inBlock</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Reserve space for coinbase tx</comment>
+    <expr_stmt><expr><name>nBlockWeight</name> <operator>=</operator> <literal type="number">4000</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nBlockSigOpsCost</name> <operator>=</operator> <literal type="number">400</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fIncludeWitness</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+
+    <comment type="line">// These counters do not include coinbase tx</comment>
+    <expr_stmt><expr><name>nBlockTx</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nFees</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>BlockAssembler</name><operator>::</operator><name>m_last_block_num_txs</name></name><argument_list>{<argument><expr><name>nullopt</name></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>BlockAssembler</name><operator>::</operator><name>m_last_block_weight</name></name><argument_list>{<argument><expr><name>nullopt</name></expr></argument>}</argument_list></decl>;</decl_stmt>
+
+<function><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CBlockTemplate</name></expr></argument>&gt;</argument_list></name></type> <name><name>BlockAssembler</name><operator>::</operator><name>CreateNewBlock</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptPubKeyIn</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTimeStart</name> <init>= <expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>resetBlock</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>pblocktemplate</name><operator>.</operator><name>reset</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>CBlockTemplate</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>pblocktemplate</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="null">nullptr</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>pblock</name> <operator>=</operator> <operator>&amp;</operator><name><name>pblocktemplate</name><operator>-&gt;</operator><name>block</name></name></expr>;</expr_stmt> <comment type="line">// pointer for convenience</comment>
+
+    <comment type="line">// Add dummy coinbase tx as first transaction</comment>
+    <expr_stmt><expr><call><name><name>pblock</name><operator>-&gt;</operator><name>vtx</name><operator>.</operator><name>emplace_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vTxFees</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// updated at end</comment>
+    <expr_stmt><expr><call><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vTxSigOpsCost</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// updated at end</comment>
+
+    <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>mempool</name><operator>.</operator><name>cs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name> <init>= <expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>pindexPrev</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nHeight</name> <operator>=</operator> <name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>+</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>=</operator> <call><name>ComputeBlockVersion</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// -regtest only: allow overriding block.nVersion with</comment>
+    <comment type="line">// -blockversion=N to test forking scenarios</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>chainparams</name><operator>.</operator><name>MineBlocksOnDemand</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>=</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-blockversion"</literal></expr></argument>, <argument><expr><name><name>pblock</name><operator>-&gt;</operator><name>nVersion</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nTime</name></name> <operator>=</operator> <call><name>GetAdjustedTime</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>nMedianTimePast</name> <init>= <expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name>nLockTimeCutoff</name> <operator>=</operator> <ternary><condition><expr><operator>(</operator><name>STANDARD_LOCKTIME_VERIFY_FLAGS</name> <operator>&amp;</operator> <name>LOCKTIME_MEDIAN_TIME_PAST</name><operator>)</operator></expr>
+                       ?</condition><then> <expr><name>nMedianTimePast</name></expr>
+                       </then><else>: <expr><call><name><name>pblock</name><operator>-&gt;</operator><name>GetBlockTime</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr>;</expr_stmt>
+
+    <comment type="line">// Decide whether to include witness transactions</comment>
+    <comment type="line">// This is only needed in case the witness softfork activation is reverted</comment>
+    <comment type="line">// (which would require a very deep reorganization).</comment>
+    <comment type="line">// Note that the mempool would accept transactions with witness data before</comment>
+    <comment type="line">// IsWitnessEnabled, but we would only ever mine blocks after IsWitnessEnabled</comment>
+    <comment type="line">// unless there is a massive block reorganization with the witness softfork</comment>
+    <comment type="line">// not activated.</comment>
+    <comment type="line">// TODO: replace this with a call to main to assess validity of a mempool</comment>
+    <comment type="line">// transaction (which in most cases can be a no-op).</comment>
+    <expr_stmt><expr><name>fIncludeWitness</name> <operator>=</operator> <call><name>IsWitnessEnabled</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>nPackagesSelected</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nDescendantsUpdated</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>addPackageTxs</name><argument_list>(<argument><expr><name>nPackagesSelected</name></expr></argument>, <argument><expr><name>nDescendantsUpdated</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTime1</name> <init>= <expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name>m_last_block_num_txs</name> <operator>=</operator> <name>nBlockTx</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_last_block_weight</name> <operator>=</operator> <name>nBlockWeight</name></expr>;</expr_stmt>
+
+    <comment type="line">// Create coinbase transaction.</comment>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>coinbaseTx</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name><name>prevout</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <name>scriptPubKeyIn</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <name>nFees</name> <operator>+</operator> <call><name>GetBlockSubsidy</name><argument_list>(<argument><expr><name>nHeight</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <call><name>CScript</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>nHeight</name> <operator>&lt;&lt;</operator> <name>OP_0</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>vtx</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <call><name>MakeTransactionRef</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>coinbaseTx</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vchCoinbaseCommitment</name></name> <operator>=</operator> <call><name>GenerateCoinbaseCommitment</name><argument_list>(<argument><expr><operator>*</operator><name>pblock</name></expr></argument>, <argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vTxFees</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <operator>-</operator><name>nFees</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops %d\n"</literal></expr></argument>, <argument><expr><call><name>GetBlockWeight</name><argument_list>(<argument><expr><operator>*</operator><name>pblock</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>nBlockTx</name></expr></argument>, <argument><expr><name>nFees</name></expr></argument>, <argument><expr><name>nBlockSigOpsCost</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Fill in header</comment>
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>hashPrevBlock</name></name>  <operator>=</operator> <call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>UpdateTime</name><argument_list>(<argument><expr><name>pblock</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>pindexPrev</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nBits</name></name>          <operator>=</operator> <call><name>GetNextWorkRequired</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><name>pblock</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>nNonce</name></name>         <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vTxSigOpsCost</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name>WITNESS_SCALE_FACTOR</name> <operator>*</operator> <call><name>GetLegacySigOpCount</name><argument_list>(<argument><expr><operator>*</operator><name><name>pblock</name><operator>-&gt;</operator><name>vtx</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>BlockValidationState</name></type> <name>state</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>TestBlockValidity</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>chainparams</name></expr></argument>, <argument><expr><operator>*</operator><name>pblock</name></expr></argument>, <argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%s: TestBlockValidity failed: %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name>FormatStateMessage</name><argument_list>(<argument><expr><name>state</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTime2</name> <init>= <expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>BENCH</name></name></expr></argument>, <argument><expr><literal type="string">"CreateNewBlock() packages: %.2fms (%d packages, %d updated descendants), validity: %.2fms (total %.2fms)\n"</literal></expr></argument>, <argument><expr><literal type="number">0.001</literal> <operator>*</operator> <operator>(</operator><name>nTime1</name> <operator>-</operator> <name>nTimeStart</name><operator>)</operator></expr></argument>, <argument><expr><name>nPackagesSelected</name></expr></argument>, <argument><expr><name>nDescendantsUpdated</name></expr></argument>, <argument><expr><literal type="number">0.001</literal> <operator>*</operator> <operator>(</operator><name>nTime2</name> <operator>-</operator> <name>nTime1</name><operator>)</operator></expr></argument>, <argument><expr><literal type="number">0.001</literal> <operator>*</operator> <operator>(</operator><name>nTime2</name> <operator>-</operator> <name>nTimeStart</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>pblocktemplate</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>onlyUnconfirmed</name></name><parameter_list>(<parameter><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name><modifier>&amp;</modifier></type> <name>testSet</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name><operator>::</operator><name>iterator</name></name></type> <name>iit</name> <init>= <expr><call><name><name>testSet</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</init> <condition><expr><name>iit</name> <operator>!=</operator> <call><name><name>testSet</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr/>)</control> <block>{<block_content>
+        <comment type="line">// Only test txs not already in the block</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>inBlock</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><operator>*</operator><name>iit</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>testSet</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>iit</name><operator>++</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <else>else <block>{<block_content>
+            <expr_stmt><expr><name>iit</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>TestPackage</name></name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>packageSize</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>packageSigOpsCost</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// TODO: switch to weight-based accounting for packages instead of vsize-based accounting.</comment>
+    <if_stmt><if>if <condition>(<expr><name>nBlockWeight</name> <operator>+</operator> <name>WITNESS_SCALE_FACTOR</name> <operator>*</operator> <name>packageSize</name> <operator>&gt;=</operator> <name>nBlockMaxWeight</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nBlockSigOpsCost</name> <operator>+</operator> <name>packageSigOpsCost</name> <operator>&gt;=</operator> <name>MAX_BLOCK_SIGOPS_COST</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// Perform transaction-level checks before adding to block:</comment>
+<comment type="line">// - transaction finality (locktime)</comment>
+<comment type="line">// - premature witness (in case segwit transactions are added to mempool before</comment>
+<comment type="line">//   segwit activation)</comment>
+<function><type><name>bool</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>TestPackageTransactions</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name><modifier>&amp;</modifier></type> <name>package</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>it</name> <range>: <expr><name>package</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsFinalTx</name><argument_list>(<argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>nHeight</name></expr></argument>, <argument><expr><name>nLockTimeCutoff</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fIncludeWitness</name> <operator>&amp;&amp;</operator> <call><name><name>it</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>HasWitness</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>AddToBlock</name></name><parameter_list>(<parameter><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>iter</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>pblock</name><operator>-&gt;</operator><name>vtx</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetSharedTx</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vTxFees</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetFee</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pblocktemplate</name><operator>-&gt;</operator><name>vTxSigOpsCost</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetSigOpCost</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nBlockWeight</name> <operator>+=</operator> <call><name><name>iter</name><operator>-&gt;</operator><name>GetTxWeight</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>++</operator><name>nBlockTx</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nBlockSigOpsCost</name> <operator>+=</operator> <call><name><name>iter</name><operator>-&gt;</operator><name>GetSigOpCost</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nFees</name> <operator>+=</operator> <call><name><name>iter</name><operator>-&gt;</operator><name>GetFee</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>inBlock</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>iter</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>fPrintPriority</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-printpriority"</literal></expr></argument>, <argument><expr><name>DEFAULT_PRINTPRIORITY</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>fPrintPriority</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"fee %s txid %s\n"</literal></expr></argument>,
+                  <argument><expr><call><name>CFeeRate</name><argument_list>(<argument><expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetModifiedFee</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>,
+                  <argument><expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>UpdatePackagesForAdded</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name><modifier>&amp;</modifier></type> <name>alreadyAdded</name></decl></parameter>,
+        <parameter><decl><type><name>indexed_modified_transaction_set</name> <modifier>&amp;</modifier></type><name>mapModifiedTx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>nDescendantsUpdated</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>it</name> <range>: <expr><name>alreadyAdded</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name></type> <name>descendants</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>mempool</name><operator>.</operator><name>CalculateDescendants</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>, <argument><expr><name>descendants</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Insert all descendants (not yet in block) into the modified set</comment>
+        <for>for <control>(<init><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>desc</name> <range>: <expr><name>descendants</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>alreadyAdded</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>desc</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <continue>continue;</continue></block_content></block></if></if_stmt>
+            <expr_stmt><expr><operator>++</operator><name>nDescendantsUpdated</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>modtxiter</name></type> <name>mit</name> <init>= <expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>desc</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>mit</name> <operator>==</operator> <call><name><name>mapModifiedTx</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>CTxMemPoolModifiedEntry</name></type> <name>modEntry</name><argument_list>(<argument><expr><name>desc</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <expr_stmt><expr><name><name>modEntry</name><operator>.</operator><name>nSizeWithAncestors</name></name> <operator>-=</operator> <call><name><name>it</name><operator>-&gt;</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>modEntry</name><operator>.</operator><name>nModFeesWithAncestors</name></name> <operator>-=</operator> <call><name><name>it</name><operator>-&gt;</operator><name>GetModifiedFee</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>modEntry</name><operator>.</operator><name>nSigOpCostWithAncestors</name></name> <operator>-=</operator> <call><name><name>it</name><operator>-&gt;</operator><name>GetSigOpCost</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>modEntry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <expr_stmt><expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>modify</name></name><argument_list>(<argument><expr><name>mit</name></expr></argument>, <argument><expr><call><name>update_for_parent_inclusion</name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></for>
+    <return>return <expr><name>nDescendantsUpdated</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// Skip entries in mapTx that are already in a block or are present</comment>
+<comment type="line">// in mapModifiedTx (which implies that the mapTx ancestor state is</comment>
+<comment type="line">// stale due to ancestor inclusion in the block)</comment>
+<comment type="line">// Also skip transactions that we've already failed to add. This can happen if</comment>
+<comment type="line">// we consider a transaction in mapModifiedTx and it fails: we can then</comment>
+<comment type="line">// potentially consider it again while walking mapTx.  It's currently</comment>
+<comment type="line">// guaranteed to fail again, but as a belt-and-suspenders check we put it in</comment>
+<comment type="line">// failedTx and avoid re-evaluation, since the re-evaluation would be using</comment>
+<comment type="line">// cached size/sigops/fee values that are not actually correct.</comment>
+<function><type><name>bool</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>SkipMapTxEntry</name></name><parameter_list>(<parameter><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>it</name></decl></parameter>, <parameter><decl><type><name>indexed_modified_transaction_set</name> <modifier>&amp;</modifier></type><name>mapModifiedTx</name></decl></parameter>, <parameter><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name> <modifier>&amp;</modifier></type><name>failedTx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name> <argument_list>(<argument><expr><name>it</name> <operator>!=</operator> <call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name><name>inBlock</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name><name>failedTx</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>SortForBlock</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name><modifier>&amp;</modifier></type> <name>package</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>sortedEntries</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Sort package by ancestor count</comment>
+    <comment type="line">// If a transaction A depends on transaction B, then A's ancestor count</comment>
+    <comment type="line">// must be greater than B's.  So this is sufficient to validly order the</comment>
+    <comment type="line">// transactions for block inclusion.</comment>
+    <expr_stmt><expr><call><name><name>sortedEntries</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>sortedEntries</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>sortedEntries</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>package</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>package</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>sort</name></name><argument_list>(<argument><expr><call><name><name>sortedEntries</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>sortedEntries</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>CompareTxIterByAncestorCount</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// This transaction selection algorithm orders the mempool based</comment>
+<comment type="line">// on feerate of a transaction including all unconfirmed ancestors.</comment>
+<comment type="line">// Since we don't remove transactions from the mempool as we select them</comment>
+<comment type="line">// for block inclusion, we need an alternate method of updating the feerate</comment>
+<comment type="line">// of a transaction with its not-yet-selected ancestors as we go.</comment>
+<comment type="line">// This is accomplished by walking the in-mempool descendants of selected</comment>
+<comment type="line">// transactions and storing a temporary modified state in mapModifiedTxs.</comment>
+<comment type="line">// Each time through the loop, we compare the best transaction in</comment>
+<comment type="line">// mapModifiedTxs with the next transaction in the mempool to decide what</comment>
+<comment type="line">// transaction package to work on next.</comment>
+<function><type><name>void</name></type> <name><name>BlockAssembler</name><operator>::</operator><name>addPackageTxs</name></name><parameter_list>(<parameter><decl><type><name>int</name> <modifier>&amp;</modifier></type><name>nPackagesSelected</name></decl></parameter>, <parameter><decl><type><name>int</name> <modifier>&amp;</modifier></type><name>nDescendantsUpdated</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// mapModifiedTx will store sorted packages after they are modified</comment>
+    <comment type="line">// because some of their txs are already in the block</comment>
+    <decl_stmt><decl><type><name>indexed_modified_transaction_set</name></type> <name>mapModifiedTx</name></decl>;</decl_stmt>
+    <comment type="line">// Keep track of entries that failed inclusion, to avoid duplicate work</comment>
+    <decl_stmt><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name></type> <name>failedTx</name></decl>;</decl_stmt>
+
+    <comment type="line">// Start by adding all descendants of previously added txs to mapModifiedTx</comment>
+    <comment type="line">// and modifying them for their already included ancestors</comment>
+    <expr_stmt><expr><call><name>UpdatePackagesForAdded</name><argument_list>(<argument><expr><name>inBlock</name></expr></argument>, <argument><expr><name>mapModifiedTx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>indexed_transaction_set</name><operator>::</operator><name>index</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list><operator>::</operator><name>type</name><operator>::</operator><name>iterator</name></name></type> <name>mi</name> <init>= <expr><call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>iter</name></decl>;</decl_stmt>
+
+    <comment type="line">// Limit the number of attempts to add transactions to the block when it is</comment>
+    <comment type="line">// close to full; this is just a simple heuristic to finish quickly if the</comment>
+    <comment type="line">// mempool has a lot of entries.</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>MAX_CONSECUTIVE_FAILURES</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nConsecutiveFailed</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <while>while <condition>(<expr><name>mi</name> <operator>!=</operator> <call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>end</name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><call><name><name>mapModifiedTx</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <comment type="line">// First try to find a new transaction in mapTx to evaluate.</comment>
+        <if_stmt><if>if <condition>(<expr><name>mi</name> <operator>!=</operator> <call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>end</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator>
+                <call><name>SkipMapTxEntry</name><argument_list>(<argument><expr><call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>project</name><argument_list type="generic">&lt;<argument><expr><literal type="number">0</literal></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>mi</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>mapModifiedTx</name></expr></argument>, <argument><expr><name>failedTx</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><operator>++</operator><name>mi</name></expr>;</expr_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Now that mi is not stale, determine which transaction to evaluate:</comment>
+        <comment type="line">// the next entry from mapTx, or the best from mapModifiedTx?</comment>
+        <decl_stmt><decl><type><name>bool</name></type> <name>fUsingModified</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>modtxscoreiter</name></type> <name>modit</name> <init>= <expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>mi</name> <operator>==</operator> <call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>end</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// We're out of entries in mapTx; use the entry from mapModifiedTx</comment>
+            <expr_stmt><expr><name>iter</name> <operator>=</operator> <name><name>modit</name><operator>-&gt;</operator><name>iter</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>fUsingModified</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <comment type="line">// Try to compare the mapTx entry to the mapModifiedTx entry</comment>
+            <expr_stmt><expr><name>iter</name> <operator>=</operator> <call><name><name>mempool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>project</name><argument_list type="generic">&lt;<argument><expr><literal type="number">0</literal></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>mi</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>modit</name> <operator>!=</operator> <call><name><name>mapModifiedTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>end</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator>
+                    <call><call><name>CompareTxMemPoolEntryByAncestorFee</name><argument_list>()</argument_list></call><argument_list>(<argument><expr><operator>*</operator><name>modit</name></expr></argument>, <argument><expr><call><name>CTxMemPoolModifiedEntry</name><argument_list>(<argument><expr><name>iter</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <comment type="line">// The best entry in mapModifiedTx has higher score</comment>
+                <comment type="line">// than the one from mapTx.</comment>
+                <comment type="line">// Switch which transaction (package) to consider</comment>
+                <expr_stmt><expr><name>iter</name> <operator>=</operator> <name><name>modit</name><operator>-&gt;</operator><name>iter</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>fUsingModified</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <comment type="line">// Either no entry in mapModifiedTx, or it's worse than mapTx.</comment>
+                <comment type="line">// Increment mi for the next loop iteration.</comment>
+                <expr_stmt><expr><operator>++</operator><name>mi</name></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></else></if_stmt>
+
+        <comment type="line">// We skip mapTx entries that are inBlock, and mapModifiedTx shouldn't</comment>
+        <comment type="line">// contain anything that is inBlock.</comment>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>inBlock</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>iter</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>packageSize</name> <init>= <expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetSizeWithAncestors</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>CAmount</name></type> <name>packageFees</name> <init>= <expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetModFeesWithAncestors</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>packageSigOpsCost</name> <init>= <expr><call><name><name>iter</name><operator>-&gt;</operator><name>GetSigOpCostWithAncestors</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>fUsingModified</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>packageSize</name> <operator>=</operator> <name><name>modit</name><operator>-&gt;</operator><name>nSizeWithAncestors</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>packageFees</name> <operator>=</operator> <name><name>modit</name><operator>-&gt;</operator><name>nModFeesWithAncestors</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>packageSigOpsCost</name> <operator>=</operator> <name><name>modit</name><operator>-&gt;</operator><name>nSigOpCostWithAncestors</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>packageFees</name> <operator>&lt;</operator> <call><name><name>blockMinFeeRate</name><operator>.</operator><name>GetFee</name></name><argument_list>(<argument><expr><name>packageSize</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Everything else we might consider has a lower fee rate</comment>
+            <return>return;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>TestPackage</name><argument_list>(<argument><expr><name>packageSize</name></expr></argument>, <argument><expr><name>packageSigOpsCost</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>fUsingModified</name></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Since we always look at the best entry in mapModifiedTx,</comment>
+                <comment type="line">// we must erase failed entries so that we can consider the</comment>
+                <comment type="line">// next best entry on the next loop iteration</comment>
+                <expr_stmt><expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>erase</name><argument_list>(<argument><expr><name>modit</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>failedTx</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>iter</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <expr_stmt><expr><operator>++</operator><name>nConsecutiveFailed</name></expr>;</expr_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>nConsecutiveFailed</name> <operator>&gt;</operator> <name>MAX_CONSECUTIVE_FAILURES</name> <operator>&amp;&amp;</operator> <name>nBlockWeight</name> <operator>&gt;</operator>
+                    <name>nBlockMaxWeight</name> <operator>-</operator> <literal type="number">4000</literal></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Give up if we're close to full and haven't succeeded in a while</comment>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name></type> <name>ancestors</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>nNoLimit</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>dummy</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>mempool</name><operator>.</operator><name>CalculateMemPoolAncestors</name></name><argument_list>(<argument><expr><operator>*</operator><name>iter</name></expr></argument>, <argument><expr><name>ancestors</name></expr></argument>, <argument><expr><name>nNoLimit</name></expr></argument>, <argument><expr><name>nNoLimit</name></expr></argument>, <argument><expr><name>nNoLimit</name></expr></argument>, <argument><expr><name>nNoLimit</name></expr></argument>, <argument><expr><name>dummy</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>onlyUnconfirmed</name><argument_list>(<argument><expr><name>ancestors</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ancestors</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>iter</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Test if all tx's are Final</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>TestPackageTransactions</name><argument_list>(<argument><expr><name>ancestors</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>fUsingModified</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>get</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>erase</name><argument_list>(<argument><expr><name>modit</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>failedTx</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>iter</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// This transaction will make it in; reset the failed counter.</comment>
+        <expr_stmt><expr><name>nConsecutiveFailed</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+        <comment type="line">// Package can be added. Sort the entries in a valid order.</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></expr></argument>&gt;</argument_list></name></type> <name>sortedEntries</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>SortForBlock</name><argument_list>(<argument><expr><name>ancestors</name></expr></argument>, <argument><expr><name>sortedEntries</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><call><name><name>sortedEntries</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name>AddToBlock</name><argument_list>(<argument><expr><name><name>sortedEntries</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <comment type="line">// Erase from the modified set, if present</comment>
+            <expr_stmt><expr><call><name><name>mapModifiedTx</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name><name>sortedEntries</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><operator>++</operator><name>nPackagesSelected</name></expr>;</expr_stmt>
+
+        <comment type="line">// Update transactions that depend on each of these</comment>
+        <expr_stmt><expr><name>nDescendantsUpdated</name> <operator>+=</operator> <call><name>UpdatePackagesForAdded</name><argument_list>(<argument><expr><name>ancestors</name></expr></argument>, <argument><expr><name>mapModifiedTx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>IncrementExtraNonce</name><parameter_list>(<parameter><decl><type><name>CBlock</name><modifier>*</modifier></type> <name>pblock</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name><modifier>&amp;</modifier></type> <name>nExtraNonce</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Update nExtraNonce</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>uint256</name></type> <name>hashPrevBlock</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>hashPrevBlock</name> <operator>!=</operator> <name><name>pblock</name><operator>-&gt;</operator><name>hashPrevBlock</name></name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nExtraNonce</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>hashPrevBlock</name> <operator>=</operator> <name><name>pblock</name><operator>-&gt;</operator><name>hashPrevBlock</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><operator>++</operator><name>nExtraNonce</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nHeight</name> <init>= <expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name><operator>+</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt> <comment type="line">// Height first in coinbase required for block.version=2</comment>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>txCoinbase</name><argument_list>(<argument><expr><operator>*</operator><name><name>pblock</name><operator>-&gt;</operator><name>vtx</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>txCoinbase</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <operator>(</operator><call><name>CScript</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>nHeight</name> <operator>&lt;&lt;</operator> <call><name>CScriptNum</name><argument_list>(<argument><expr><name>nExtraNonce</name></expr></argument>)</argument_list></call><operator>)</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name><name>txCoinbase</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name><name>scriptSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>vtx</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <call><name>MakeTransactionRef</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>txCoinbase</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>pblock</name><operator>-&gt;</operator><name>hashMerkleRoot</name></name> <operator>=</operator> <call><name>BlockMerkleRoot</name><argument_list>(<argument><expr><operator>*</operator><name>pblock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

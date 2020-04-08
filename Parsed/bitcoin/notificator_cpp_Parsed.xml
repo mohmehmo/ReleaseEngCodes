@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/notificator.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/notificator.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QApplication&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QByteArray&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QImageWriter&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QMessageBox&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QMetaType&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QStyle&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QSystemTrayIcon&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QTemporaryFile&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QVariant&gt;</cpp:file></cpp:include>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QtDBus&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<comment type="line">// Include ApplicationServices.h after QtDbus to avoid redefinition of check().</comment>
+<comment type="line">// This affects at least OSX 10.6. See /usr/include/AssertMacros.h for details.</comment>
+<comment type="line">// Note: This could also be worked around using:</comment>
+<comment type="line">// #define __ASSERT_MACROS_DEFINE_VERSIONS_WITHOUT_UNDERSCORES 0</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>Q_OS_MAC</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ApplicationServices/ApplicationServices.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/macnotificationhandler.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+<comment type="line">// https://wiki.ubuntu.com/NotificationDevelopmentGuidelines recommends at least 128</comment>
+<decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>FREEDESKTOP_NOTIFICATION_ICON_SIZE</name> <init>= <expr><literal type="number">128</literal></expr></init></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<constructor><name><name>Notificator</name><operator>::</operator><name>Notificator</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>_programName</name></decl></parameter>, <parameter><decl><type><name>QSystemTrayIcon</name> <modifier>*</modifier></type><name>_trayIcon</name></decl></parameter>, <parameter><decl><type><name>QWidget</name> <modifier>*</modifier></type><name>_parent</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QObject</name><argument_list>(<argument><expr><name>_parent</name></expr></argument>)</argument_list></call>,
+    <call><name>parent</name><argument_list>(<argument><expr><name>_parent</name></expr></argument>)</argument_list></call>,
+    <call><name>programName</name><argument_list>(<argument><expr><name>_programName</name></expr></argument>)</argument_list></call>,
+    <call><name>mode</name><argument_list>(<argument><expr><name>None</name></expr></argument>)</argument_list></call>,
+    <call><name>trayIcon</name><argument_list>(<argument><expr><name>_trayIcon</name></expr></argument>)</argument_list></call>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+    ,<call><name>interface</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</member_init_list><block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><name>_trayIcon</name> <operator>&amp;&amp;</operator> <call><name><name>_trayIcon</name><operator>-&gt;</operator><name>supportsMessages</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>mode</name> <operator>=</operator> <name>QSystemTray</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+    <expr_stmt><expr><name>interface</name> <operator>=</operator> <operator>new</operator> <call><name>QDBusInterface</name><argument_list>(<argument><expr><literal type="string">"org.freedesktop.Notifications"</literal></expr></argument>,
+        <argument><expr><literal type="string">"/org/freedesktop/Notifications"</literal></expr></argument>, <argument><expr><literal type="string">"org.freedesktop.Notifications"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><call><name><name>interface</name><operator>-&gt;</operator><name>isValid</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>mode</name> <operator>=</operator> <name>Freedesktop</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>Q_OS_MAC</name></cpp:ifdef>
+    <comment type="line">// check if users OS has support for NSUserNotification</comment>
+    <if_stmt><if>if<condition>( <expr><call><name><name>MacNotificationHandler</name><operator>::</operator><name>instance</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>hasUserNotificationCenterSupport</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>mode</name> <operator>=</operator> <name>UserNotificationCenter</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></constructor>
+
+<destructor><name><name>Notificator</name><operator>::</operator><name>~Notificator</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+    <expr_stmt><expr><operator>delete</operator> <name>interface</name></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></destructor>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+
+<comment type="line">// Loosely based on http://www.qtcentre.org/archive/index.php/t-25879.html</comment>
+<class>class <name>FreedesktopImage</name>
+<block>{<private type="default">
+</private><public>public:
+    <constructor><name>FreedesktopImage</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></constructor>
+    <constructor_decl><specifier>explicit</specifier> <name>FreedesktopImage</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QImage</name> <modifier>&amp;</modifier></type><name>img</name></decl></parameter>)</parameter_list>;</constructor_decl>
+
+    <function_decl><type><specifier>static</specifier> <name>int</name></type> <name>metaType</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="line">// Image to variant that can be marshalled over DBus</comment>
+    <function_decl><type><specifier>static</specifier> <name>QVariant</name></type> <name>toVariant</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QImage</name> <modifier>&amp;</modifier></type><name>img</name></decl></parameter>)</parameter_list>;</function_decl>
+
+</public><private>private:
+    <decl_stmt><decl><type><name>int</name></type> <name>width</name></decl>, <decl><type ref="prev"/><name>height</name></decl>, <decl><type ref="prev"/><name>stride</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>hasAlpha</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>channels</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>bitsPerSample</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QByteArray</name></type> <name>image</name></decl>;</decl_stmt>
+
+    <friend>friend <function_decl type="operator"><type><name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>operator<name>&lt;&lt;</name></name><parameter_list>(<parameter><decl><type><name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>FreedesktopImage</name> <modifier>&amp;</modifier></type><name>i</name></decl></parameter>)</parameter_list>;</function_decl></friend>
+    <friend>friend <function_decl type="operator"><type><specifier>const</specifier> <name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>operator<name>&gt;&gt;</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><name>FreedesktopImage</name> <modifier>&amp;</modifier></type><name>i</name></decl></parameter>)</parameter_list>;</function_decl></friend>
+</private>}</block>;</class>
+
+<expr_stmt><expr><call><name>Q_DECLARE_METATYPE</name><argument_list>(<argument><expr><name>FreedesktopImage</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<comment type="line">// Image configuration settings</comment>
+<decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>CHANNELS</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>BYTES_PER_PIXEL</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>BITS_PER_SAMPLE</name> <init>= <expr><literal type="number">8</literal></expr></init></decl>;</decl_stmt>
+
+<constructor><name><name>FreedesktopImage</name><operator>::</operator><name>FreedesktopImage</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QImage</name> <modifier>&amp;</modifier></type><name>img</name></decl></parameter>)</parameter_list><member_init_list>:
+    <call><name>width</name><argument_list>(<argument><expr><call><name><name>img</name><operator>.</operator><name>width</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>,
+    <call><name>height</name><argument_list>(<argument><expr><call><name><name>img</name><operator>.</operator><name>height</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>,
+    <call><name>stride</name><argument_list>(<argument><expr><call><name><name>img</name><operator>.</operator><name>width</name></name><argument_list>()</argument_list></call> <operator>*</operator> <name>BYTES_PER_PIXEL</name></expr></argument>)</argument_list></call>,
+    <call><name>hasAlpha</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call>,
+    <call><name>channels</name><argument_list>(<argument><expr><name>CHANNELS</name></expr></argument>)</argument_list></call>,
+    <call><name>bitsPerSample</name><argument_list>(<argument><expr><name>BITS_PER_SAMPLE</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <comment type="line">// Convert 00xAARRGGBB to RGBA bytewise (endian-independent) format</comment>
+    <decl_stmt><decl><type><name>QImage</name></type> <name>tmp</name> <init>= <expr><call><name><name>img</name><operator>.</operator><name>convertToFormat</name></name><argument_list>(<argument><expr><name><name>QImage</name><operator>::</operator><name>Format_ARGB32</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint32_t</name> <modifier>*</modifier></type><name>data</name> <init>= <expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>uint32_t</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>tmp</name><operator>.</operator><name>bits</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>num_pixels</name> <init>= <expr><name>width</name> <operator>*</operator> <name>height</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>image</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>num_pixels</name> <operator>*</operator> <name>BYTES_PER_PIXEL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <for>for<control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>ptr</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>ptr</name> <operator>&lt;</operator> <name>num_pixels</name></expr>;</condition> <incr><expr><operator>++</operator><name>ptr</name></expr></incr>)</control>
+    <block>{<block_content>
+        <expr_stmt><expr><name><name>image</name><index>[<expr><name>ptr</name><operator>*</operator><name>BYTES_PER_PIXEL</name><operator>+</operator><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name><name>data</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>&gt;&gt;</operator> <literal type="number">16</literal></expr>;</expr_stmt> <comment type="line">// R</comment>
+        <expr_stmt><expr><name><name>image</name><index>[<expr><name>ptr</name><operator>*</operator><name>BYTES_PER_PIXEL</name><operator>+</operator><literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <name><name>data</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>&gt;&gt;</operator> <literal type="number">8</literal></expr>;</expr_stmt>  <comment type="line">// G</comment>
+        <expr_stmt><expr><name><name>image</name><index>[<expr><name>ptr</name><operator>*</operator><name>BYTES_PER_PIXEL</name><operator>+</operator><literal type="number">2</literal></expr>]</index></name> <operator>=</operator> <name><name>data</name><index>[<expr><name>ptr</name></expr>]</index></name></expr>;</expr_stmt>       <comment type="line">// B</comment>
+        <expr_stmt><expr><name><name>image</name><index>[<expr><name>ptr</name><operator>*</operator><name>BYTES_PER_PIXEL</name><operator>+</operator><literal type="number">3</literal></expr>]</index></name> <operator>=</operator> <name><name>data</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>&gt;&gt;</operator> <literal type="number">24</literal></expr>;</expr_stmt> <comment type="line">// A</comment>
+    </block_content>}</block></for>
+</block_content>}</block></constructor>
+
+<function type="operator"><type><name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>operator<name>&lt;&lt;</name></name><parameter_list>(<parameter><decl><type><name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>FreedesktopImage</name> <modifier>&amp;</modifier></type><name>i</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>a</name><operator>.</operator><name>beginStructure</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>a</name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>width</name></name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>height</name></name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>stride</name></name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>hasAlpha</name></name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>bitsPerSample</name></name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>channels</name></name> <operator>&lt;&lt;</operator> <name><name>i</name><operator>.</operator><name>image</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>a</name><operator>.</operator><name>endStructure</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>a</name></expr>;</return>
+</block_content>}</block></function>
+
+<function type="operator"><type><specifier>const</specifier> <name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>operator<name>&gt;&gt;</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QDBusArgument</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><name>FreedesktopImage</name> <modifier>&amp;</modifier></type><name>i</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>a</name><operator>.</operator><name>beginStructure</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>a</name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>width</name></name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>height</name></name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>stride</name></name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>hasAlpha</name></name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>bitsPerSample</name></name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>channels</name></name> <operator>&gt;&gt;</operator> <name><name>i</name><operator>.</operator><name>image</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>a</name><operator>.</operator><name>endStructure</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>a</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>FreedesktopImage</name><operator>::</operator><name>metaType</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>qDBusRegisterMetaType</name><argument_list type="generic">&lt;<argument><expr><name>FreedesktopImage</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>FreedesktopImage</name><operator>::</operator><name>toVariant</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QImage</name> <modifier>&amp;</modifier></type><name>img</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>FreedesktopImage</name></type> <name>fimg</name><argument_list>(<argument><expr><name>img</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><call><name>QVariant</name><argument_list>(<argument><expr><call><name><name>FreedesktopImage</name><operator>::</operator><name>metaType</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>&amp;</operator><name>fimg</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Notificator</name><operator>::</operator><name>notifyDBus</name></name><parameter_list>(<parameter><decl><type><name>Class</name></type> <name>cls</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>title</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>text</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QIcon</name> <modifier>&amp;</modifier></type><name>icon</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>millisTimeout</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// https://developer.gnome.org/notification-spec/</comment>
+    <comment type="line">// Arguments for DBus "Notify" call:</comment>
+    <decl_stmt><decl><type><name><name>QList</name><argument_list type="generic">&lt;<argument><expr><name>QVariant</name></expr></argument>&gt;</argument_list></name></type> <name>args</name></decl>;</decl_stmt>
+
+    <comment type="line">// Program Name:</comment>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>programName</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Replaces ID; A value of 0 means that this notification won't replace any existing notifications:</comment>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="number">0U</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Application Icon, empty string</comment>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name>QString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Summary</comment>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>title</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Body</comment>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>text</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Actions (none, actions are deprecated)</comment>
+    <decl_stmt><decl><type><name>QStringList</name></type> <name>actions</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>actions</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Hints</comment>
+    <decl_stmt><decl><type><name>QVariantMap</name></type> <name>hints</name></decl>;</decl_stmt>
+
+    <comment type="line">// If no icon specified, set icon based on class</comment>
+    <decl_stmt><decl><type><name>QIcon</name></type> <name>tmpicon</name></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><call><name><name>icon</name><operator>.</operator><name>isNull</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>QStyle</name><operator>::</operator><name>StandardPixmap</name></name></type> <name>sicon</name> <init>= <expr><name><name>QStyle</name><operator>::</operator><name>SP_MessageBoxQuestion</name></name></expr></init></decl>;</decl_stmt>
+        <switch>switch<condition>(<expr><name>cls</name></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>Information</name></expr>:</case> <expr_stmt><expr><name>sicon</name> <operator>=</operator> <name><name>QStyle</name><operator>::</operator><name>SP_MessageBoxInformation</name></name></expr>;</expr_stmt> <break>break;</break>
+        <case>case <expr><name>Warning</name></expr>:</case> <expr_stmt><expr><name>sicon</name> <operator>=</operator> <name><name>QStyle</name><operator>::</operator><name>SP_MessageBoxWarning</name></name></expr>;</expr_stmt> <break>break;</break>
+        <case>case <expr><name>Critical</name></expr>:</case> <expr_stmt><expr><name>sicon</name> <operator>=</operator> <name><name>QStyle</name><operator>::</operator><name>SP_MessageBoxCritical</name></name></expr>;</expr_stmt> <break>break;</break>
+        <default>default:</default> <break>break;</break>
+        </block_content>}</block></switch>
+        <expr_stmt><expr><name>tmpicon</name> <operator>=</operator> <call><name><name>QApplication</name><operator>::</operator><name>style</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>standardIcon</name><argument_list>(<argument><expr><name>sicon</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <else>else
+    <block>{<block_content>
+        <expr_stmt><expr><name>tmpicon</name> <operator>=</operator> <name>icon</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><name><name>hints</name><index>[<expr><literal type="string">"icon_data"</literal></expr>]</index></name> <operator>=</operator> <call><name><name>FreedesktopImage</name><operator>::</operator><name>toVariant</name></name><argument_list>(<argument><expr><call><name><name>tmpicon</name><operator>.</operator><name>pixmap</name></name><argument_list>(<argument><expr><name>FREEDESKTOP_NOTIFICATION_ICON_SIZE</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>toImage</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>hints</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Timeout (in msec)</comment>
+    <expr_stmt><expr><call><name><name>args</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>millisTimeout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// "Fire and forget"</comment>
+    <expr_stmt><expr><call><name><name>interface</name><operator>-&gt;</operator><name>callWithArgumentList</name></name><argument_list>(<argument><expr><name><name>QDBus</name><operator>::</operator><name>NoBlock</name></name></expr></argument>, <argument><expr><literal type="string">"Notify"</literal></expr></argument>, <argument><expr><name>args</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><name>void</name></type> <name><name>Notificator</name><operator>::</operator><name>notifySystray</name></name><parameter_list>(<parameter><decl><type><name>Class</name></type> <name>cls</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>title</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>text</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>millisTimeout</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>QSystemTrayIcon</name><operator>::</operator><name>MessageIcon</name></name></type> <name>sicon</name> <init>= <expr><name><name>QSystemTrayIcon</name><operator>::</operator><name>NoIcon</name></name></expr></init></decl>;</decl_stmt>
+    <switch>switch<condition>(<expr><name>cls</name></expr>)</condition> <comment type="line">// Set icon based on class</comment>
+    <block>{<block_content>
+    <case>case <expr><name>Information</name></expr>:</case> <expr_stmt><expr><name>sicon</name> <operator>=</operator> <name><name>QSystemTrayIcon</name><operator>::</operator><name>Information</name></name></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><name>Warning</name></expr>:</case> <expr_stmt><expr><name>sicon</name> <operator>=</operator> <name><name>QSystemTrayIcon</name><operator>::</operator><name>Warning</name></name></expr>;</expr_stmt> <break>break;</break>
+    <case>case <expr><name>Critical</name></expr>:</case> <expr_stmt><expr><name>sicon</name> <operator>=</operator> <name><name>QSystemTrayIcon</name><operator>::</operator><name>Critical</name></name></expr>;</expr_stmt> <break>break;</break>
+    </block_content>}</block></switch>
+    <expr_stmt><expr><call><name><name>trayIcon</name><operator>-&gt;</operator><name>showMessage</name></name><argument_list>(<argument><expr><name>title</name></expr></argument>, <argument><expr><name>text</name></expr></argument>, <argument><expr><name>sicon</name></expr></argument>, <argument><expr><name>millisTimeout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>Q_OS_MAC</name></cpp:ifdef>
+<function><type><name>void</name></type> <name><name>Notificator</name><operator>::</operator><name>notifyMacUserNotificationCenter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>title</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>text</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// icon is not supported by the user notification center yet. OSX will use the app icon.</comment>
+    <expr_stmt><expr><call><name><name>MacNotificationHandler</name><operator>::</operator><name>instance</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>showNotification</name><argument_list>(<argument><expr><name>title</name></expr></argument>, <argument><expr><name>text</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><name>void</name></type> <name><name>Notificator</name><operator>::</operator><name>notify</name></name><parameter_list>(<parameter><decl><type><name>Class</name></type> <name>cls</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>title</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>text</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QIcon</name> <modifier>&amp;</modifier></type><name>icon</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>millisTimeout</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <switch>switch<condition>(<expr><name>mode</name></expr>)</condition>
+    <block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_DBUS</name></cpp:ifdef>
+    <case>case <expr><name>Freedesktop</name></expr>:</case>
+        <expr_stmt><expr><call><name>notifyDBus</name><argument_list>(<argument><expr><name>cls</name></expr></argument>, <argument><expr><name>title</name></expr></argument>, <argument><expr><name>text</name></expr></argument>, <argument><expr><name>icon</name></expr></argument>, <argument><expr><name>millisTimeout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <case>case <expr><name>QSystemTray</name></expr>:</case>
+        <expr_stmt><expr><call><name>notifySystray</name><argument_list>(<argument><expr><name>cls</name></expr></argument>, <argument><expr><name>title</name></expr></argument>, <argument><expr><name>text</name></expr></argument>, <argument><expr><name>millisTimeout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>Q_OS_MAC</name></cpp:ifdef>
+    <case>case <expr><name>UserNotificationCenter</name></expr>:</case>
+        <expr_stmt><expr><call><name>notifyMacUserNotificationCenter</name><argument_list>(<argument><expr><name>title</name></expr></argument>, <argument><expr><name>text</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <default>default:</default>
+        <if_stmt><if>if<condition>(<expr><name>cls</name> <operator>==</operator> <name>Critical</name></expr>)</condition>
+        <block>{<block_content>
+            <comment type="line">// Fall back to old fashioned pop-up dialog if critical and no other notification available</comment>
+            <expr_stmt><expr><call><name><name>QMessageBox</name><operator>::</operator><name>critical</name></name><argument_list>(<argument><expr><name>parent</name></expr></argument>, <argument><expr><name>title</name></expr></argument>, <argument><expr><name>text</name></expr></argument>, <argument><expr><name><name>QMessageBox</name><operator>::</operator><name>Ok</name></name></expr></argument>, <argument><expr><name><name>QMessageBox</name><operator>::</operator><name>Ok</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <break>break;</break>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+</unit>
