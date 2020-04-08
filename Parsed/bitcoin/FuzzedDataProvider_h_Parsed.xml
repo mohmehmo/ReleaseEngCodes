@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/test/fuzz/FuzzedDataProvider.h"><comment type="line">//===- FuzzedDataProvider.h - Utility header for fuzz targets ---*- C++ -* ===//</comment>
+<comment type="line">//</comment>
+<comment type="line">// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.</comment>
+<comment type="line">// See https://llvm.org/LICENSE.txt for license information.</comment>
+<comment type="line">// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception</comment>
+<comment type="line">//</comment>
+<comment type="line">//===----------------------------------------------------------------------===//</comment>
+<comment type="line">// A single header library providing an utility class to break up an array of</comment>
+<comment type="line">// bytes. Whenever run on the same input, provides the same output, as long as</comment>
+<comment type="line">// its methods are called in the same order, with the same arguments.</comment>
+<comment type="line">//===----------------------------------------------------------------------===//</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>LLVM_FUZZER_FUZZED_DATA_PROVIDER_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LLVM_FUZZER_FUZZED_DATA_PROVIDER_H_</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;limits.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stddef.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cstring&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;initializer_list&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;type_traits&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>FuzzedDataProvider</name> <block>{<block_content>
+<label><name>public</name>:</label>
+  <comment type="line">// |data| is an array of length |size| that the FuzzedDataProvider wraps to</comment>
+  <comment type="line">// provide more granular access. |data| must outlive the FuzzedDataProvider.</comment>
+  <macro><name>FuzzedDataProvider</name><argument_list>(<argument>const uint8_t *data</argument>, <argument>size_t size</argument>)</argument_list></macro>
+      : <expr_stmt><expr><call><name>data_ptr_</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>remaining_bytes_</name><argument_list>(<argument>size</argument>)</argument_list></macro> <expr><block>{}</block>
+  <operator>~</operator><call><name>FuzzedDataProvider</name><argument_list>()</argument_list></call> <operator>=</operator> default</expr>;</expr_stmt>
+
+  <comment type="line">// Returns a std::vector containing |num_bytes| of input data. If fewer than</comment>
+  <comment type="line">// |num_bytes| of data remain, returns a shorter std::vector containing all</comment>
+  <comment type="line">// of the data that's left. Can be used with any byte sized type, such as</comment>
+  <comment type="line">// char, unsigned char, uint8_t, etc.</comment>
+  <expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <macro><name>ConsumeBytes</name><argument_list>(<argument>size_t num_bytes</argument>)</argument_list></macro> <block>{
+    <expr><name>num_bytes</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>num_bytes</name></expr></argument>, <argument><expr><name>remaining_bytes_</name></expr></argument>)</argument_list></call></expr>;
+    <return>return <expr><call><name><name>ConsumeBytes</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>num_bytes</name></expr></argument>, <argument><expr><name>num_bytes</name></expr></argument>)</argument_list></call></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Similar to |ConsumeBytes|, but also appends the terminator value at the end</comment>
+  <comment type="line">// of the resulting vector. Useful, when a mutable null-terminated C-string is</comment>
+  <comment type="line">// needed, for example. But that is a rare case. Better avoid it, if possible,</comment>
+  <comment type="line">// and prefer using |ConsumeBytes| or |ConsumeBytesAsString| methods.</comment>
+  <expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+  <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <macro><name>ConsumeBytesWithTerminator</name><argument_list>(<argument>size_t num_bytes</argument>,
+                                            <argument>T terminator = <literal type="number">0</literal></argument>)</argument_list></macro> <block>{
+    <expr><name>num_bytes</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>num_bytes</name></expr></argument>, <argument><expr><name>remaining_bytes_</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <name>result</name> <operator>=</operator> <call><name><name>ConsumeBytes</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>num_bytes</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name>num_bytes</name></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name><name>result</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>=</operator> <name>terminator</name></expr>;
+    <return>return <expr><name>result</name></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Returns a std::string containing |num_bytes| of input data. Using this and</comment>
+  <comment type="line">// |.c_str()| on the resulting string is the best way to get an immutable</comment>
+  <comment type="line">// null-terminated C string. If fewer than |num_bytes| of data remain, returns</comment>
+  <comment type="line">// a shorter std::string containing all of the data that's left.</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>ConsumeBytesAsString</name><argument_list>(<argument>size_t num_bytes</argument>)</argument_list></macro> <block>{
+    <expr><call><name>static_assert</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>value_type</name></expr></argument>)</argument_list></sizeof> <operator>==</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint8_t</name></expr></argument>)</argument_list></sizeof></expr></argument>,
+                  <argument><expr><literal type="string">"ConsumeBytesAsString cannot convert the data to a string."</literal></expr></argument>)</argument_list></call></expr>;
+
+    <expr><name>num_bytes</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>num_bytes</name></expr></argument>, <argument><expr><name>remaining_bytes_</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>std</name><operator>::</operator><name>string</name> <call><name>result</name><argument_list>(
+        <argument><expr><call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>value_type</name> <operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>data_ptr_</name></expr></argument>)</argument_list></call></expr></argument>,
+        <argument><expr><name>num_bytes</name></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name>Advance</name><argument_list>(<argument><expr><name>num_bytes</name></expr></argument>)</argument_list></call></expr>;
+    <return>return <expr><name>result</name></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Returns a number in the range [min, max] by consuming bytes from the</comment>
+  <comment type="line">// input data. The value might not be uniformly distributed in the given</comment>
+  <comment type="line">// range. If there's no input data left, always returns |min|. |min| must</comment>
+  <comment type="line">// be less than or equal to |max|.</comment>
+  <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>T</name></type> <name>ConsumeIntegralInRange</name><parameter_list>(<parameter><decl><type><name>T</name></type> <name>min</name></decl></parameter>, <parameter><decl><type><name>T</name></type> <name>max</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>is_integral</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>, <argument><expr><literal type="string">"An integral type is required."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof> <operator>&lt;=</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint64_t</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><literal type="string">"Unsupported integral type."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>min</name> <operator>&gt;</operator> <name>max</name></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name>abort</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Use the biggest type possible to hold the range and the result.</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>range</name> <init>= <expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>max</name></expr></argument>)</argument_list></call> <operator>-</operator> <name>min</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>result</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>offset</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <while>while <condition>(<expr><name>offset</name> <operator>&lt;</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof> <operator>*</operator> <name>CHAR_BIT</name> <operator>&amp;&amp;</operator> <operator>(</operator><name>range</name> <operator>&gt;&gt;</operator> <name>offset</name><operator>)</operator> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator>
+           <name>remaining_bytes_</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <comment type="line">// Pull bytes off the end of the seed data. Experimentally, this seems to</comment>
+      <comment type="line">// allow the fuzzer to more easily explore the input space. This makes</comment>
+      <comment type="line">// sense, since it works by modifying inputs that caused new code to run,</comment>
+      <comment type="line">// and this data is often used to encode length of data read by</comment>
+      <comment type="line">// |ConsumeBytes|. Separating out read lengths makes it easier modify the</comment>
+      <comment type="line">// contents of the data that is actually read.</comment>
+      <expr_stmt><expr><operator>--</operator><name>remaining_bytes_</name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>result</name> <operator>=</operator> <operator>(</operator><name>result</name> <operator>&lt;&lt;</operator> <name>CHAR_BIT</name><operator>)</operator> <operator>|</operator> <name><name>data_ptr_</name><index>[<expr><name>remaining_bytes_</name></expr>]</index></name></expr>;</expr_stmt>
+      <expr_stmt><expr><name>offset</name> <operator>+=</operator> <name>CHAR_BIT</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <comment type="line">// Avoid division by 0, in case |range + 1| results in overflow.</comment>
+    <if_stmt><if>if <condition>(<expr><name>range</name> <operator>!=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>decltype</name><operator>(</operator><name>range</name><operator>)</operator></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><name>result</name> <operator>=</operator> <name>result</name> <operator>%</operator> <operator>(</operator><name>range</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>min</name> <operator>+</operator> <name>result</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="line">// Returns a std::string of length from 0 to |max_length|. When it runs out of</comment>
+  <comment type="line">// input data, returns what remains of the input. Designed to be more stable</comment>
+  <comment type="line">// with respect to a fuzzer inserting characters than just picking a random</comment>
+  <comment type="line">// length and then consuming that many bytes with |ConsumeBytes|.</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>ConsumeRandomLengthString</name><argument_list>(<argument>size_t max_length</argument>)</argument_list></macro> <block>{
+    <comment type="line">// Reads bytes from the start of |data_ptr_|. Maps "\\" to "\", and maps "\"</comment>
+    <comment type="line">// followed by anything else to the end of the string. As a result of this</comment>
+    <comment type="line">// logic, a fuzzer can insert characters into the string, and the string</comment>
+    <comment type="line">// will be lengthened to include those new characters, resulting in a more</comment>
+    <comment type="line">// stable fuzzer than picking the length of a string independently from</comment>
+    <comment type="line">// picking its contents.</comment>
+    <expr><name>std</name><operator>::</operator><name>string</name> <name>result</name></expr>;
+
+    <comment type="line">// Reserve the anticipated capaticity to prevent several reallocations.</comment>
+    <expr><call><name><name>result</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>max_length</name></expr></argument>, <argument><expr><name>remaining_bytes_</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>max_length</name> <operator>&amp;&amp;</operator> <name>remaining_bytes_</name> <operator>!=</operator> <literal type="number">0</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+      <decl_stmt><decl><type><name>char</name></type> <name>next</name> <init>= <expr><call><name><name>ConvertUnsignedToSigned</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name><name>data_ptr_</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+      <expr_stmt><expr><call><name>Advance</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <if_stmt><if>if <condition>(<expr><name>next</name> <operator>==</operator> <literal type="char">'\\'</literal> <operator>&amp;&amp;</operator> <name>remaining_bytes_</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>next</name> <operator>=</operator> <call><name><name>ConvertUnsignedToSigned</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name><name>data_ptr_</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Advance</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>next</name> <operator>!=</operator> <literal type="char">'\\'</literal></expr>)</condition><block type="pseudo"><block_content>
+          <break>break;</break></block_content></block></if></if_stmt>
+      <expr_stmt/>}</block_content>
+      result += next</block><empty_stmt>;</empty_stmt></if></if_stmt>
+    <expr_stmt/>}</block_content>
+
+    result.shrink_to_fit(</block></for>)</block></expr>;</expr_stmt>
+    <return>return <expr><name>result</name></expr>;</return>
+  </block_content>}</block></decl></decl_stmt>
+
+  <comment type="line">// Returns a std::vector containing all remaining bytes of the input data.</comment>
+  <expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <macro><name>ConsumeRemainingBytes</name><argument_list>()</argument_list></macro> <block>{
+    <return>return <expr><call><name><name>ConsumeBytes</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>remaining_bytes_</name></expr></argument>)</argument_list></call></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Prefer using |ConsumeRemainingBytes| unless you actually need a std::string</comment>
+  <comment type="line">// object.</comment>
+  <comment type="line">// Returns a std::vector containing all remaining bytes of the input data.</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>ConsumeRemainingBytesAsString</name><argument_list>()</argument_list></macro> <block>{
+    <return>return <expr><call><name>ConsumeBytesAsString</name><argument_list>(<argument><expr><name>remaining_bytes_</name></expr></argument>)</argument_list></call></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Returns a number in the range [Type's min, Type's max]. The value might</comment>
+  <comment type="line">// not be uniformly distributed in the given range. If there's no input data</comment>
+  <comment type="line">// left, always returns |min|.</comment>
+  <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>T</name></type> <name>ConsumeIntegral</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>ConsumeIntegralInRange</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call></expr></argument>,
+                                  <argument><expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="line">// Reads one byte and returns a bool, or false when no data remains.</comment>
+  <function><type><name>bool</name></type> <name>ConsumeBool</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><literal type="number">1</literal> <operator>&amp;</operator> <call><name><name>ConsumeIntegral</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></function>
+
+  <comment type="line">// Returns a copy of a value selected from a fixed-size |array|.</comment>
+  <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>size_t</name> <name>size</name></expr></argument>&gt;</argument_list></name>
+  <name>T</name></type> <name>PickValueInArray</name><argument_list>(<argument><expr><specifier>const</specifier> <call><name>T</name> <argument_list>(<argument><expr><operator>&amp;</operator><name>array</name></expr></argument>)</argument_list></call><index>[<expr><name>size</name></expr>]</index></expr></argument>)</argument_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(<argument><expr><name>size</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>, <argument><expr><literal type="string">"The array must be non empty."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name><name>array</name><index>[<expr><call><name><name>ConsumeIntegralInRange</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>size</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>]</index></name></expr>;</return>
+  </block_content>}</block></decl></decl_stmt>
+
+  <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+  <name>T</name></type> <name>PickValueInArray</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>initializer_list</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name> <name>list</name></expr></argument>)</argument_list> <block>{<block_content>
+    <comment type="line">// static_assert(list.size() &gt; 0, "The array must be non empty.");</comment>
+    <return>return <expr><operator>*</operator><operator>(</operator><call><name><name>list</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>ConsumeIntegralInRange</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>list</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call><operator>)</operator></expr>;</return>
+  </block_content>}</block></decl></decl_stmt>
+
+  <comment type="line">// Return an enum value. The enum must start at 0 and be contiguous. It must</comment>
+  <comment type="line">// also contain |kMaxValue| aliased to its largest (inclusive) value. Such as:</comment>
+  <comment type="line">// enum class Foo { SomeValue, OtherValue, kMaxValue = OtherValue };</comment>
+  <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>T</name></type> <name>ConsumeEnum</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>is_enum</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>, <argument><expr><literal type="string">"|T| must be an enum type."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>ConsumeIntegralInRange</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list></name><argument_list>(
+        <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>T</name><operator>::</operator><name>kMaxValue</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></function>
+
+  <comment type="line">// Reports the remaining bytes available for fuzzed input.</comment>
+  <function><type><name>size_t</name></type> <name>remaining_bytes</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><name>remaining_bytes_</name></expr>;</return> </block_content>}</block></function>
+
+<label><name>private</name>:</label>
+  <expr_stmt><expr><call><name>FuzzedDataProvider</name><argument_list>(<argument><expr><specifier>const</specifier> <name>FuzzedDataProvider</name> <operator>&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>FuzzedDataProvider</name> <modifier>&amp;</modifier></type><name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>FuzzedDataProvider</name> <operator>&amp;</operator><operator>)</operator> <operator>=</operator> <name>delete</name></expr></init></decl>;</decl_stmt>
+
+  <function><type><name>void</name></type> <name>Advance</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>num_bytes</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>num_bytes</name> <operator>&gt;</operator> <name>remaining_bytes_</name></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name>abort</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name>data_ptr_</name> <operator>+=</operator> <name>num_bytes</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>remaining_bytes_</name> <operator>-=</operator> <name>num_bytes</name></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+  <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <macro><name>ConsumeBytes</name><argument_list>(<argument>size_t size</argument>, <argument>size_t num_bytes_to_consume</argument>)</argument_list></macro> <block>{
+    <expr><call><name>static_assert</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof> <operator>==</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint8_t</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><literal type="string">"Incompatible data type."</literal></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="line">// The point of using the size-based constructor below is to increase the</comment>
+    <comment type="line">// odds of having a vector object with capacity being equal to the length.</comment>
+    <comment type="line">// That part is always implementation specific, but at least both libc++ and</comment>
+    <comment type="line">// libstdc++ allocate the requested number of bytes in that constructor,</comment>
+    <comment type="line">// which seems to be a natural choice for other implementations as well.</comment>
+    <comment type="line">// To increase the odds even more, we also call |shrink_to_fit| below.</comment>
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <call><name>result</name><argument_list>(<argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>std</name><operator>::</operator><call><name>memcpy</name><argument_list>(<argument><expr><call><name><name>result</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>data_ptr_</name></expr></argument>, <argument><expr><name>num_bytes_to_consume</name></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name>Advance</name><argument_list>(<argument><expr><name>num_bytes_to_consume</name></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="line">// Even though |shrink_to_fit| is also implementation specific, we expect it</comment>
+    <comment type="line">// to provide an additional assurance in case vector's constructor allocated</comment>
+    <comment type="line">// a buffer which is larger than the actual amount of data we put inside it.</comment>
+    <expr><call><name><name>result</name><operator>.</operator><name>shrink_to_fit</name></name><argument_list>()</argument_list></call></expr>;
+    <return>return <expr><name>result</name></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>TS</name></expr></argument>, <argument><expr><name>typename</name> <name>TU</name></expr></argument>&gt;</argument_list></name> <name>TS</name></type> <name>ConvertUnsignedToSigned</name><parameter_list>(<parameter><decl><type><name>TU</name></type> <name>value</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>TS</name></expr></argument>)</argument_list></sizeof> <operator>==</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>TU</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><literal type="string">"Incompatible data types."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(<argument><expr><operator>!</operator><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>TU</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>is_signed</name></expr></argument>,
+                  <argument><expr><literal type="string">"Source type must be unsigned."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// TODO(Dor1s): change to `if constexpr` once C++17 becomes mainstream.</comment>
+    <if_stmt><if>if <condition>(<expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>TS</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>is_modulo</name></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>TS</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Avoid using implementation-defined unsigned to signer conversions.</comment>
+    <comment type="line">// To learn more, see https://stackoverflow.com/questions/13150449.</comment>
+    <if_stmt><if>if <condition>(<expr><name>value</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>TS</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>TS</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if>
+    <else>else <block>{<block_content>
+      <decl_stmt><decl><type><name>constexpr</name> <specifier>auto</specifier></type> <name>TS_min</name> <init>= <expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>TS</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+      <return>return <expr><name>TS_min</name> <operator>+</operator> <call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>value</name> <operator>-</operator> <name>TS_min</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+  </block_content>}</block></function>
+
+  <decl_stmt><decl><type><specifier>const</specifier> <name>uint8_t</name> <modifier>*</modifier></type><name>data_ptr_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>size_t</name></type> <name>remaining_bytes_</name></decl>;</decl_stmt>
+};
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// LLVM_FUZZER_FUZZED_DATA_PROVIDER_H_</comment>
+</unit>

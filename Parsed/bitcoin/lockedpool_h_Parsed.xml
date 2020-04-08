@@ -1,0 +1,242 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/support/lockedpool.h"><comment type="line">// Copyright (c) 2016-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_SUPPORT_LOCKEDPOOL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_SUPPORT_LOCKEDPOOL_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;list&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;mutex&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unordered_map&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/**
+ * OS-dependent allocation and deallocation of locked/pinned memory pages.
+ * Abstract base class.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>LockedPageAllocator</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><macro><name>LockedPageAllocator</name><argument_list>()</argument_list></macro> <block>{}</block>
+    <comment type="block" format="doxygen">/** Allocate and lock memory pages.
+     * If len is not a multiple of the system page size, it is rounded up.
+     * Returns nullptr in case of allocation failure.
+     *
+     * If locking the memory pages could not be accomplished it will still
+     * return the memory, however the lockingSuccess flag will be false.
+     * lockingSuccess is undefined if the allocation fails.
+     */</comment>
+    <name>virtual</name> <name>void</name><operator>*</operator> <macro><name>AllocateLocked</name><argument_list>(<argument>size_t len</argument>, <argument>bool *lockingSuccess</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Unlock and free memory pages.
+     * Clear the memory before unlocking.
+     */</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>FreeLocked</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>addr</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>len</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Get the total limit on the amount of memory that may be locked by this
+     * process, in bytes. Return size_t max if there is no limit or the limit
+     * is unknown. Return 0 if no memory can be locked at all.
+     */</comment>
+    <function_decl><type><name>virtual</name> <name>size_t</name></type> <name>GetLimit</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block">/* An arena manages a contiguous region of memory by dividing it into
+ * chunks.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>Arena</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <macro><name>Arena</name><argument_list>(<argument>void *base</argument>, <argument>size_t size</argument>, <argument>size_t alignment</argument>)</argument_list></macro><empty_stmt>;</empty_stmt>
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><call><name>Arena</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>Arena</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Arena</name><operator>&amp;</operator> <name>other</name></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt> <comment type="line">// non construction-copyable</comment>
+    <decl_stmt><decl><type><name>Arena</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>Arena</name><operator>&amp;</operator><operator>)</operator> <operator>=</operator> <name>delete</name></expr></init></decl>;</decl_stmt> <comment type="line">// non copyable</comment>
+
+    <comment type="block" format="doxygen">/** Memory statistics. */</comment>
+    <struct>struct <name>Stats</name>
+    <block>{
+        <decl_stmt><decl><type><name>size_t</name></type> <name>used</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>free</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>total</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>chunks_used</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>chunks_free</name></decl>;</decl_stmt>
+    }</block>;</struct>
+
+    <comment type="block" format="doxygen">/** Allocate size bytes from this arena.
+     * Returns pointer on success, or 0 if memory is full or
+     * the application tried to allocate 0 bytes.
+     */</comment>
+    <function_decl><type><name>void</name><modifier>*</modifier></type> <name>alloc</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Free a previously allocated chunk of memory.
+     * Freeing the zero pointer has no effect.
+     * Raises std::runtime_error in case of error.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>free</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>ptr</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Get arena usage statistics */</comment>
+    <expr_stmt><expr><name>Stats</name> <macro><name>stats</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ARENA_DEBUG</name></cpp:ifdef>
+    <expr_stmt><expr><name>void</name> <macro><name>walk</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="block" format="doxygen">/** Return whether a pointer points inside this arena.
+     * This returns base &lt;= ptr &lt; (base+size) so only use it for (inclusive)
+     * chunk starting addresses.
+     */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>addressInArena</name><argument_list>(<argument><expr><name>void</name> <operator>*</operator><name>ptr</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name>ptr</name> <operator>&gt;=</operator> <name>base</name> <operator>&amp;&amp;</operator> <name>ptr</name> <operator>&lt;</operator> <name>end</name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+<label><name>private</name>:</label>
+    <typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>multimap</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>, <argument><expr><name>char</name><operator>*</operator></expr></argument>&gt;</argument_list></name> <name>SizeToChunkSortedMap</name></expr>;</expr_stmt></typedef>
+    <comment type="block" format="doxygen">/** Map to enable O(log(n)) best-fit allocation, as it's sorted by size */</comment>
+    <decl_stmt><decl><type><name>SizeToChunkSortedMap</name></type> <name>size_to_free_chunk</name></decl>;</decl_stmt>
+
+    <typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name>char</name><operator>*</operator></expr></argument>, <argument><expr><name>SizeToChunkSortedMap</name><operator>::</operator><name>const_iterator</name></expr></argument>&gt;</argument_list></name> <name>ChunkToSizeMap</name></expr>;</expr_stmt></typedef>
+    <comment type="block" format="doxygen">/** Map from begin of free chunk to its node in size_to_free_chunk */</comment>
+    <decl_stmt><decl><type><name>ChunkToSizeMap</name></type> <name>chunks_free</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Map from end of free chunk to its node in size_to_free_chunk */</comment>
+    <decl_stmt><decl><type><name>ChunkToSizeMap</name></type> <name>chunks_free_end</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Map from begin of used chunk to its size */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name>char</name><operator>*</operator></expr></argument>, <argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name> <name>chunks_used</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Base address of arena */</comment>
+    <decl_stmt><decl><type><name>char</name><modifier>*</modifier></type> <name>base</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** End address of arena */</comment>
+    <decl_stmt><decl><type><name>char</name><modifier>*</modifier></type> <name>end</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Minimum chunk alignment */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>alignment</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** Pool for locked memory chunks.
+ *
+ * To avoid sensitive key data from being swapped to disk, the memory in this pool
+ * is locked/pinned.
+ *
+ * An arena manages a contiguous region of memory. The pool starts out with one arena
+ * but can grow to multiple arenas if the need arises.
+ *
+ * Unlike a normal C heap, the administrative structures are separate from the managed
+ * memory. This has been done as the sizes and bases of objects are not in themselves sensitive
+ * information, as to conserve precious locked memory. In some operating systems
+ * the amount of memory that can be locked is small.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>LockedPool</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Size of one arena of locked memory. This is a compromise.
+     * Do not set this too low, as managing many arenas will increase
+     * allocation and deallocation overhead. Setting it too high allocates
+     * more locked memory from the OS than strictly necessary.
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>ARENA_SIZE</name> <init>= <expr><literal type="number">256</literal><operator>*</operator><literal type="number">1024</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Chunk alignment. Another compromise. Setting this too high will waste
+     * memory, setting it too low will facilitate fragmentation.
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>ARENA_ALIGN</name> <init>= <expr><literal type="number">16</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Callback when allocation succeeds but locking fails.
+     */</comment>
+    <typedef>typedef <function_decl><type><name>bool</name></type> (<modifier>*</modifier><name>LockingFailed_Callback</name>)<parameter_list>()</parameter_list>;</function_decl></typedef>
+
+    <comment type="block" format="doxygen">/** Memory statistics. */</comment>
+    <struct>struct <name>Stats</name>
+    <block>{
+        <decl_stmt><decl><type><name>size_t</name></type> <name>used</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>free</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>total</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>locked</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>chunks_used</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>chunks_free</name></decl>;</decl_stmt>
+    }</block>;</struct>
+
+    <comment type="block" format="doxygen">/** Create a new LockedPool. This takes ownership of the MemoryPageLocker,
+     * you can only instantiate this with LockedPool(std::move(...)).
+     *
+     * The second argument is an optional callback when locking a newly allocated arena failed.
+     * If this callback is provided and returns false, the allocation fails (hard fail), if
+     * it returns true the allocation proceeds, but it could warn.
+     */</comment>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>LockedPool</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>LockedPageAllocator</name></expr></argument>&gt;</argument_list></name> <name>allocator</name></expr></argument>, <argument><expr><name>LockingFailed_Callback</name> <name>lf_cb_in</name> <operator>=</operator> <name>nullptr</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><operator>~</operator><call><name>LockedPool</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LockedPool</name><argument_list>(<argument><expr><specifier>const</specifier> <name>LockedPool</name><operator>&amp;</operator> <name>other</name></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt> <comment type="line">// non construction-copyable</comment>
+    <decl_stmt><decl><type><name>LockedPool</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>LockedPool</name><operator>&amp;</operator><operator>)</operator> <operator>=</operator> <name>delete</name></expr></init></decl>;</decl_stmt> <comment type="line">// non copyable</comment>
+
+    <comment type="block" format="doxygen">/** Allocate size bytes from this arena.
+     * Returns pointer on success, or 0 if memory is full or
+     * the application tried to allocate 0 bytes.
+     */</comment>
+    <function_decl><type><name>void</name><modifier>*</modifier></type> <name>alloc</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Free a previously allocated chunk of memory.
+     * Freeing the zero pointer has no effect.
+     * Raises std::runtime_error in case of error.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>free</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>ptr</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Get pool usage statistics */</comment>
+    <expr_stmt><expr><name>Stats</name> <macro><name>stats</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>LockedPageAllocator</name></expr></argument>&gt;</argument_list></name> <name>allocator</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Create an arena from locked pages */</comment>
+    <decl_stmt><decl><type><name>class</name></type> <name>LockedPageArena</name><range>: <expr><name>public</name> <name>Arena</name>
+    <block>{
+    <expr><name>public</name><operator>:</operator>
+        <macro><name>LockedPageArena</name><argument_list>(<argument>LockedPageAllocator *alloc_in</argument>, <argument>void *base_in</argument>, <argument>size_t size</argument>, <argument>size_t align</argument>)</argument_list></macro></expr>;
+        <expr><operator>~</operator><call><name>LockedPageArena</name><argument_list>()</argument_list></call></expr>;
+    <expr><name>private</name><operator>:</operator>
+        <name>void</name> <operator>*</operator><name>base</name></expr>;
+        <expr><name>size_t</name> <name>size</name></expr>;
+        <expr><name>LockedPageAllocator</name> <operator>*</operator><name>allocator</name></expr>;
+    }</block></expr></range></decl>;</decl_stmt>
+
+    <function_decl><type><name>bool</name></type> <name>new_arena</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>align</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>list</name><argument_list type="generic">&lt;<argument><expr><name>LockedPageArena</name></expr></argument>&gt;</argument_list></name> <name>arenas</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>LockingFailed_Callback</name></type> <name>lf_cb</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>cumulative_bytes_locked</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Mutex protects access to this pool's data structures, including arenas.
+     */</comment>
+    <expr_stmt><expr><name>mutable</name> <name>std</name><operator>::</operator><name>mutex</name> <name>mutex</name></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Singleton class to keep track of locked (ie, non-swappable) memory, for use in
+ * std::allocator templates.
+ *
+ * Some implementations of the STL allocate memory in some constructors (i.e., see
+ * MSVC's vector&lt;T&gt; implementation where it allocates 1 byte of memory in the allocator.)
+ * Due to the unpredictable order of static initializers, we have to make sure the
+ * LockedPoolManager instance exists before any other STL-based objects that use
+ * secure_allocator are created. So instead of having LockedPoolManager also be
+ * static-initialized, it is created on demand.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>LockedPoolManager</name> <range>: <expr><name>public</name> <name>LockedPool</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <comment type="block" format="doxygen">/** Return the current instance, or create it once */</comment>
+    <specifier>static</specifier> <name>LockedPoolManager</name><operator>&amp;</operator> <macro><name>Instance</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><name>std</name><operator>::</operator><call><name>call_once</name><argument_list>(<argument><expr><name>LockedPoolManager</name><operator>::</operator><name>init_flag</name></expr></argument>, <argument><expr><name>LockedPoolManager</name><operator>::</operator><name>CreateInstance</name></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><operator>*</operator><name>LockedPoolManager</name><operator>::</operator><name>_instance</name></expr>;</return>
+    }</block>
+
+<name>private</name><operator>:</operator>
+    <name>explicit</name> <call><name>LockedPoolManager</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>LockedPageAllocator</name></expr></argument>&gt;</argument_list></name> <name>allocator</name></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="block" format="doxygen">/** Create a new LockedPoolManager specialized to the OS */</comment>
+    <expr><specifier>static</specifier> <name>void</name> <call><name>CreateInstance</name><argument_list>()</argument_list></call></expr>;
+    <comment type="block" format="doxygen">/** Called when locking fails, warn the user here */</comment>
+    <expr><specifier>static</specifier> <name>bool</name> <call><name>LockingFailed</name><argument_list>()</argument_list></call></expr>;
+
+    <expr><specifier>static</specifier> <name>LockedPoolManager</name><operator>*</operator> <name>_instance</name></expr>;
+    <expr><specifier>static</specifier> <name>std</name><operator>::</operator><name>once_flag</name> <name>init_flag</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_SUPPORT_LOCKEDPOOL_H</comment>
+</unit>

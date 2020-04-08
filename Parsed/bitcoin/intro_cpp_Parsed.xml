@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/intro.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;fs.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/intro.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/forms/ui_intro.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiconstants.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiutil.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/node.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QFileDialog&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QSettings&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QMessageBox&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cmath&gt;</cpp:file></cpp:include>
+
+<comment type="block">/* Total required space (in GB) depending on user choice (prune, not prune) */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>uint64_t</name></type> <name>requiredSpace</name></decl>;</decl_stmt>
+
+<comment type="block">/* Check free space asynchronously to prevent hanging the UI thread.
+
+   Up to one request to check a path is in flight to this thread; when the check()
+   function runs, the current path is requested from the associated Intro object.
+   The reply is sent back through a signal.
+
+   This ensures that no queue of checking requests is built up while the user is
+   still entering the path, and that always the most recently entered path is checked as
+   soon as the thread becomes available.
+*/</comment>
+<class>class <name>FreespaceChecker</name> <super_list>: <super><specifier>public</specifier> <name>QObject</name></super></super_list>
+<block>{<private type="default">
+    <macro><name>Q_OBJECT</name></macro>
+
+</private><public>public:
+    <constructor_decl><specifier>explicit</specifier> <name>FreespaceChecker</name><parameter_list>(<parameter><decl><type><name>Intro</name> <modifier>*</modifier></type><name>intro</name></decl></parameter>)</parameter_list>;</constructor_decl>
+
+    <enum>enum <name>Status</name> <block>{
+        <decl><name>ST_OK</name></decl>,
+        <decl><name>ST_ERROR</name></decl>
+    }</block>;</enum>
+
+</public><public>public <name>Q_SLOTS</name>:
+    <function_decl><type><name>void</name></type> <name>check</name><parameter_list>()</parameter_list>;</function_decl>
+
+<label><name>Q_SIGNALS</name>:</label>
+    <function_decl><type><name>void</name></type> <name>reply</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>status</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>message</name></decl></parameter>, <parameter><decl><type><name>quint64</name></type> <name>available</name></decl></parameter>)</parameter_list>;</function_decl>
+
+</public><private>private:
+    <decl_stmt><decl><type><name>Intro</name> <modifier>*</modifier></type><name>intro</name></decl>;</decl_stmt>
+</private>}</block>;</class>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/intro.moc&gt;</cpp:file></cpp:include>
+
+<constructor><name><name>FreespaceChecker</name><operator>::</operator><name>FreespaceChecker</name></name><parameter_list>(<parameter><decl><type><name>Intro</name> <modifier>*</modifier></type><name>_intro</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name><name>this</name><operator>-&gt;</operator><name>intro</name></name> <operator>=</operator> <name>_intro</name></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>FreespaceChecker</name><operator>::</operator><name>check</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>dataDirStr</name> <init>= <expr><call><name><name>intro</name><operator>-&gt;</operator><name>getPathToCheck</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>dataDir</name> <init>= <expr><call><name><name>GUIUtil</name><operator>::</operator><name>qstringToBoostPath</name></name><argument_list>(<argument><expr><name>dataDirStr</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>freeBytesAvailable</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>replyStatus</name> <init>= <expr><name>ST_OK</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>replyMessage</name> <init>= <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"A new data directory will be created."</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="block">/* Find first parent that exists, so that fs::space does not fail */</comment>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>parentDir</name> <init>= <expr><name>dataDir</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>parentDirOld</name> <init>= <expr><call><name><name>fs</name><operator>::</operator><name>path</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <while>while<condition>(<expr><call><name><name>parentDir</name><operator>.</operator><name>has_parent_path</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>fs</name><operator>::</operator><name>exists</name></name><argument_list>(<argument><expr><name>parentDir</name></expr></argument>)</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>parentDir</name> <operator>=</operator> <call><name><name>parentDir</name><operator>.</operator><name>parent_path</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="block">/* Check if we make any progress, break if not to prevent an infinite loop here */</comment>
+        <if_stmt><if>if <condition>(<expr><name>parentDirOld</name> <operator>==</operator> <name>parentDir</name></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><name>parentDirOld</name> <operator>=</operator> <name>parentDir</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><name>freeBytesAvailable</name> <operator>=</operator> <call><name><name>fs</name><operator>::</operator><name>space</name></name><argument_list>(<argument><expr><name>parentDir</name></expr></argument>)</argument_list></call><operator>.</operator><name>available</name></expr>;</expr_stmt>
+        <if_stmt><if>if<condition>(<expr><call><name><name>fs</name><operator>::</operator><name>exists</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <if_stmt><if>if<condition>(<expr><call><name><name>fs</name><operator>::</operator><name>is_directory</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <decl_stmt><decl><type><name>QString</name></type> <name>separator</name> <init>= <expr><literal type="string">"&lt;code&gt;"</literal> <operator>+</operator> <call><name><name>QDir</name><operator>::</operator><name>toNativeSeparators</name></name><argument_list>(<argument><expr><literal type="string">"/"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"name"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"&lt;/code&gt;"</literal></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><name>replyStatus</name> <operator>=</operator> <name>ST_OK</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>replyMessage</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Directory already exists. Add %1 if you intend to create a new directory here."</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>separator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <expr_stmt><expr><name>replyStatus</name> <operator>=</operator> <name>ST_ERROR</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>replyMessage</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Path already exists, and is not a directory."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>filesystem_error</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <comment type="block">/* Parent directory does not exist or is not accessible */</comment>
+        <expr_stmt><expr><name>replyStatus</name> <operator>=</operator> <name>ST_ERROR</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>replyMessage</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Cannot create data directory here."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>reply</name><argument_list>(<argument><expr><name>replyStatus</name></expr></argument>, <argument><expr><name>replyMessage</name></expr></argument>, <argument><expr><name>freeBytesAvailable</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+
+<constructor><name><name>Intro</name><operator>::</operator><name>Intro</name></name><parameter_list>(<parameter><decl><type><name>QWidget</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>blockchain_size</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>chain_state_size</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QDialog</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>,
+    <call><name>ui</name><argument_list>(<argument><expr><operator>new</operator> <name><name>Ui</name><operator>::</operator><name>Intro</name></name></expr></argument>)</argument_list></call>,
+    <call><name>thread</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>,
+    <call><name>signalled</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>,
+    <call><name>m_blockchain_size</name><argument_list>(<argument><expr><name>blockchain_size</name></expr></argument>)</argument_list></call>,
+    <call><name>m_chain_state_size</name><argument_list>(<argument><expr><name>chain_state_size</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>setupUi</name></name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>welcomeLabel</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><call><name><name>ui</name><operator>-&gt;</operator><name>welcomeLabel</name><operator>-&gt;</operator><name>text</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>PACKAGE_NAME</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>storageLabel</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><call><name><name>ui</name><operator>-&gt;</operator><name>storageLabel</name><operator>-&gt;</operator><name>text</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>PACKAGE_NAME</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>lblExplanation1</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><call><name><name>ui</name><operator>-&gt;</operator><name>lblExplanation1</name><operator>-&gt;</operator><name>text</name></name><argument_list>()</argument_list></call>
+        <operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>PACKAGE_NAME</name></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>m_blockchain_size</name></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><literal type="number">2009</literal></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Bitcoin"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>
+    )</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>lblExplanation2</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><call><name><name>ui</name><operator>-&gt;</operator><name>lblExplanation2</name><operator>-&gt;</operator><name>text</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>PACKAGE_NAME</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>pruneTarget</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-prune"</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>pruneTarget</name> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content> <comment type="line">// -prune=1 means enabled, above that it's a size in MB</comment>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>prune</name><operator>-&gt;</operator><name>setChecked</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>prune</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>prune</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Discard blocks after verification, except most recent %1 GB (prune)"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><ternary><condition><expr><name>pruneTarget</name></expr> ?</condition><then> <expr><name>pruneTarget</name> <operator>/</operator> <literal type="number">1000</literal></expr> </then><else>: <expr><literal type="number">2</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>requiredSpace</name> <operator>=</operator> <name>m_blockchain_size</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>storageRequiresMsg</name> <init>= <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"At least %1 GB of data will be stored in this directory, and it will grow over time."</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>pruneTarget</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>prunedGBs</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>ceil</name></name><argument_list>(<argument><expr><name>pruneTarget</name> <operator>*</operator> <literal type="number">1024</literal> <operator>*</operator> <literal type="number">1024.0</literal> <operator>/</operator> <name>GB_BYTES</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>prunedGBs</name> <operator>&lt;=</operator> <name>requiredSpace</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>requiredSpace</name> <operator>=</operator> <name>prunedGBs</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>storageRequiresMsg</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Approximately %1 GB of data will be stored in this directory."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>lblExplanation3</name><operator>-&gt;</operator><name>setVisible</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>lblExplanation3</name><operator>-&gt;</operator><name>setVisible</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><name>requiredSpace</name> <operator>+=</operator> <name>m_chain_state_size</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>sizeWarningLabel</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(
+        <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"%1 will download and store a copy of the Bitcoin block chain."</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>PACKAGE_NAME</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" "</literal> <operator>+</operator>
+        <call><name><name>storageRequiresMsg</name><operator>.</operator><name>arg</name></name><argument_list>(<argument><expr><name>requiredSpace</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" "</literal> <operator>+</operator>
+        <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"The wallet will also be stored in this directory."</literal></expr></argument>)</argument_list></call></expr></argument>
+    )</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>this</name><operator>-&gt;</operator><name>adjustSize</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>startThread</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>Intro</name><operator>::</operator><name>~Intro</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>delete</operator> <name>ui</name></expr>;</expr_stmt>
+    <comment type="block">/* Ensure thread is finished before it is deleted */</comment>
+    <expr_stmt><expr><call><name><name>thread</name><operator>-&gt;</operator><name>quit</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>thread</name><operator>-&gt;</operator><name>wait</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+
+<function><type><name>QString</name></type> <name><name>Intro</name><operator>::</operator><name>getDataDirectory</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>text</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>setDataDirectory</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>dataDir</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><name>dataDir</name> <operator>==</operator> <call><name><name>GUIUtil</name><operator>::</operator><name>getDefaultDataDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirDefault</name><operator>-&gt;</operator><name>setChecked</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>ellipsisButton</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirCustom</name><operator>-&gt;</operator><name>setChecked</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>ellipsisButton</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>Intro</name><operator>::</operator><name>showIfNeeded</name></name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Node</name></name><modifier>&amp;</modifier></type> <name>node</name></decl></parameter>, <parameter><decl><type><name>bool</name><modifier>&amp;</modifier></type> <name>did_show_intro</name></decl></parameter>, <parameter><decl><type><name>bool</name><modifier>&amp;</modifier></type> <name>prune</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>did_show_intro</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>QSettings</name></type> <name>settings</name></decl>;</decl_stmt>
+    <comment type="block">/* If data directory provided on command line, no need to look at settings
+       or show a picking dialog */</comment>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-datadir"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>empty</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    <comment type="block">/* 1) Default data directory for operating system */</comment>
+    <decl_stmt><decl><type><name>QString</name></type> <name>dataDir</name> <init>= <expr><call><name><name>GUIUtil</name><operator>::</operator><name>getDefaultDataDirectory</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="block">/* 2) Allow QSettings to override default dir */</comment>
+    <expr_stmt><expr><name>dataDir</name> <operator>=</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"strDataDir"</literal></expr></argument>, <argument><expr><name>dataDir</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>fs</name><operator>::</operator><name>exists</name></name><argument_list>(<argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>qstringToBoostPath</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call> <operator>||</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-choosedatadir"</literal></expr></argument>, <argument><expr><name>DEFAULT_CHOOSE_DATADIR</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name><name>settings</name><operator>.</operator><name>value</name></name><argument_list>(<argument><expr><literal type="string">"fReset"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>toBool</name><argument_list>()</argument_list></call> <operator>||</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-resetguisettings"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <comment type="block">/* Use selectParams here to guarantee Params() can be used by node interface */</comment>
+        <try>try <block>{<block_content>
+            <expr_stmt><expr><call><name><name>node</name><operator>.</operator><name>selectParams</name></name><argument_list>(<argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetChainName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></catch></try>
+
+        <comment type="block">/* If current default data directory does not exist, let the user choose one */</comment>
+        <decl_stmt><decl><type><name>Intro</name></type> <name>intro</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>node</name><operator>.</operator><name>getAssumedBlockchainSize</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>node</name><operator>.</operator><name>getAssumedChainStateSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>intro</name><operator>.</operator><name>setDataDirectory</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>intro</name><operator>.</operator><name>setWindowIcon</name></name><argument_list>(<argument><expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":icons/bitcoin"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>did_show_intro</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+
+        <while>while<condition>(<expr><literal type="boolean">true</literal></expr>)</condition>
+        <block>{<block_content>
+            <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>intro</name><operator>.</operator><name>exec</name></name><argument_list>()</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <comment type="block">/* Cancel clicked */</comment>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name>dataDir</name> <operator>=</operator> <call><name><name>intro</name><operator>.</operator><name>getDataDirectory</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <try>try <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><call><name>TryCreateDirectories</name><argument_list>(<argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>qstringToBoostPath</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <comment type="line">// If a new data directory has been created, make wallets subdirectory too</comment>
+                    <expr_stmt><expr><call><name>TryCreateDirectories</name><argument_list>(<argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>qstringToBoostPath</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="string">"wallets"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+                <break>break;</break>
+            </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>filesystem_error</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>QMessageBox</name><operator>::</operator><name>critical</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>PACKAGE_NAME</name></expr></argument>,
+                    <argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error: Specified data directory \"%1\" cannot be created."</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <comment type="block">/* fall through, back to choosing screen */</comment>
+            </block_content>}</block></catch></try>
+        </block_content>}</block></while>
+
+        <comment type="line">// Additional preferences:</comment>
+        <expr_stmt><expr><name>prune</name> <operator>=</operator> <call><name><name>intro</name><operator>.</operator><name>ui</name><operator>-&gt;</operator><name>prune</name><operator>-&gt;</operator><name>isChecked</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"strDataDir"</literal></expr></argument>, <argument><expr><name>dataDir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>settings</name><operator>.</operator><name>setValue</name></name><argument_list>(<argument><expr><literal type="string">"fReset"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="block">/* Only override -datadir if different from the default, to make it possible to
+     * override -datadir in the bitcoin.conf file in the default data directory
+     * (to be consistent with bitcoind behavior)
+     */</comment>
+    <if_stmt><if>if<condition>(<expr><name>dataDir</name> <operator>!=</operator> <call><name><name>GUIUtil</name><operator>::</operator><name>getDefaultDataDirectory</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>node</name><operator>.</operator><name>softSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-datadir"</literal></expr></argument>, <argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>qstringToBoostPath</name></name><argument_list>(<argument><expr><name>dataDir</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// use OS locale for path setting</comment>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>setStatus</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>status</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>message</name></decl></parameter>, <parameter><decl><type><name>quint64</name></type> <name>bytesAvailable</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <switch>switch<condition>(<expr><name>status</name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>FreespaceChecker</name><operator>::</operator><name>ST_OK</name></name></expr>:</case>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>errorMessage</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><name>message</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>errorMessage</name><operator>-&gt;</operator><name>setStyleSheet</name></name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>FreespaceChecker</name><operator>::</operator><name>ST_ERROR</name></name></expr>:</case>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>errorMessage</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Error"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">": "</literal> <operator>+</operator> <name>message</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>errorMessage</name><operator>-&gt;</operator><name>setStyleSheet</name></name><argument_list>(<argument><expr><literal type="string">"QLabel { color: #800000 }"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    </block_content>}</block></switch>
+    <comment type="block">/* Indicate number of bytes available */</comment>
+    <if_stmt><if>if<condition>(<expr><name>status</name> <operator>==</operator> <name><name>FreespaceChecker</name><operator>::</operator><name>ST_ERROR</name></name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>freeSpace</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <decl_stmt><decl><type><name>QString</name></type> <name>freeString</name> <init>= <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"%n GB of free space available"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><name>bytesAvailable</name><operator>/</operator><name>GB_BYTES</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if<condition>(<expr><name>bytesAvailable</name> <operator>&lt;</operator> <name>requiredSpace</name> <operator>*</operator> <name>GB_BYTES</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><name>freeString</name> <operator>+=</operator> <literal type="string">" "</literal> <operator>+</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"(of %n GB needed)"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><name>requiredSpace</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>freeSpace</name><operator>-&gt;</operator><name>setStyleSheet</name></name><argument_list>(<argument><expr><literal type="string">"QLabel { color: #800000 }"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>prune</name><operator>-&gt;</operator><name>setChecked</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>bytesAvailable</name> <operator>/</operator> <name>GB_BYTES</name> <operator>-</operator> <name>requiredSpace</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>freeString</name> <operator>+=</operator> <literal type="string">" "</literal> <operator>+</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"(%n GB needed for full chain)"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><name>requiredSpace</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>freeSpace</name><operator>-&gt;</operator><name>setStyleSheet</name></name><argument_list>(<argument><expr><literal type="string">"QLabel { color: #999900 }"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>prune</name><operator>-&gt;</operator><name>setChecked</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>freeSpace</name><operator>-&gt;</operator><name>setStyleSheet</name></name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>freeSpace</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><name>freeString</name> <operator>+</operator> <literal type="string">"."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <comment type="block">/* Don't allow confirm in ERROR state */</comment>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>buttonBox</name><operator>-&gt;</operator><name>button</name></name><argument_list>(<argument><expr><name><name>QDialogButtonBox</name><operator>::</operator><name>Ok</name></name></expr></argument>)</argument_list></call><operator>-&gt;</operator><call><name>setEnabled</name><argument_list>(<argument><expr><name>status</name> <operator>!=</operator> <name><name>FreespaceChecker</name><operator>::</operator><name>ST_ERROR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>on_dataDirectory_textChanged</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>dataDirStr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="block">/* Disable OK button until check result comes in */</comment>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>buttonBox</name><operator>-&gt;</operator><name>button</name></name><argument_list>(<argument><expr><name><name>QDialogButtonBox</name><operator>::</operator><name>Ok</name></name></expr></argument>)</argument_list></call><operator>-&gt;</operator><call><name>setEnabled</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>checkPath</name><argument_list>(<argument><expr><name>dataDirStr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>on_ellipsisButton_clicked</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>dir</name> <init>= <expr><call><name><name>QDir</name><operator>::</operator><name>toNativeSeparators</name></name><argument_list>(<argument><expr><call><name><name>QFileDialog</name><operator>::</operator><name>getExistingDirectory</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="string">"Choose data directory"</literal></expr></argument>, <argument><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>text</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>dir</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>setText</name></name><argument_list>(<argument><expr><name>dir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>on_dataDirDefault_clicked</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>setDataDirectory</name><argument_list>(<argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>getDefaultDataDirectory</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>on_dataDirCustom_clicked</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>dataDirectory</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>ui</name><operator>-&gt;</operator><name>ellipsisButton</name><operator>-&gt;</operator><name>setEnabled</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>startThread</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>thread</name> <operator>=</operator> <operator>new</operator> <call><name>QThread</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>FreespaceChecker</name> <modifier>*</modifier></type><name>executor</name> <init>= <expr><operator>new</operator> <call><name>FreespaceChecker</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>executor</name><operator>-&gt;</operator><name>moveToThread</name></name><argument_list>(<argument><expr><name>thread</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>executor</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>FreespaceChecker</name><operator>::</operator><name>reply</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>Intro</name><operator>::</operator><name>setStatus</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>this</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>Intro</name><operator>::</operator><name>requestCheck</name></name></expr></argument>, <argument><expr><name>executor</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>FreespaceChecker</name><operator>::</operator><name>check</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/*  make sure executor object is deleted in its own thread */</comment>
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>thread</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QThread</name><operator>::</operator><name>finished</name></name></expr></argument>, <argument><expr><name>executor</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QObject</name><operator>::</operator><name>deleteLater</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>thread</name><operator>-&gt;</operator><name>start</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>Intro</name><operator>::</operator><name>checkPath</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>dataDir</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>mutex</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>pathToCheck</name> <operator>=</operator> <name>dataDir</name></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><name>signalled</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>signalled</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>requestCheck</name><argument_list>()</argument_list></decl>;</decl_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>mutex</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>Intro</name><operator>::</operator><name>getPathToCheck</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>retval</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>mutex</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>retval</name> <operator>=</operator> <name>pathToCheck</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>signalled</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt> <comment type="block">/* new request can be queued now */</comment>
+    <expr_stmt><expr><call><name><name>mutex</name><operator>.</operator><name>unlock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>retval</name></expr>;</return>
+</block_content>}</block></function>
+</unit>

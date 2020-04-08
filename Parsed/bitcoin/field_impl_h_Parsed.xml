@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/secp256k1/src/field_impl.h"><comment type="block" format="doxygen">/**********************************************************************
+ * Copyright (c) 2013, 2014 Pieter Wuille                             *
+ * Distributed under the MIT software license, see the accompanying   *
+ * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
+ **********************************************************************/</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SECP256K1_FIELD_IMPL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SECP256K1_FIELD_IMPL_H</name></cpp:macro></cpp:define>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>defined</name> <name>HAVE_CONFIG_H</name></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"libsecp256k1-config.h"</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"util.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"num.h"</cpp:file></cpp:include>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>USE_FIELD_10X26</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"field_10x26_impl.h"</cpp:file></cpp:include>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>USE_FIELD_5X52</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"field_5x52_impl.h"</cpp:file></cpp:include>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:error>#<cpp:directive>error</cpp:directive> <cpp:literal>"Please select field implementation"</cpp:literal></cpp:error>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><name>SECP256K1_INLINE</name> <specifier>static</specifier> <name>int</name></type> <name>secp256k1_fe_equal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>b</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>na</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_negate</name><argument_list>(<argument><expr><operator>&amp;</operator><name>na</name></expr></argument>, <argument><expr><name>a</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_add</name><argument_list>(<argument><expr><operator>&amp;</operator><name>na</name></expr></argument>, <argument><expr><name>b</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_fe_normalizes_to_zero</name><argument_list>(<argument><expr><operator>&amp;</operator><name>na</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>SECP256K1_INLINE</name> <specifier>static</specifier> <name>int</name></type> <name>secp256k1_fe_equal_var</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>b</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>na</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_negate</name><argument_list>(<argument><expr><operator>&amp;</operator><name>na</name></expr></argument>, <argument><expr><name>a</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_add</name><argument_list>(<argument><expr><operator>&amp;</operator><name>na</name></expr></argument>, <argument><expr><name>b</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_fe_normalizes_to_zero_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>na</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_fe_sqrt</name><parameter_list>(<parameter><decl><type><name>secp256k1_fe</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="block" format="doxygen">/** Given that p is congruent to 3 mod 4, we can compute the square root of
+     *  a mod p as the (p+1)/4'th power of a.
+     *
+     *  As (p+1)/4 is an even number, it will have the same result for a and for
+     *  (-a). Only one of these two numbers actually has a square root however,
+     *  so we test at the end by squaring and comparing to the input.
+     *  Also because (p+1)/4 is an even number, the computed square root is
+     *  itself always a square (a ** ((p+1)/4) is the square of a ** ((p+1)/8)).
+     */</comment>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>x2</name></decl>, <decl><type ref="prev"/><name>x3</name></decl>, <decl><type ref="prev"/><name>x6</name></decl>, <decl><type ref="prev"/><name>x9</name></decl>, <decl><type ref="prev"/><name>x11</name></decl>, <decl><type ref="prev"/><name>x22</name></decl>, <decl><type ref="prev"/><name>x44</name></decl>, <decl><type ref="prev"/><name>x88</name></decl>, <decl><type ref="prev"/><name>x176</name></decl>, <decl><type ref="prev"/><name>x220</name></decl>, <decl><type ref="prev"/><name>x223</name></decl>, <decl><type ref="prev"/><name>t1</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>j</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>r</name> <operator>!=</operator> <name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** The binary representation of (p + 1)/4 has 3 blocks of 1s, with lengths in
+     *  { 2, 22, 223 }. Use an addition chain to calculate 2^n - 1 for each block:
+     *  1, [2], 3, 6, 9, 11, [22], 44, 88, 176, 220, [223]
+     */</comment>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x6</name> <operator>=</operator> <name>x3</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x9</name> <operator>=</operator> <name>x6</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x11</name> <operator>=</operator> <name>x9</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">2</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x22</name> <operator>=</operator> <name>x11</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">11</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x44</name> <operator>=</operator> <name>x22</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">22</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x88</name> <operator>=</operator> <name>x44</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">44</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x176</name> <operator>=</operator> <name>x88</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">88</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x220</name> <operator>=</operator> <name>x176</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">44</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x223</name> <operator>=</operator> <name>x220</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block">/* The final result is then assembled using a sliding window over the blocks. */</comment>
+
+    <expr_stmt><expr><name>t1</name> <operator>=</operator> <name>x223</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">23</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">6</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block">/* Check that a square root was actually calculated */</comment>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><name>r</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_fe_equal</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>secp256k1_fe_inv</name><parameter_list>(<parameter><decl><type><name>secp256k1_fe</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>x2</name></decl>, <decl><type ref="prev"/><name>x3</name></decl>, <decl><type ref="prev"/><name>x6</name></decl>, <decl><type ref="prev"/><name>x9</name></decl>, <decl><type ref="prev"/><name>x11</name></decl>, <decl><type ref="prev"/><name>x22</name></decl>, <decl><type ref="prev"/><name>x44</name></decl>, <decl><type ref="prev"/><name>x88</name></decl>, <decl><type ref="prev"/><name>x176</name></decl>, <decl><type ref="prev"/><name>x220</name></decl>, <decl><type ref="prev"/><name>x223</name></decl>, <decl><type ref="prev"/><name>t1</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>j</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** The binary representation of (p - 2) has 5 blocks of 1s, with lengths in
+     *  { 1, 2, 22, 223 }. Use an addition chain to calculate 2^n - 1 for each block:
+     *  [1], [2], 3, 6, 9, 11, [22], 44, 88, 176, 220, [223]
+     */</comment>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x6</name> <operator>=</operator> <name>x3</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x6</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x9</name> <operator>=</operator> <name>x6</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x9</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x11</name> <operator>=</operator> <name>x9</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">2</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x22</name> <operator>=</operator> <name>x11</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">11</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x11</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x44</name> <operator>=</operator> <name>x22</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">22</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x88</name> <operator>=</operator> <name>x44</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">44</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x176</name> <operator>=</operator> <name>x88</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">88</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x176</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x88</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x220</name> <operator>=</operator> <name>x176</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">44</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x220</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x44</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>x223</name> <operator>=</operator> <name>x220</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x223</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block">/* The final result is then assembled using a sliding window over the blocks. */</comment>
+
+    <expr_stmt><expr><name>t1</name> <operator>=</operator> <name>x223</name></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">23</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x22</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">5</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">3</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>x2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>j</name><operator>=</operator><literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name><operator>&lt;</operator><literal type="number">2</literal></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_sqr</name><argument_list>(<argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>a</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>t1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>secp256k1_fe_inv_var</name><parameter_list>(<parameter><decl><type><name>secp256k1_fe</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>USE_FIELD_INV_BUILTIN</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <expr_stmt><expr><call><name>secp256k1_fe_inv</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>USE_FIELD_INV_NUM</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <decl_stmt><decl><type><name>secp256k1_num</name></type> <name>n</name></decl>, <decl><type ref="prev"/><name>m</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>secp256k1_fe</name></type> <name>negone</name> <init>= <expr><call><name>SECP256K1_FE_CONST</name><argument_list>(
+        <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>,
+        <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFEUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFC2EUL</literal></expr></argument>
+    )</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="block">/* secp256k1 field prime, value p defined in "Standards for Efficient Cryptography" (SEC2) 2.7.1. */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>char</name></type> <name><name>prime</name><index>[<expr><literal type="number">32</literal></expr>]</index></name> <init>= <expr><block>{
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFE</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFC</literal></expr>,<expr><literal type="number">0x2F</literal></expr>
+    }</block></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>b</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>res</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>c</name> <init>= <expr><operator>*</operator><name>a</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_normalize_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>c</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_get_b32</name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>c</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_num_set_bin</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><name>b</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_num_set_bin</name><argument_list>(<argument><expr><operator>&amp;</operator><name>m</name></expr></argument>, <argument><expr><name>prime</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_num_mod_inverse</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>m</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_num_get_bin</name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>res</name> <operator>=</operator> <call><name>secp256k1_fe_set_b32</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>b</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>(</operator><name>void</name><operator>)</operator><name>res</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>res</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* Verify the result is the (unique) valid inverse using non-GMP code. */</comment>
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>c</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>c</name></expr></argument>, <argument><expr><name>r</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_add</name><argument_list>(<argument><expr><operator>&amp;</operator><name>c</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>negone</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>CHECK</name><argument_list>(<argument><expr><call><name>secp256k1_fe_normalizes_to_zero_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>c</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:error>#<cpp:directive>error</cpp:directive> <cpp:literal>"Please select field inverse implementation"</cpp:literal></cpp:error>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>secp256k1_fe_inv_all_var</name><parameter_list>(<parameter><decl><type><name>secp256k1_fe</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>len</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>u</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>i</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>len</name> <operator>&lt;</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><operator>(</operator><name>r</name> <operator>+</operator> <name>len</name> <operator>&lt;=</operator> <name>a</name><operator>)</operator> <operator>||</operator> <operator>(</operator><name>a</name> <operator>+</operator> <name>len</name> <operator>&lt;=</operator> <name>r</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name><name>r</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name><name>a</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>i</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <while>while <condition>(<expr><operator>++</operator><name>i</name> <operator>&lt;</operator> <name>len</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>r</name><index>[<expr><name>i</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>a</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_inv_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>u</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>r</name><index>[<expr><operator>--</operator><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <while>while <condition>(<expr><name>i</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>j</name> <init>= <expr><name>i</name><operator>--</operator></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><index>[<expr><name>j</name></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>r</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name>u</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>u</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>u</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>a</name><index>[<expr><name>j</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <expr_stmt><expr><name><name>r</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name>u</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_fe_is_quad_var</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>secp256k1_fe</name> <modifier>*</modifier></type><name>a</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>USE_NUM_NONE</name></cpp:ifndef>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>b</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_num</name></type> <name>n</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_num</name></type> <name>m</name></decl>;</decl_stmt>
+    <comment type="block">/* secp256k1 field prime, value p defined in "Standards for Efficient Cryptography" (SEC2) 2.7.1. */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>char</name></type> <name><name>prime</name><index>[<expr><literal type="number">32</literal></expr>]</index></name> <init>= <expr><block>{
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,
+        <expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFE</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFF</literal></expr>,<expr><literal type="number">0xFC</literal></expr>,<expr><literal type="number">0x2F</literal></expr>
+    }</block></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>c</name> <init>= <expr><operator>*</operator><name>a</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_normalize_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>c</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_get_b32</name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>c</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_num_set_bin</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><name>b</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_num_set_bin</name><argument_list>(<argument><expr><operator>&amp;</operator><name>m</name></expr></argument>, <argument><expr><name>prime</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_num_jacobi</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>m</name></expr></argument>)</argument_list></call> <operator>&gt;=</operator> <literal type="number">0</literal></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>r</name></decl>;</decl_stmt>
+    <return>return <expr><call><name>secp256k1_fe_sqrt</name><argument_list>(<argument><expr><operator>&amp;</operator><name>r</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* SECP256K1_FIELD_IMPL_H */</comment>
+</unit>

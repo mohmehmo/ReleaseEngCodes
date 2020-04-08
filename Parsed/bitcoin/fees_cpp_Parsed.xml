@@ -1,0 +1,980 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/policy/fees.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/fees.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;clientversion.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;txmempool.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>double</name></type> <name>INF_FEERATE</name> <init>= <expr><literal type="number">1e99</literal></expr></init></decl>;</decl_stmt>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>StringForFeeEstimateHorizon</name><parameter_list>(<parameter><decl><type><name>FeeEstimateHorizon</name></type> <name>horizon</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>FeeEstimateHorizon</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>horizon_strings</name> <init>= <expr><block>{
+        <expr><block>{<expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>SHORT_HALFLIFE</name></name></expr>, <expr><literal type="string">"short"</literal></expr>}</block></expr>,
+        <expr><block>{<expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>MED_HALFLIFE</name></name></expr>, <expr><literal type="string">"medium"</literal></expr>}</block></expr>,
+        <expr><block>{<expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>LONG_HALFLIFE</name></name></expr>, <expr><literal type="string">"long"</literal></expr>}</block></expr>,
+    }</block></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>horizon_string</name> <init>= <expr><call><name><name>horizon_strings</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>horizon</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>horizon_string</name> <operator>==</operator> <call><name><name>horizon_strings</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="string">"unknown"</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><name><name>horizon_string</name><operator>-&gt;</operator><name>second</name></name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * We will instantiate an instance of this class to track transactions that were
+ * included in a block. We will lump transactions into a bucket according to their
+ * approximate feerate and then track how long it took for those txs to be included in a block
+ *
+ * The tracking of unconfirmed (mempool) transactions is completely independent of the
+ * historical tracking of transactions that have been confirmed in a block.
+ */</comment>
+<class>class <name>TxConfirmStats</name>
+<block>{<private type="default">
+</private><private>private:
+    <comment type="line">//Define the buckets we will group transactions into</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>buckets</name></decl>;</decl_stmt>              <comment type="line">// The upper-bound of the range for the bucket (inclusive)</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>bucketMap</name></decl>;</decl_stmt> <comment type="line">// Map of bucket upper-bound to index into all vectors by bucket</comment>
+
+    <comment type="line">// For each bucket X:</comment>
+    <comment type="line">// Count the total # of txs in each bucket</comment>
+    <comment type="line">// Track the historical moving average of this total over blocks</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name></type> <name>txCtAvg</name></decl>;</decl_stmt>
+
+    <comment type="line">// Count the total # of txs confirmed within Y blocks in each bucket</comment>
+    <comment type="line">// Track the historical moving average of these totals over blocks</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>confAvg</name></decl>;</decl_stmt> <comment type="line">// confAvg[Y][X]</comment>
+
+    <comment type="line">// Track moving avg of txs which have been evicted from the mempool</comment>
+    <comment type="line">// after failing to be confirmed within Y blocks</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>failAvg</name></decl>;</decl_stmt> <comment type="line">// failAvg[Y][X]</comment>
+
+    <comment type="line">// Sum the total feerate of all tx's in each bucket</comment>
+    <comment type="line">// Track the historical moving average of this total over blocks</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name></type> <name>avg</name></decl>;</decl_stmt>
+
+    <comment type="line">// Combine the conf counts with tx counts to calculate the confirmation % for each Y,X</comment>
+    <comment type="line">// Combine the total value with the tx counts to calculate the avg feerate per bucket</comment>
+
+    <decl_stmt><decl><type><name>double</name></type> <name>decay</name></decl>;</decl_stmt>
+
+    <comment type="line">// Resolution (# of blocks) with which confirmations are tracked</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>scale</name></decl>;</decl_stmt>
+
+    <comment type="line">// Mempool counts of outstanding transactions</comment>
+    <comment type="line">// For each bucket X, track the number of transactions in the mempool</comment>
+    <comment type="line">// that are unconfirmed for each possible confirmation value Y</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>unconfTxs</name></decl>;</decl_stmt>  <comment type="line">//unconfTxs[Y][X]</comment>
+    <comment type="line">// transactions still unconfirmed after GetMaxConfirms for each bucket</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name></type> <name>oldUnconfTxs</name></decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>resizeInMemoryCounters</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>newbuckets</name></decl></parameter>)</parameter_list>;</function_decl>
+
+</private><public>public:
+    <comment type="block" format="doxygen">/**
+     * Create new TxConfirmStats. This is called by BlockPolicyEstimator's
+     * constructor with default values.
+     * @param defaultBuckets contains the upper limits for the bucket boundaries
+     * @param maxPeriods max number of periods to track
+     * @param decay how much to decay the historical moving average per block
+     */</comment>
+    <constructor_decl><name>TxConfirmStats</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>defaultBuckets</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>defaultBucketMap</name></decl></parameter>,
+                   <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>maxPeriods</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>decay</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>scale</name></decl></parameter>)</parameter_list>;</constructor_decl>
+
+    <comment type="block" format="doxygen">/** Roll the circular buffer for unconfirmed txs*/</comment>
+    <function_decl><type><name>void</name></type> <name>ClearCurrent</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Record a new transaction data point in the current block stats
+     * @param blocksToConfirm the number of blocks it took this transaction to confirm
+     * @param val the feerate of the transaction
+     * @warning blocksToConfirm is 1-based and has to be &gt;= 1
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>Record</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>blocksToConfirm</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>val</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Record a new transaction entering the mempool*/</comment>
+    <function_decl><type><name>unsigned</name> <name>int</name></type> <name>NewTx</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>val</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Remove a transaction from mempool tracking stats*/</comment>
+    <function_decl><type><name>void</name></type> <name>removeTx</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>entryHeight</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBestSeenHeight</name></decl></parameter>,
+                  <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketIndex</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>inBlock</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Update our estimates by decaying our historical moving average and updating
+        with the data gathered from the current block */</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateMovingAverages</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Calculate a feerate estimate.  Find the lowest value bucket (or range of buckets
+     * to make sure we have enough data points) whose transactions still have sufficient likelihood
+     * of being confirmed within the target number of confirmations
+     * @param confTarget target number of confirmations
+     * @param sufficientTxVal required average number of transactions per block in a bucket range
+     * @param minSuccess the success probability we require
+     * @param requireGreater return the lowest feerate such that all higher values pass minSuccess OR
+     *        return the highest feerate such that all lower values fail minSuccess
+     * @param nBlockHeight the current block height
+     */</comment>
+    <function_decl><type><name>double</name></type> <name>EstimateMedianVal</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>confTarget</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>sufficientTxVal</name></decl></parameter>,
+                             <parameter><decl><type><name>double</name></type> <name>minSuccess</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>requireGreater</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>,
+                             <parameter><decl><type><name>EstimationResult</name> <modifier>*</modifier></type><name>result</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl></parameter>)</parameter_list> <specifier>const</specifier>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Return the max number of confirms we're tracking */</comment>
+    <function><type><name>unsigned</name> <name>int</name></type> <name>GetMaxConfirms</name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content> <return>return <expr><name>scale</name> <operator>*</operator> <call><name><name>confAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Write state of estimation data to a file*/</comment>
+    <function_decl><type><name>void</name></type> <name>Write</name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>fileout</name></decl></parameter>)</parameter_list> <specifier>const</specifier>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Read saved state of estimation data from a file and replace all internal data structures and
+     * variables with this state.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>Read</name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>filein</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nFileVersion</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>numBuckets</name></decl></parameter>)</parameter_list>;</function_decl>
+</public>}</block>;</class>
+
+
+<constructor><name><name>TxConfirmStats</name><operator>::</operator><name>TxConfirmStats</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>defaultBuckets</name></decl></parameter>,
+                                <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>defaultBucketMap</name></decl></parameter>,
+                               <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>maxPeriods</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>_decay</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>_scale</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>buckets</name><argument_list>(<argument><expr><name>defaultBuckets</name></expr></argument>)</argument_list></call>, <call><name>bucketMap</name><argument_list>(<argument><expr><name>defaultBucketMap</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>decay</name> <operator>=</operator> <name>_decay</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>_scale</name> <operator>!=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <literal type="string">"_scale must be non-zero"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>scale</name> <operator>=</operator> <name>_scale</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>confAvg</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>maxPeriods</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>maxPeriods</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>confAvg</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>resize</name><argument_list>(<argument><expr><call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>failAvg</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>maxPeriods</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>maxPeriods</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>failAvg</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>resize</name><argument_list>(<argument><expr><call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>txCtAvg</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>avg</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>resizeInMemoryCounters</name><argument_list>(<argument><expr><call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>resizeInMemoryCounters</name></name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>newbuckets</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// newbuckets must be passed in because the buckets referred to during Read have not been updated yet.</comment>
+    <expr_stmt><expr><call><name><name>unconfTxs</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name>GetMaxConfirms</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>unconfTxs</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>resize</name><argument_list>(<argument><expr><name>newbuckets</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>oldUnconfTxs</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>newbuckets</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// Roll the unconfirmed txs circular buffer</comment>
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>ClearCurrent</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>oldUnconfTxs</name><index>[<expr><name>j</name></expr>]</index></name> <operator>+=</operator> <name><name>unconfTxs</name><index>[<expr><name>nBlockHeight</name><operator>%</operator><call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>]</index><index>[<expr><name>j</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>unconfTxs</name><index>[<expr><name>nBlockHeight</name><operator>%</operator><call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>]</index><index>[<expr><name>j</name></expr>]</index></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>Record</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>blocksToConfirm</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>val</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// blocksToConfirm is 1-based</comment>
+    <if_stmt><if>if <condition>(<expr><name>blocksToConfirm</name> <operator>&lt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>periodsToConfirm</name> <init>= <expr><operator>(</operator><name>blocksToConfirm</name> <operator>+</operator> <name>scale</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator><operator>/</operator><name>scale</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketindex</name> <init>= <expr><call><name><name>bucketMap</name><operator>.</operator><name>lower_bound</name></name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call><operator>-&gt;</operator><name>second</name></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><name>periodsToConfirm</name></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;=</operator> <call><name><name>confAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>confAvg</name><index>[<expr><name>i</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index><index>[<expr><name>bucketindex</name></expr>]</index></name><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><name><name>txCtAvg</name><index>[<expr><name>bucketindex</name></expr>]</index></name><operator>++</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>avg</name><index>[<expr><name>bucketindex</name></expr>]</index></name> <operator>+=</operator> <name>val</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>UpdateMovingAverages</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>confAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>confAvg</name><index>[<expr><name>i</name></expr>]</index><index>[<expr><name>j</name></expr>]</index></name> <operator>=</operator> <name><name>confAvg</name><index>[<expr><name>i</name></expr>]</index><index>[<expr><name>j</name></expr>]</index></name> <operator>*</operator> <name>decay</name></expr>;</expr_stmt></block_content></block></for>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>failAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>failAvg</name><index>[<expr><name>i</name></expr>]</index><index>[<expr><name>j</name></expr>]</index></name> <operator>=</operator> <name><name>failAvg</name><index>[<expr><name>i</name></expr>]</index><index>[<expr><name>j</name></expr>]</index></name> <operator>*</operator> <name>decay</name></expr>;</expr_stmt></block_content></block></for>
+        <expr_stmt><expr><name><name>avg</name><index>[<expr><name>j</name></expr>]</index></name> <operator>=</operator> <name><name>avg</name><index>[<expr><name>j</name></expr>]</index></name> <operator>*</operator> <name>decay</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>txCtAvg</name><index>[<expr><name>j</name></expr>]</index></name> <operator>=</operator> <name><name>txCtAvg</name><index>[<expr><name>j</name></expr>]</index></name> <operator>*</operator> <name>decay</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<comment type="line">// returns -1 on error conditions</comment>
+<function><type><name>double</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>EstimateMedianVal</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>confTarget</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>sufficientTxVal</name></decl></parameter>,
+                                         <parameter><decl><type><name>double</name></type> <name>successBreakPoint</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>requireGreater</name></decl></parameter>,
+                                         <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>, <parameter><decl><type><name>EstimationResult</name> <modifier>*</modifier></type><name>result</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// Counters for a bucket (or range of buckets)</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>nConf</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt> <comment type="line">// Number of tx's confirmed within the confTarget</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>totalNum</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt> <comment type="line">// Total number of tx's that were ever confirmed</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>extraNum</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>  <comment type="line">// Number of tx's still in mempool for confTarget or longer</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>failNum</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt> <comment type="line">// Number of tx's that were never confirmed but removed from the mempool after confTarget</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>periodTarget</name> <init>= <expr><operator>(</operator><name>confTarget</name> <operator>+</operator> <name>scale</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator><operator>/</operator><name>scale</name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>maxbucketindex</name> <init>= <expr><call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// requireGreater means we are looking for the lowest feerate such that all higher</comment>
+    <comment type="line">// values pass, so we start at maxbucketindex (highest feerate) and look at successively</comment>
+    <comment type="line">// smaller buckets until we reach failure.  Otherwise, we are looking for the highest</comment>
+    <comment type="line">// feerate such that all lower values fail, and we go in the opposite direction.</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>startbucket</name> <init>= <expr><ternary><condition><expr><name>requireGreater</name></expr> ?</condition><then> <expr><name>maxbucketindex</name></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>step</name> <init>= <expr><ternary><condition><expr><name>requireGreater</name></expr> ?</condition><then> <expr><operator>-</operator><literal type="number">1</literal></expr> </then><else>: <expr><literal type="number">1</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// We'll combine buckets until we have enough samples.</comment>
+    <comment type="line">// The near and far variables will define the range we've combined</comment>
+    <comment type="line">// The best variables are the last range we saw which still had a high</comment>
+    <comment type="line">// enough confirmation rate to count as success.</comment>
+    <comment type="line">// The cur variables are the current range we're counting.</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>curNearBucket</name> <init>= <expr><name>startbucket</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bestNearBucket</name> <init>= <expr><name>startbucket</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>curFarBucket</name> <init>= <expr><name>startbucket</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bestFarBucket</name> <init>= <expr><name>startbucket</name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>foundAnswer</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bins</name> <init>= <expr><call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>newBucketRange</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>passing</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>EstimatorBucket</name></type> <name>passBucket</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>EstimatorBucket</name></type> <name>failBucket</name></decl>;</decl_stmt>
+
+    <comment type="line">// Start counting from highest(default) or lowest feerate transactions</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>bucket</name> <init>= <expr><name>startbucket</name></expr></init></decl>;</init> <condition><expr><name>bucket</name> <operator>&gt;=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>bucket</name> <operator>&lt;=</operator> <name>maxbucketindex</name></expr>;</condition> <incr><expr><name>bucket</name> <operator>+=</operator> <name>step</name></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>newBucketRange</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>curNearBucket</name> <operator>=</operator> <name>bucket</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>newBucketRange</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>curFarBucket</name> <operator>=</operator> <name>bucket</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nConf</name> <operator>+=</operator> <name><name>confAvg</name><index>[<expr><name>periodTarget</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index><index>[<expr><name>bucket</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>totalNum</name> <operator>+=</operator> <name><name>txCtAvg</name><index>[<expr><name>bucket</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>failNum</name> <operator>+=</operator> <name><name>failAvg</name><index>[<expr><name>periodTarget</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index><index>[<expr><name>bucket</name></expr>]</index></name></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>confct</name> <init>= <expr><name>confTarget</name></expr></init></decl>;</init> <condition><expr><name>confct</name> <operator>&lt;</operator> <call><name>GetMaxConfirms</name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>confct</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>extraNum</name> <operator>+=</operator> <name><name>unconfTxs</name><index>[<expr><operator>(</operator><name>nBlockHeight</name> <operator>-</operator> <name>confct</name><operator>)</operator><operator>%</operator><name>bins</name></expr>]</index><index>[<expr><name>bucket</name></expr>]</index></name></expr>;</expr_stmt></block_content></block></for>
+        <expr_stmt><expr><name>extraNum</name> <operator>+=</operator> <name><name>oldUnconfTxs</name><index>[<expr><name>bucket</name></expr>]</index></name></expr>;</expr_stmt>
+        <comment type="line">// If we have enough transaction data points in this range of buckets,</comment>
+        <comment type="line">// we can test for success</comment>
+        <comment type="line">// (Only count the confirmed data points, so that each confirmation count</comment>
+        <comment type="line">// will be looking at the same amount of data and same bucket breaks)</comment>
+        <if_stmt><if>if <condition>(<expr><name>totalNum</name> <operator>&gt;=</operator> <name>sufficientTxVal</name> <operator>/</operator> <operator>(</operator><literal type="number">1</literal> <operator>-</operator> <name>decay</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>double</name></type> <name>curPct</name> <init>= <expr><name>nConf</name> <operator>/</operator> <operator>(</operator><name>totalNum</name> <operator>+</operator> <name>failNum</name> <operator>+</operator> <name>extraNum</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Check to see if we are no longer getting confirmed at the success rate</comment>
+            <if_stmt><if>if <condition>(<expr><operator>(</operator><name>requireGreater</name> <operator>&amp;&amp;</operator> <name>curPct</name> <operator>&lt;</operator> <name>successBreakPoint</name><operator>)</operator> <operator>||</operator> <operator>(</operator><operator>!</operator><name>requireGreater</name> <operator>&amp;&amp;</operator> <name>curPct</name> <operator>&gt;</operator> <name>successBreakPoint</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name>passing</name> <operator>==</operator> <literal type="boolean">true</literal></expr>)</condition> <block>{<block_content>
+                    <comment type="line">// First time we hit a failure record the failed bucket</comment>
+                    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>failMinBucket</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>curNearBucket</name></expr></argument>, <argument><expr><name>curFarBucket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>failMaxBucket</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>curNearBucket</name></expr></argument>, <argument><expr><name>curFarBucket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                    <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>start</name></name> <operator>=</operator> <ternary><condition><expr><name>failMinBucket</name></expr> ?</condition><then> <expr><name><name>buckets</name><index>[<expr><name>failMinBucket</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index></name></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>end</name></name> <operator>=</operator> <name><name>buckets</name><index>[<expr><name>failMaxBucket</name></expr>]</index></name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>withinTarget</name></name> <operator>=</operator> <name>nConf</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>totalConfirmed</name></name> <operator>=</operator> <name>totalNum</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>inMempool</name></name> <operator>=</operator> <name>extraNum</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>leftMempool</name></name> <operator>=</operator> <name>failNum</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>passing</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+                <continue>continue;</continue>
+            </block_content>}</block></if>
+            <comment type="line">// Otherwise update the cumulative stats, and the bucket variables</comment>
+            <comment type="line">// and reset the counters</comment>
+            <else>else <block>{<block_content>
+                <expr_stmt><expr><name>failBucket</name> <operator>=</operator> <call><name>EstimatorBucket</name><argument_list>()</argument_list></call></expr>;</expr_stmt> <comment type="line">// Reset any failed bucket, currently passing</comment>
+                <expr_stmt><expr><name>foundAnswer</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>passing</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>passBucket</name><operator>.</operator><name>withinTarget</name></name> <operator>=</operator> <name>nConf</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>nConf</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>passBucket</name><operator>.</operator><name>totalConfirmed</name></name> <operator>=</operator> <name>totalNum</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>totalNum</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>passBucket</name><operator>.</operator><name>inMempool</name></name> <operator>=</operator> <name>extraNum</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>passBucket</name><operator>.</operator><name>leftMempool</name></name> <operator>=</operator> <name>failNum</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>failNum</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>extraNum</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>bestNearBucket</name> <operator>=</operator> <name>curNearBucket</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>bestFarBucket</name> <operator>=</operator> <name>curFarBucket</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>newBucketRange</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <decl_stmt><decl><type><name>double</name></type> <name>median</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>txSum</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Calculate the "average" feerate of the best bucket range that met success conditions</comment>
+    <comment type="line">// Find the bucket with the median transaction and then report the average feerate from that bucket</comment>
+    <comment type="line">// This is a compromise between finding the median which we can't since we don't save all tx's</comment>
+    <comment type="line">// and reporting the average which is less accurate</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>minBucket</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>bestNearBucket</name></expr></argument>, <argument><expr><name>bestFarBucket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>maxBucket</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>bestNearBucket</name></expr></argument>, <argument><expr><name>bestFarBucket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><name>minBucket</name></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;=</operator> <name>maxBucket</name></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name>txSum</name> <operator>+=</operator> <name><name>txCtAvg</name><index>[<expr><name>j</name></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <if_stmt><if>if <condition>(<expr><name>foundAnswer</name> <operator>&amp;&amp;</operator> <name>txSum</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>txSum</name> <operator>=</operator> <name>txSum</name> <operator>/</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><name>minBucket</name></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;=</operator> <name>maxBucket</name></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>txCtAvg</name><index>[<expr><name>j</name></expr>]</index></name> <operator>&lt;</operator> <name>txSum</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>txSum</name> <operator>-=</operator> <name><name>txCtAvg</name><index>[<expr><name>j</name></expr>]</index></name></expr>;</expr_stmt></block_content></block></if>
+            <else>else <block>{<block_content> <comment type="line">// we're in the right bucket</comment>
+                <expr_stmt><expr><name>median</name> <operator>=</operator> <name><name>avg</name><index>[<expr><name>j</name></expr>]</index></name> <operator>/</operator> <name><name>txCtAvg</name><index>[<expr><name>j</name></expr>]</index></name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><name><name>passBucket</name><operator>.</operator><name>start</name></name> <operator>=</operator> <ternary><condition><expr><name>minBucket</name></expr> ?</condition><then> <expr><name><name>buckets</name><index>[<expr><name>minBucket</name><operator>-</operator><literal type="number">1</literal></expr>]</index></name></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>passBucket</name><operator>.</operator><name>end</name></name> <operator>=</operator> <name><name>buckets</name><index>[<expr><name>maxBucket</name></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// If we were passing until we reached last few buckets with insufficient data, then report those as failed</comment>
+    <if_stmt><if>if <condition>(<expr><name>passing</name> <operator>&amp;&amp;</operator> <operator>!</operator><name>newBucketRange</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>failMinBucket</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>curNearBucket</name></expr></argument>, <argument><expr><name>curFarBucket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>failMaxBucket</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>curNearBucket</name></expr></argument>, <argument><expr><name>curFarBucket</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>start</name></name> <operator>=</operator> <ternary><condition><expr><name>failMinBucket</name></expr> ?</condition><then> <expr><name><name>buckets</name><index>[<expr><name>failMinBucket</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index></name></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>end</name></name> <operator>=</operator> <name><name>buckets</name><index>[<expr><name>failMaxBucket</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>withinTarget</name></name> <operator>=</operator> <name>nConf</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>totalConfirmed</name></name> <operator>=</operator> <name>totalNum</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>inMempool</name></name> <operator>=</operator> <name>extraNum</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>failBucket</name><operator>.</operator><name>leftMempool</name></name> <operator>=</operator> <name>failNum</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"FeeEst: %d %s%.0f%% decay %.5f: feerate: %g from (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out) Fail: (%g - %g) %.2f%% %.1f/(%.1f %d mem %.1f out)\n"</literal></expr></argument>,
+             <argument><expr><name>confTarget</name></expr></argument>, <argument><expr><ternary><condition><expr><name>requireGreater</name></expr> ?</condition><then> <expr><literal type="string">"&gt;"</literal></expr> </then><else>: <expr><literal type="string">"&lt;"</literal></expr></else></ternary></expr></argument>, <argument><expr><literal type="number">100.0</literal> <operator>*</operator> <name>successBreakPoint</name></expr></argument>, <argument><expr><name>decay</name></expr></argument>,
+             <argument><expr><name>median</name></expr></argument>, <argument><expr><name><name>passBucket</name><operator>.</operator><name>start</name></name></expr></argument>, <argument><expr><name><name>passBucket</name><operator>.</operator><name>end</name></name></expr></argument>,
+             <argument><expr><literal type="number">100</literal> <operator>*</operator> <name><name>passBucket</name><operator>.</operator><name>withinTarget</name></name> <operator>/</operator> <operator>(</operator><name><name>passBucket</name><operator>.</operator><name>totalConfirmed</name></name> <operator>+</operator> <name><name>passBucket</name><operator>.</operator><name>inMempool</name></name> <operator>+</operator> <name><name>passBucket</name><operator>.</operator><name>leftMempool</name></name><operator>)</operator></expr></argument>,
+             <argument><expr><name><name>passBucket</name><operator>.</operator><name>withinTarget</name></name></expr></argument>, <argument><expr><name><name>passBucket</name><operator>.</operator><name>totalConfirmed</name></name></expr></argument>, <argument><expr><name><name>passBucket</name><operator>.</operator><name>inMempool</name></name></expr></argument>, <argument><expr><name><name>passBucket</name><operator>.</operator><name>leftMempool</name></name></expr></argument>,
+             <argument><expr><name><name>failBucket</name><operator>.</operator><name>start</name></name></expr></argument>, <argument><expr><name><name>failBucket</name><operator>.</operator><name>end</name></name></expr></argument>,
+             <argument><expr><literal type="number">100</literal> <operator>*</operator> <name><name>failBucket</name><operator>.</operator><name>withinTarget</name></name> <operator>/</operator> <operator>(</operator><name><name>failBucket</name><operator>.</operator><name>totalConfirmed</name></name> <operator>+</operator> <name><name>failBucket</name><operator>.</operator><name>inMempool</name></name> <operator>+</operator> <name><name>failBucket</name><operator>.</operator><name>leftMempool</name></name><operator>)</operator></expr></argument>,
+             <argument><expr><name><name>failBucket</name><operator>.</operator><name>withinTarget</name></name></expr></argument>, <argument><expr><name><name>failBucket</name><operator>.</operator><name>totalConfirmed</name></name></expr></argument>, <argument><expr><name><name>failBucket</name><operator>.</operator><name>inMempool</name></name></expr></argument>, <argument><expr><name><name>failBucket</name><operator>.</operator><name>leftMempool</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+
+    <if_stmt><if>if <condition>(<expr><name>result</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>result</name><operator>-&gt;</operator><name>pass</name></name> <operator>=</operator> <name>passBucket</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>result</name><operator>-&gt;</operator><name>fail</name></name> <operator>=</operator> <name>failBucket</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>result</name><operator>-&gt;</operator><name>decay</name></name> <operator>=</operator> <name>decay</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>result</name><operator>-&gt;</operator><name>scale</name></name> <operator>=</operator> <name>scale</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>median</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>Write</name></name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>fileout</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>decay</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>scale</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>avg</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>txCtAvg</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>confAvg</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>failAvg</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>Read</name></name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>filein</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nFileVersion</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>numBuckets</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Read data file and do some very basic sanity checking</comment>
+    <comment type="line">// buckets and bucketMap are not updated yet, so don't access them</comment>
+    <comment type="line">// If there is a read failure, we'll just discard this entire object anyway</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>maxConfirms</name></decl>, <decl><type ref="prev"/><name>maxPeriods</name></decl>;</decl_stmt>
+
+    <comment type="line">// The current version will store the decay with each individual TxConfirmStats and also keep a scale factor</comment>
+    <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>decay</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>decay</name> <operator>&lt;=</operator> <literal type="number">0</literal> <operator>||</operator> <name>decay</name> <operator>&gt;=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Decay must be between 0 and 1 (non-inclusive)"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>scale</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>scale</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Scale must be non-zero"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>avg</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>avg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>numBuckets</name></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Mismatch in feerate average bucket count"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>txCtAvg</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>txCtAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>numBuckets</name></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Mismatch in tx count bucket count"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>confAvg</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>maxPeriods</name> <operator>=</operator> <call><name><name>confAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>maxConfirms</name> <operator>=</operator> <name>scale</name> <operator>*</operator> <name>maxPeriods</name></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>maxConfirms</name> <operator>&lt;=</operator> <literal type="number">0</literal> <operator>||</operator> <name>maxConfirms</name> <operator>&gt;</operator> <literal type="number">6</literal> <operator>*</operator> <literal type="number">24</literal> <operator>*</operator> <literal type="number">7</literal></expr>)</condition> <block>{<block_content> <comment type="line">// one week</comment>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file.  Must maintain estimates for between 1 and 1008 (one week) confirms"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>maxPeriods</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>confAvg</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>!=</operator> <name>numBuckets</name></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Mismatch in feerate conf average bucket count"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>failAvg</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>maxPeriods</name> <operator>!=</operator> <call><name><name>failAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Mismatch in confirms tracked for failures"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>maxPeriods</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>failAvg</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>!=</operator> <name>numBuckets</name></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Mismatch in one of failure average bucket counts"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Resize the current block variables which aren't stored in the data file</comment>
+    <comment type="line">// to match the number of confirms and buckets</comment>
+    <expr_stmt><expr><call><name>resizeInMemoryCounters</name><argument_list>(<argument><expr><name>numBuckets</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Reading estimates: %u buckets counting confirms up to %u blocks\n"</literal></expr></argument>,
+             <argument><expr><name>numBuckets</name></expr></argument>, <argument><expr><name>maxConfirms</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>NewTx</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>val</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketindex</name> <init>= <expr><call><name><name>bucketMap</name><operator>.</operator><name>lower_bound</name></name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call><operator>-&gt;</operator><name>second</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>blockIndex</name> <init>= <expr><name>nBlockHeight</name> <operator>%</operator> <call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>unconfTxs</name><index>[<expr><name>blockIndex</name></expr>]</index><index>[<expr><name>bucketindex</name></expr>]</index></name><operator>++</operator></expr>;</expr_stmt>
+    <return>return <expr><name>bucketindex</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TxConfirmStats</name><operator>::</operator><name>removeTx</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>entryHeight</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBestSeenHeight</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketindex</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>inBlock</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">//nBestSeenHeight is not updated yet for the new block</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>blocksAgo</name> <init>= <expr><name>nBestSeenHeight</name> <operator>-</operator> <name>entryHeight</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nBestSeenHeight</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>  <comment type="line">// the BlockPolicyEstimator hasn't seen any blocks yet</comment>
+        <expr_stmt><expr><name>blocksAgo</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>blocksAgo</name> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy error, blocks ago is negative for mempool tx\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>  <comment type="line">//This can't happen because we call this with our best seen height, no entries can have higher</comment>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>blocksAgo</name> <operator>&gt;=</operator> <operator>(</operator><name>int</name><operator>)</operator><call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>oldUnconfTxs</name><index>[<expr><name>bucketindex</name></expr>]</index></name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>oldUnconfTxs</name><index>[<expr><name>bucketindex</name></expr>]</index></name><operator>--</operator></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy error, mempool tx removed from &gt;25 blocks,bucketIndex=%u already\n"</literal></expr></argument>,
+                     <argument><expr><name>bucketindex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if>
+    <else>else <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>blockIndex</name> <init>= <expr><name>entryHeight</name> <operator>%</operator> <call><name><name>unconfTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>unconfTxs</name><index>[<expr><name>blockIndex</name></expr>]</index><index>[<expr><name>bucketindex</name></expr>]</index></name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>unconfTxs</name><index>[<expr><name>blockIndex</name></expr>]</index><index>[<expr><name>bucketindex</name></expr>]</index></name><operator>--</operator></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy error, mempool tx removed from blockIndex=%u,bucketIndex=%u already\n"</literal></expr></argument>,
+                     <argument><expr><name>blockIndex</name></expr></argument>, <argument><expr><name>bucketindex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></else></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>inBlock</name> <operator>&amp;&amp;</operator> <operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><name>blocksAgo</name> <operator>&gt;=</operator> <name>scale</name></expr>)</condition> <block>{<block_content> <comment type="line">// Only counts as a failure if not confirmed for entire period</comment>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>scale</name> <operator>!=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>periodsAgo</name> <init>= <expr><name>blocksAgo</name> <operator>/</operator> <name>scale</name></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>periodsAgo</name> <operator>&amp;&amp;</operator> <name>i</name> <operator>&lt;</operator> <call><name><name>failAvg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><name><name>failAvg</name><index>[<expr><name>i</name></expr>]</index><index>[<expr><name>bucketindex</name></expr>]</index></name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// This function is called from CTxMemPool::removeUnchecked to ensure</comment>
+<comment type="line">// txs removed from the mempool for any reason are no longer</comment>
+<comment type="line">// tracked. Txs that were part of a block have already been removed in</comment>
+<comment type="line">// processBlockTx to ensure they are never double tracked, but it is</comment>
+<comment type="line">// of no harm to try to remove them again.</comment>
+<function><type><name>bool</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>removeTx</name></name><parameter_list>(<parameter><decl><type><name>uint256</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>inBlock</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>TxStatsInfo</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>pos</name> <init>= <expr><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>!=</operator> <call><name><name>mapMemPoolTxs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>removeTx</name></name><argument_list>(<argument><expr><name><name>pos</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>blockHeight</name></name></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name><name>pos</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>bucketIndex</name></name></expr></argument>, <argument><expr><name>inBlock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>removeTx</name></name><argument_list>(<argument><expr><name><name>pos</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>blockHeight</name></name></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name><name>pos</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>bucketIndex</name></name></expr></argument>, <argument><expr><name>inBlock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>longStats</name><operator>-&gt;</operator><name>removeTx</name></name><argument_list>(<argument><expr><name><name>pos</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>blockHeight</name></name></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name><name>pos</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>bucketIndex</name></name></expr></argument>, <argument><expr><name>inBlock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<constructor><name><name>CBlockPolicyEstimator</name><operator>::</operator><name>CBlockPolicyEstimator</name></name><parameter_list>()</parameter_list>
+    <member_init_list>: <call><name>nBestSeenHeight</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>firstRecordedHeight</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>historicalFirst</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>historicalBest</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>trackedTxs</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>untrackedTxs</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <assert type="static">static_assert<argument_list>(<argument><expr><name>MIN_BUCKET_FEERATE</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>, <argument><expr><literal type="string">"Min feerate must be nonzero"</literal></expr></argument>)</argument_list>;</assert>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>bucketIndex</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>double</name></type> <name>bucketBoundary</name> <init>= <expr><name>MIN_BUCKET_FEERATE</name></expr></init></decl>;</init> <condition><expr><name>bucketBoundary</name> <operator>&lt;=</operator> <name>MAX_BUCKET_FEERATE</name></expr>;</condition> <incr><expr><name>bucketBoundary</name> <operator>*=</operator> <name>FEE_SPACING</name></expr><operator>,</operator> <expr><name>bucketIndex</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>buckets</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>bucketBoundary</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>bucketMap</name><index>[<expr><name>bucketBoundary</name></expr>]</index></name> <operator>=</operator> <name>bucketIndex</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>buckets</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>INF_FEERATE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>bucketMap</name><index>[<expr><name>INF_FEERATE</name></expr>]</index></name> <operator>=</operator> <name>bucketIndex</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>bucketMap</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>feeStats</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><operator>new</operator> <call><name>TxConfirmStats</name><argument_list>(<argument><expr><name>buckets</name></expr></argument>, <argument><expr><name>bucketMap</name></expr></argument>, <argument><expr><name>MED_BLOCK_PERIODS</name></expr></argument>, <argument><expr><name>MED_DECAY</name></expr></argument>, <argument><expr><name>MED_SCALE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>shortStats</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><operator>new</operator> <call><name>TxConfirmStats</name><argument_list>(<argument><expr><name>buckets</name></expr></argument>, <argument><expr><name>bucketMap</name></expr></argument>, <argument><expr><name>SHORT_BLOCK_PERIODS</name></expr></argument>, <argument><expr><name>SHORT_DECAY</name></expr></argument>, <argument><expr><name>SHORT_SCALE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>longStats</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><operator>new</operator> <call><name>TxConfirmStats</name><argument_list>(<argument><expr><name>buckets</name></expr></argument>, <argument><expr><name>bucketMap</name></expr></argument>, <argument><expr><name>LONG_BLOCK_PERIODS</name></expr></argument>, <argument><expr><name>LONG_DECAY</name></expr></argument>, <argument><expr><name>LONG_SCALE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>CBlockPolicyEstimator</name><operator>::</operator><name>~CBlockPolicyEstimator</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+</block_content>}</block></destructor>
+
+<function><type><name>void</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>processTransaction</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>&amp;</modifier></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>validFeeEstimate</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>txHeight</name> <init>= <expr><call><name><name>entry</name><operator>.</operator><name>GetHeight</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name> <init>= <expr><call><name><name>entry</name><operator>.</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy error mempool tx %s already being tracked\n"</literal></expr></argument>,
+                 <argument><expr><call><name><name>hash</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>txHeight</name> <operator>!=</operator> <name>nBestSeenHeight</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Ignore side chains and re-orgs; assuming they are random they don't</comment>
+        <comment type="line">// affect the estimate.  We'll potentially double count transactions in 1-block reorgs.</comment>
+        <comment type="line">// Ignore txs if BlockPolicyEstimator is not in sync with ::ChainActive().Tip().</comment>
+        <comment type="line">// It will be synced next time a block is processed.</comment>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Only want to be updating estimates when our blockchain is synced,</comment>
+    <comment type="line">// otherwise we'll miscalculate how many blocks its taking to get included.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>validFeeEstimate</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>untrackedTxs</name><operator>++</operator></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>trackedTxs</name><operator>++</operator></expr>;</expr_stmt>
+
+    <comment type="line">// Feerates are stored and reported as BTC-per-kb:</comment>
+    <decl_stmt><decl><type><name>CFeeRate</name></type> <name>feeRate</name><argument_list>(<argument><expr><call><name><name>entry</name><operator>.</operator><name>GetFee</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>entry</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name><name>mapMemPoolTxs</name><index>[<expr><name>hash</name></expr>]</index></name><operator>.</operator><name>blockHeight</name> <operator>=</operator> <name>txHeight</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketIndex</name> <init>= <expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>NewTx</name></name><argument_list>(<argument><expr><name>txHeight</name></expr></argument>, <argument><expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>feeRate</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>mapMemPoolTxs</name><index>[<expr><name>hash</name></expr>]</index></name><operator>.</operator><name>bucketIndex</name> <operator>=</operator> <name>bucketIndex</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketIndex2</name> <init>= <expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>NewTx</name></name><argument_list>(<argument><expr><name>txHeight</name></expr></argument>, <argument><expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>feeRate</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>bucketIndex</name> <operator>==</operator> <name>bucketIndex2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketIndex3</name> <init>= <expr><call><name><name>longStats</name><operator>-&gt;</operator><name>NewTx</name></name><argument_list>(<argument><expr><name>txHeight</name></expr></argument>, <argument><expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>feeRate</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>bucketIndex</name> <operator>==</operator> <name>bucketIndex3</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>processBlockTx</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>*</modifier></type> <name>entry</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>removeTx</name><argument_list>(<argument><expr><call><name><name>entry</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// This transaction wasn't being tracked for fee estimation</comment>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// How many blocks did it take for miners to include this transaction?</comment>
+    <comment type="line">// blocksToConfirm is 1-based, so a transaction included in the earliest</comment>
+    <comment type="line">// possible block has confirmation count of 1</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>blocksToConfirm</name> <init>= <expr><name>nBlockHeight</name> <operator>-</operator> <call><name><name>entry</name><operator>-&gt;</operator><name>GetHeight</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>blocksToConfirm</name> <operator>&lt;=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// This can't happen because we don't process transactions from a block with a height</comment>
+        <comment type="line">// lower than our greatest seen height</comment>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy error Transaction had negative blocksToConfirm\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Feerates are stored and reported as BTC-per-kb:</comment>
+    <decl_stmt><decl><type><name>CFeeRate</name></type> <name>feeRate</name><argument_list>(<argument><expr><call><name><name>entry</name><operator>-&gt;</operator><name>GetFee</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>entry</name><operator>-&gt;</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>Record</name></name><argument_list>(<argument><expr><name>blocksToConfirm</name></expr></argument>, <argument><expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>feeRate</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>Record</name></name><argument_list>(<argument><expr><name>blocksToConfirm</name></expr></argument>, <argument><expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>feeRate</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>longStats</name><operator>-&gt;</operator><name>Record</name></name><argument_list>(<argument><expr><name>blocksToConfirm</name></expr></argument>, <argument><expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>feeRate</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>processBlock</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>,
+                                         <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>entries</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nBlockHeight</name> <operator>&lt;=</operator> <name>nBestSeenHeight</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Ignore side chains and re-orgs; assuming they are random</comment>
+        <comment type="line">// they don't affect the estimate.</comment>
+        <comment type="line">// And if an attacker can re-org the chain at will, then</comment>
+        <comment type="line">// you've got much bigger problems than "attacker can influence</comment>
+        <comment type="line">// transaction fees."</comment>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Must update nBestSeenHeight in sync with ClearCurrent so that</comment>
+    <comment type="line">// calls to removeTx (via processBlockTx) correctly calculate age</comment>
+    <comment type="line">// of unconfirmed txs to remove from tracking.</comment>
+    <expr_stmt><expr><name>nBestSeenHeight</name> <operator>=</operator> <name>nBlockHeight</name></expr>;</expr_stmt>
+
+    <comment type="line">// Update unconfirmed circular buffer</comment>
+    <expr_stmt><expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>ClearCurrent</name></name><argument_list>(<argument><expr><name>nBlockHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>ClearCurrent</name></name><argument_list>(<argument><expr><name>nBlockHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>longStats</name><operator>-&gt;</operator><name>ClearCurrent</name></name><argument_list>(<argument><expr><name>nBlockHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Decay all exponential averages</comment>
+    <expr_stmt><expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>UpdateMovingAverages</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>UpdateMovingAverages</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>longStats</name><operator>-&gt;</operator><name>UpdateMovingAverages</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>countedTxs</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Update averages with data points from current block</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>entry</name> <range>: <expr><name>entries</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name>processBlockTx</name><argument_list>(<argument><expr><name>nBlockHeight</name></expr></argument>, <argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>countedTxs</name><operator>++</operator></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <if_stmt><if>if <condition>(<expr><name>firstRecordedHeight</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>countedTxs</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>firstRecordedHeight</name> <operator>=</operator> <name>nBestSeenHeight</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy first recorded height %u\n"</literal></expr></argument>, <argument><expr><name>firstRecordedHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Blockpolicy estimates updated by %u of %u block txs, since last block %u of %u tracked, mempool map size %u, max target %u from %s\n"</literal></expr></argument>,
+             <argument><expr><name>countedTxs</name></expr></argument>, <argument><expr><call><name><name>entries</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>trackedTxs</name></expr></argument>, <argument><expr><name>trackedTxs</name> <operator>+</operator> <name>untrackedTxs</name></expr></argument>, <argument><expr><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>,
+             <argument><expr><call><name>MaxUsableEstimate</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><ternary><condition><expr><call><name>HistoricalBlockSpan</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <call><name>BlockSpan</name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><literal type="string">"historical"</literal></expr> </then><else>: <expr><literal type="string">"current"</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>trackedTxs</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>untrackedTxs</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>CFeeRate</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>estimateFee</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>confTarget</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// It's not possible to get reasonable estimates for confTarget of 1</comment>
+    <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&lt;=</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name>estimateRawFee</name><argument_list>(<argument><expr><name>confTarget</name></expr></argument>, <argument><expr><name>DOUBLE_SUCCESS_PCT</name></expr></argument>, <argument><expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>MED_HALFLIFE</name></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>CFeeRate</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>estimateRawFee</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>confTarget</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>successThreshold</name></decl></parameter>, <parameter><decl><type><name>FeeEstimateHorizon</name></type> <name>horizon</name></decl></parameter>, <parameter><decl><type><name>EstimationResult</name><modifier>*</modifier></type> <name>result</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TxConfirmStats</name><modifier>*</modifier></type> <name>stats</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>sufficientTxs</name> <init>= <expr><name>SUFFICIENT_FEETXS</name></expr></init></decl>;</decl_stmt>
+    <switch>switch <condition>(<expr><name>horizon</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>SHORT_HALFLIFE</name></name></expr>:</case> <block>{<block_content>
+        <expr_stmt><expr><name>stats</name> <operator>=</operator> <call><name><name>shortStats</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>sufficientTxs</name> <operator>=</operator> <name>SUFFICIENT_TXS_SHORT</name></expr>;</expr_stmt>
+        <break>break;</break>
+    </block_content>}</block>
+    <case>case <expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>MED_HALFLIFE</name></name></expr>:</case> <block>{<block_content>
+        <expr_stmt><expr><name>stats</name> <operator>=</operator> <call><name><name>feeStats</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    </block_content>}</block>
+    <case>case <expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>LONG_HALFLIFE</name></name></expr>:</case> <block>{<block_content>
+        <expr_stmt><expr><name>stats</name> <operator>=</operator> <call><name><name>longStats</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>out_of_range</name></name><argument_list>(<argument><expr><literal type="string">"CBlockPolicyEstimator::estimateRawFee unknown FeeEstimateHorizon"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Return failure if trying to analyze a target we're not tracking</comment>
+    <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&lt;=</operator> <literal type="number">0</literal> <operator>||</operator> <operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><name>confTarget</name> <operator>&gt;</operator> <call><name><name>stats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>successThreshold</name> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>double</name></type> <name>median</name> <init>= <expr><call><name><name>stats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><name>confTarget</name></expr></argument>, <argument><expr><name>sufficientTxs</name></expr></argument>, <argument><expr><name>successThreshold</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name>result</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>median</name> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><call><name>llround</name><argument_list>(<argument><expr><name>median</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>HighestTargetTracked</name></name><parameter_list>(<parameter><decl><type><name>FeeEstimateHorizon</name></type> <name>horizon</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <switch>switch <condition>(<expr><name>horizon</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>SHORT_HALFLIFE</name></name></expr>:</case> <block>{<block_content>
+        <return>return <expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    <case>case <expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>MED_HALFLIFE</name></name></expr>:</case> <block>{<block_content>
+        <return>return <expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    <case>case <expr><name><name>FeeEstimateHorizon</name><operator>::</operator><name>LONG_HALFLIFE</name></name></expr>:</case> <block>{<block_content>
+        <return>return <expr><call><name><name>longStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>out_of_range</name></name><argument_list>(<argument><expr><literal type="string">"CBlockPolicyEstimator::HighestTargetTracked unknown FeeEstimateHorizon"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>BlockSpan</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>firstRecordedHeight</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>nBestSeenHeight</name> <operator>&gt;=</operator> <name>firstRecordedHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>nBestSeenHeight</name> <operator>-</operator> <name>firstRecordedHeight</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>HistoricalBlockSpan</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>historicalFirst</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>historicalBest</name> <operator>&gt;=</operator> <name>historicalFirst</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>nBestSeenHeight</name> <operator>-</operator> <name>historicalBest</name> <operator>&gt;</operator> <name>OLDEST_ESTIMATE_HISTORY</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><name>historicalBest</name> <operator>-</operator> <name>historicalFirst</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>MaxUsableEstimate</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// Block spans are divided by 2 to make sure there are enough potential failing data points for the estimate</comment>
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><call><name><name>longStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><call><name>BlockSpan</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>HistoricalBlockSpan</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Return a fee estimate at the required successThreshold from the shortest
+ * time horizon which tracks confirmations up to the desired target.  If
+ * checkShorterHorizon is requested, also allow short time horizon estimates
+ * for a lower target to reduce the given answer */</comment>
+<function><type><name>double</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>estimateCombinedFee</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>confTarget</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>successThreshold</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>checkShorterHorizon</name></decl></parameter>, <parameter><decl><type><name>EstimationResult</name> <modifier>*</modifier></type><name>result</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>double</name></type> <name>estimate</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&gt;=</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <name>confTarget</name> <operator>&lt;=</operator> <call><name><name>longStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Find estimate from shortest time horizon possible</comment>
+        <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&lt;=</operator> <call><name><name>shortStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content> <comment type="line">// short horizon</comment>
+            <expr_stmt><expr><name>estimate</name> <operator>=</operator> <call><name><name>shortStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><name>confTarget</name></expr></argument>, <argument><expr><name>SUFFICIENT_TXS_SHORT</name></expr></argument>, <argument><expr><name>successThreshold</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <if type="elseif">else if <condition>(<expr><name>confTarget</name> <operator>&lt;=</operator> <call><name><name>feeStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content> <comment type="line">// medium horizon</comment>
+            <expr_stmt><expr><name>estimate</name> <operator>=</operator> <call><name><name>feeStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><name>confTarget</name></expr></argument>, <argument><expr><name>SUFFICIENT_FEETXS</name></expr></argument>, <argument><expr><name>successThreshold</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <else>else <block>{<block_content> <comment type="line">// long horizon</comment>
+            <expr_stmt><expr><name>estimate</name> <operator>=</operator> <call><name><name>longStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><name>confTarget</name></expr></argument>, <argument><expr><name>SUFFICIENT_FEETXS</name></expr></argument>, <argument><expr><name>successThreshold</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>checkShorterHorizon</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>EstimationResult</name></type> <name>tempResult</name></decl>;</decl_stmt>
+            <comment type="line">// If a lower confTarget from a more recent horizon returns a lower answer use it.</comment>
+            <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&gt;</operator> <call><name><name>feeStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>double</name></type> <name>medMax</name> <init>= <expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>SUFFICIENT_FEETXS</name></expr></argument>, <argument><expr><name>successThreshold</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><name>medMax</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>(</operator><name>estimate</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal> <operator>||</operator> <name>medMax</name> <operator>&lt;</operator> <name>estimate</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>estimate</name> <operator>=</operator> <name>medMax</name></expr>;</expr_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>result</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&gt;</operator> <call><name><name>shortStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>double</name></type> <name>shortMax</name> <init>= <expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>SUFFICIENT_TXS_SHORT</name></expr></argument>, <argument><expr><name>successThreshold</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><name>shortMax</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>(</operator><name>estimate</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal> <operator>||</operator> <name>shortMax</name> <operator>&lt;</operator> <name>estimate</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>estimate</name> <operator>=</operator> <name>shortMax</name></expr>;</expr_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>result</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>estimate</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Ensure that for a conservative estimate, the DOUBLE_SUCCESS_PCT is also met
+ * at 2 * target for any longer time horizons.
+ */</comment>
+<function><type><name>double</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>estimateConservativeFee</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>doubleTarget</name></decl></parameter>, <parameter><decl><type><name>EstimationResult</name> <modifier>*</modifier></type><name>result</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>double</name></type> <name>estimate</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>EstimationResult</name></type> <name>tempResult</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>doubleTarget</name> <operator>&lt;=</operator> <call><name><name>shortStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>estimate</name> <operator>=</operator> <call><name><name>feeStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><name>doubleTarget</name></expr></argument>, <argument><expr><name>SUFFICIENT_FEETXS</name></expr></argument>, <argument><expr><name>DOUBLE_SUCCESS_PCT</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>doubleTarget</name> <operator>&lt;=</operator> <call><name><name>feeStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>double</name></type> <name>longEstimate</name> <init>= <expr><call><name><name>longStats</name><operator>-&gt;</operator><name>EstimateMedianVal</name></name><argument_list>(<argument><expr><name>doubleTarget</name></expr></argument>, <argument><expr><name>SUFFICIENT_FEETXS</name></expr></argument>, <argument><expr><name>DOUBLE_SUCCESS_PCT</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>nBestSeenHeight</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>longEstimate</name> <operator>&gt;</operator> <name>estimate</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>estimate</name> <operator>=</operator> <name>longEstimate</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>result</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>estimate</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** estimateSmartFee returns the max of the feerates calculated with a 60%
+ * threshold required at target / 2, an 85% threshold required at target and a
+ * 95% threshold required at 2 * target.  Each calculation is performed at the
+ * shortest time horizon which tracks the required target.  Conservative
+ * estimates, however, required the 95% threshold at 2 * target be met for any
+ * longer time horizons also.
+ */</comment>
+<function><type><name>CFeeRate</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>estimateSmartFee</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>confTarget</name></decl></parameter>, <parameter><decl><type><name>FeeCalculation</name> <modifier>*</modifier></type><name>feeCalc</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>conservative</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>feeCalc</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>desiredTarget</name></name> <operator>=</operator> <name>confTarget</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>returnedTarget</name></name> <operator>=</operator> <name>confTarget</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>double</name></type> <name>median</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>EstimationResult</name></type> <name>tempResult</name></decl>;</decl_stmt>
+
+    <comment type="line">// Return failure if trying to analyze a target we're not tracking</comment>
+    <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&lt;=</operator> <literal type="number">0</literal> <operator>||</operator> <operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><name>confTarget</name> <operator>&gt;</operator> <call><name><name>longStats</name><operator>-&gt;</operator><name>GetMaxConfirms</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return>  <comment type="line">// error condition</comment>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// It's not possible to get reasonable estimates for confTarget of 1</comment>
+    <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>==</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>confTarget</name> <operator>=</operator> <literal type="number">2</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>maxUsableEstimate</name> <init>= <expr><call><name>MaxUsableEstimate</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><name>confTarget</name> <operator>&gt;</operator> <name>maxUsableEstimate</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>confTarget</name> <operator>=</operator> <name>maxUsableEstimate</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>feeCalc</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>returnedTarget</name></name> <operator>=</operator> <name>confTarget</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>confTarget</name> <operator>&lt;=</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt> <comment type="line">// error condition</comment>
+
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>confTarget</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">//estimateCombinedFee and estimateConservativeFee take unsigned ints</comment>
+    <comment type="block" format="doxygen">/** true is passed to estimateCombined fee for target/2 and target so
+     * that we check the max confirms for shorter time horizons as well.
+     * This is necessary to preserve monotonically increasing estimates.
+     * For non-conservative estimates we do the same thing for 2*target, but
+     * for conservative estimates we want to skip these shorter horizons
+     * checks for 2*target because we are taking the max over all time
+     * horizons so we already have monotonically increasing estimates and
+     * the purpose of conservative estimates is not to let short term
+     * fluctuations lower our estimates by too much.
+     */</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>halfEst</name> <init>= <expr><call><name>estimateCombinedFee</name><argument_list>(<argument><expr><name>confTarget</name><operator>/</operator><literal type="number">2</literal></expr></argument>, <argument><expr><name>HALF_SUCCESS_PCT</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>feeCalc</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>est</name></name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>reason</name></name> <operator>=</operator> <name><name>FeeReason</name><operator>::</operator><name>HALF_ESTIMATE</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>median</name> <operator>=</operator> <name>halfEst</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>actualEst</name> <init>= <expr><call><name>estimateCombinedFee</name><argument_list>(<argument><expr><name>confTarget</name></expr></argument>, <argument><expr><name>SUCCESS_PCT</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>actualEst</name> <operator>&gt;</operator> <name>median</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>median</name> <operator>=</operator> <name>actualEst</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>feeCalc</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>est</name></name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>reason</name></name> <operator>=</operator> <name><name>FeeReason</name><operator>::</operator><name>FULL_ESTIMATE</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>doubleEst</name> <init>= <expr><call><name>estimateCombinedFee</name><argument_list>(<argument><expr><literal type="number">2</literal> <operator>*</operator> <name>confTarget</name></expr></argument>, <argument><expr><name>DOUBLE_SUCCESS_PCT</name></expr></argument>, <argument><expr><operator>!</operator><name>conservative</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>doubleEst</name> <operator>&gt;</operator> <name>median</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>median</name> <operator>=</operator> <name>doubleEst</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>feeCalc</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>est</name></name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>reason</name></name> <operator>=</operator> <name><name>FeeReason</name><operator>::</operator><name>DOUBLE_ESTIMATE</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>conservative</name> <operator>||</operator> <name>median</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>double</name></type> <name>consEst</name> <init>=  <expr><call><name>estimateConservativeFee</name><argument_list>(<argument><expr><literal type="number">2</literal> <operator>*</operator> <name>confTarget</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tempResult</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>consEst</name> <operator>&gt;</operator> <name>median</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>median</name> <operator>=</operator> <name>consEst</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>feeCalc</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>est</name></name> <operator>=</operator> <name>tempResult</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>feeCalc</name><operator>-&gt;</operator><name>reason</name></name> <operator>=</operator> <name><name>FeeReason</name><operator>::</operator><name>CONSERVATIVE</name></name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>median</name> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt> <comment type="line">// error condition</comment>
+
+    <return>return <expr><call><name>CFeeRate</name><argument_list>(<argument><expr><call><name>llround</name><argument_list>(<argument><expr><name>median</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+
+<function><type><name>bool</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>Write</name></name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>fileout</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <literal type="number">149900</literal></expr>;</expr_stmt> <comment type="line">// version required to read: 0.14.99 or later</comment>
+        <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>CLIENT_VERSION</name></expr>;</expr_stmt> <comment type="line">// version that wrote the file</comment>
+        <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>nBestSeenHeight</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>BlockSpan</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <call><name>HistoricalBlockSpan</name><argument_list>()</argument_list></call><operator>/</operator><literal type="number">2</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>firstRecordedHeight</name> <operator>&lt;&lt;</operator> <name>nBestSeenHeight</name></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <else>else <block>{<block_content>
+            <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>historicalFirst</name> <operator>&lt;&lt;</operator> <name>historicalBest</name></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <expr_stmt><expr><name>fileout</name> <operator>&lt;&lt;</operator> <name>buckets</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>feeStats</name><operator>-&gt;</operator><name>Write</name></name><argument_list>(<argument><expr><name>fileout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>shortStats</name><operator>-&gt;</operator><name>Write</name></name><argument_list>(<argument><expr><name>fileout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>longStats</name><operator>-&gt;</operator><name>Write</name></name><argument_list>(<argument><expr><name>fileout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"CBlockPolicyEstimator::Write(): unable to write policy estimator data (non-fatal)\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></catch></try>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>Read</name></name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>filein</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>nVersionRequired</name></decl>, <decl><type ref="prev"/><name>nVersionThatWrote</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>nVersionRequired</name> <operator>&gt;&gt;</operator> <name>nVersionThatWrote</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nVersionRequired</name> <operator>&gt;</operator> <name>CLIENT_VERSION</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"CBlockPolicyEstimator::Read(): up-version (%d) fee estimate file"</literal></expr></argument>, <argument><expr><name>nVersionRequired</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+        <comment type="line">// Read fee estimates file into temporary variables so existing data</comment>
+        <comment type="line">// structures aren't corrupted if there is an exception.</comment>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nFileBestSeenHeight</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>nFileBestSeenHeight</name></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>nVersionRequired</name> <operator>&lt;</operator> <literal type="number">149900</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"%s: incompatible old fee estimation data (non-fatal). Version: %d\n"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><name>nVersionRequired</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content> <comment type="line">// New format introduced in 149900</comment>
+            <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nFileHistoricalFirst</name></decl>, <decl><type ref="prev"/><name>nFileHistoricalBest</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>nFileHistoricalFirst</name> <operator>&gt;&gt;</operator> <name>nFileHistoricalBest</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>nFileHistoricalFirst</name> <operator>&gt;</operator> <name>nFileHistoricalBest</name> <operator>||</operator> <name>nFileHistoricalBest</name> <operator>&gt;</operator> <name>nFileBestSeenHeight</name></expr>)</condition> <block>{<block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Historical block range for estimates is invalid"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name></type> <name>fileBuckets</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>filein</name> <operator>&gt;&gt;</operator> <name>fileBuckets</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>size_t</name></type> <name>numBuckets</name> <init>= <expr><call><name><name>fileBuckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>numBuckets</name> <operator>&lt;=</operator> <literal type="number">1</literal> <operator>||</operator> <name>numBuckets</name> <operator>&gt;</operator> <literal type="number">1000</literal></expr>)</condition><block type="pseudo"><block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Corrupt estimates file. Must have between 2 and 1000 feerate buckets"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name></type> <name>fileFeeStats</name><argument_list>(<argument><expr><operator>new</operator> <call><name>TxConfirmStats</name><argument_list>(<argument><expr><name>buckets</name></expr></argument>, <argument><expr><name>bucketMap</name></expr></argument>, <argument><expr><name>MED_BLOCK_PERIODS</name></expr></argument>, <argument><expr><name>MED_DECAY</name></expr></argument>, <argument><expr><name>MED_SCALE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name></type> <name>fileShortStats</name><argument_list>(<argument><expr><operator>new</operator> <call><name>TxConfirmStats</name><argument_list>(<argument><expr><name>buckets</name></expr></argument>, <argument><expr><name>bucketMap</name></expr></argument>, <argument><expr><name>SHORT_BLOCK_PERIODS</name></expr></argument>, <argument><expr><name>SHORT_DECAY</name></expr></argument>, <argument><expr><name>SHORT_SCALE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name></type> <name>fileLongStats</name><argument_list>(<argument><expr><operator>new</operator> <call><name>TxConfirmStats</name><argument_list>(<argument><expr><name>buckets</name></expr></argument>, <argument><expr><name>bucketMap</name></expr></argument>, <argument><expr><name>LONG_BLOCK_PERIODS</name></expr></argument>, <argument><expr><name>LONG_DECAY</name></expr></argument>, <argument><expr><name>LONG_SCALE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>fileFeeStats</name><operator>-&gt;</operator><name>Read</name></name><argument_list>(<argument><expr><name>filein</name></expr></argument>, <argument><expr><name>nVersionThatWrote</name></expr></argument>, <argument><expr><name>numBuckets</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>fileShortStats</name><operator>-&gt;</operator><name>Read</name></name><argument_list>(<argument><expr><name>filein</name></expr></argument>, <argument><expr><name>nVersionThatWrote</name></expr></argument>, <argument><expr><name>numBuckets</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>fileLongStats</name><operator>-&gt;</operator><name>Read</name></name><argument_list>(<argument><expr><name>filein</name></expr></argument>, <argument><expr><name>nVersionThatWrote</name></expr></argument>, <argument><expr><name>numBuckets</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <comment type="line">// Fee estimates file parsed correctly</comment>
+            <comment type="line">// Copy buckets from file and refresh our bucketmap</comment>
+            <expr_stmt><expr><name>buckets</name> <operator>=</operator> <name>fileBuckets</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>bucketMap</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>buckets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                <expr_stmt><expr><name><name>bucketMap</name><index>[<expr><name><name>buckets</name><index>[<expr><name>i</name></expr>]</index></name></expr>]</index></name> <operator>=</operator> <name>i</name></expr>;</expr_stmt>
+            </block_content>}</block></for>
+
+            <comment type="line">// Destroy old TxConfirmStats and point to new ones that already reference buckets and bucketMap</comment>
+            <expr_stmt><expr><name>feeStats</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>fileFeeStats</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>shortStats</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>fileShortStats</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>longStats</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>fileLongStats</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <expr_stmt><expr><name>nBestSeenHeight</name> <operator>=</operator> <name>nFileBestSeenHeight</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>historicalFirst</name> <operator>=</operator> <name>nFileHistoricalFirst</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>historicalBest</name> <operator>=</operator> <name>nFileHistoricalBest</name></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"CBlockPolicyEstimator::Read(): unable to read policy estimator data (non-fatal): %s\n"</literal></expr></argument>,<argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></catch></try>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBlockPolicyEstimator</name><operator>::</operator><name>FlushUnconfirmed</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>startclear</name> <init>= <expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>num_entries</name> <init>= <expr><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Remove every entry in mapMemPoolTxs</comment>
+    <while>while <condition>(<expr><operator>!</operator><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>mi</name> <init>= <expr><call><name><name>mapMemPoolTxs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>removeTx</name><argument_list>(<argument><expr><name><name>mi</name><operator>-&gt;</operator><name>first</name></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// this calls erase() on mapMemPoolTxs</comment>
+    </block_content>}</block></while>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>endclear</name> <init>= <expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ESTIMATEFEE</name></name></expr></argument>, <argument><expr><literal type="string">"Recorded %u unconfirmed txs from mempool in %gs\n"</literal></expr></argument>, <argument><expr><name>num_entries</name></expr></argument>, <argument><expr><operator>(</operator><name>endclear</name> <operator>-</operator> <name>startclear</name><operator>)</operator><operator>*</operator><literal type="number">0.000001</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<constructor><name><name>FeeFilterRounder</name><operator>::</operator><name>FeeFilterRounder</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CFeeRate</name><modifier>&amp;</modifier></type> <name>minIncrementalFee</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>minFeeLimit</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><call><name>CAmount</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>minIncrementalFee</name><operator>.</operator><name>GetFeePerK</name></name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>feeset</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>double</name></type> <name>bucketBoundary</name> <init>= <expr><name>minFeeLimit</name></expr></init></decl>;</init> <condition><expr><name>bucketBoundary</name> <operator>&lt;=</operator> <name>MAX_FILTER_FEERATE</name></expr>;</condition> <incr><expr><name>bucketBoundary</name> <operator>*=</operator> <name>FEE_FILTER_SPACING</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>feeset</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>bucketBoundary</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></constructor>
+
+<function><type><name>CAmount</name></type> <name><name>FeeFilterRounder</name><operator>::</operator><name>round</name></name><parameter_list>(<parameter><decl><type><name>CAmount</name></type> <name>currentMinFee</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>it</name> <init>= <expr><call><name><name>feeset</name><operator>.</operator><name>lower_bound</name></name><argument_list>(<argument><expr><name>currentMinFee</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>it</name> <operator>!=</operator> <call><name><name>feeset</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>insecure_rand</name><operator>.</operator><name>rand32</name></name><argument_list>()</argument_list></call> <operator>%</operator> <literal type="number">3</literal> <operator>!=</operator> <literal type="number">0</literal><operator>)</operator> <operator>||</operator> <name>it</name> <operator>==</operator> <call><name><name>feeset</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>it</name><operator>--</operator></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>CAmount</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><operator>*</operator><name>it</name></expr></argument>)</argument_list></cast></expr>;</return>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/fs.h"><comment type="line">// Copyright (c) 2017-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_FS_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_FS_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdio.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>defined</name> <name>WIN32</name> <operator>&amp;&amp;</operator> <name>defined</name> <name>__GLIBCXX__</name></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ext/stdio_filebuf.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BOOST_FILESYSTEM_NO_DEPRECATED</name></cpp:macro></cpp:define>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/filesystem.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/filesystem/fstream.hpp&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** Filesystem operations and types */</comment>
+<decl_stmt><decl><type><name>namespace</name></type> <name>fs</name> <init>= <expr><name>boost</name><operator>::</operator><name>filesystem</name></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Bridge operations to C stdio */</comment>
+<decl_stmt><decl><type><name>namespace</name></type> <name>fsbridge</name> <block>{<block_content>
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>fopen</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>path</name><operator>&amp;</operator> <name>p</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>char</name> <operator>*</operator><name>mode</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>class</name></type> <name>FileLock</name>
+    <block>{<block_content>
+    <label><name>public</name>:</label>
+        <expr_stmt><expr><call><name>FileLock</name><argument_list>()</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>FileLock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>FileLock</name><operator>&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>FileLock</name><argument_list>(<argument><expr><name>FileLock</name><operator>&amp;&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>explicit</name></type> <name>FileLock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>path</name><operator>&amp;</operator> <name>file</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><operator>~</operator><call><name>FileLock</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <function_decl><type><name>bool</name></type> <name>TryLock</name><parameter_list>()</parameter_list>;</function_decl>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>GetReason</name><argument_list>()</argument_list></macro> <block>{ <return>return <expr><name>reason</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <label><name>private</name>:</label>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <name>reason</name></expr>;</expr_stmt>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>WIN32</name></cpp:ifndef>
+        <decl_stmt><decl><type><name>int</name></type> <name>fd</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+        <decl_stmt><decl><type><name>void</name><modifier>*</modifier></type> <name>hFile</name> <init>= <expr><operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt> <comment type="line">// INVALID_HANDLE_VALUE</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    </block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <call><name>get_filesystem_error_message</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>filesystem_error</name><operator>&amp;</operator> <name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// GNU libstdc++ specific workaround for opening UTF-8 paths on Windows.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// On Windows, it is only possible to reliably access multibyte file paths through</comment>
+    <comment type="line">// `wchar_t` APIs, not `char` APIs. But because the C++ standard doesn't</comment>
+    <comment type="line">// require ifstream/ofstream `wchar_t` constructors, and the GNU library doesn't</comment>
+    <comment type="line">// provide them (in contrast to the Microsoft C++ library, see</comment>
+    <comment type="line">// https://stackoverflow.com/questions/821873/how-to-open-an-stdfstream-ofstream-or-ifstream-with-a-unicode-filename/822032#822032),</comment>
+    <comment type="line">// Boost is forced to fall back to `char` constructors which may not work properly.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// Work around this issue by creating stream objects with `_wfopen` in</comment>
+    <comment type="line">// combination with `__gnu_cxx::stdio_filebuf`. This workaround can be removed</comment>
+    <comment type="line">// with an upgrade to C++17, where streams can be constructed directly from</comment>
+    <comment type="line">// `std::filesystem::path` objects.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>defined</name> <name>WIN32</name> <operator>&amp;&amp;</operator> <name>defined</name> <name>__GLIBCXX__</name></expr></cpp:if>
+    <decl_stmt><decl><type><name>class</name></type> <name>ifstream</name> <range>: <expr><name>public</name> <name>std</name><operator>::</operator><name>istream</name>
+    <block>{
+    <expr><name>public</name><operator>:</operator>
+        <call><name>ifstream</name><argument_list>()</argument_list></call> <operator>=</operator> default</expr>;
+        <expr><name>explicit</name> <macro><name>ifstream</name><argument_list>(<argument>const fs::path&amp; p</argument>, <argument>std::ios_base::openmode mode = std::ios_base::in</argument>)</argument_list></macro> <block>{ <expr><call><name>open</name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><name>mode</name></expr></argument>)</argument_list></call></expr>; }</block>
+        <operator>~</operator><macro><name>ifstream</name><argument_list>()</argument_list></macro> <block>{ <expr><call><name>close</name><argument_list>()</argument_list></call></expr>; }</block>
+        <name>void</name> <macro><name>open</name><argument_list>(<argument>const fs::path&amp; p</argument>, <argument>std::ios_base::openmode mode = std::ios_base::in</argument>)</argument_list></macro></expr>;
+        <expr><name>bool</name> <macro><name>is_open</name><argument_list>()</argument_list></macro> <block>{ <return>return <expr><call><name><name>m_filebuf</name><operator>.</operator><name>is_open</name></name><argument_list>()</argument_list></call></expr>;</return> }</block>
+        <name>void</name> <call><name>close</name><argument_list>()</argument_list></call></expr>;
+
+    <expr><name>private</name><operator>:</operator>
+        <name>__gnu_cxx</name><operator>::</operator><name><name>stdio_filebuf</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name> <name>m_filebuf</name></expr>;
+        <expr><name>FILE</name><operator>*</operator> <name>m_file</name> <operator>=</operator> <name>nullptr</name></expr>;
+    }</block></expr></range></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>class</name></type> <name>ofstream</name> <range>: <expr><name>public</name> <name>std</name><operator>::</operator><name>ostream</name>
+    <block>{
+    <expr><name>public</name><operator>:</operator>
+        <call><name>ofstream</name><argument_list>()</argument_list></call> <operator>=</operator> default</expr>;
+        <expr><name>explicit</name> <macro><name>ofstream</name><argument_list>(<argument>const fs::path&amp; p</argument>, <argument>std::ios_base::openmode mode = std::ios_base::out</argument>)</argument_list></macro> <block>{ <expr><call><name>open</name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><name>mode</name></expr></argument>)</argument_list></call></expr>; }</block>
+        <operator>~</operator><macro><name>ofstream</name><argument_list>()</argument_list></macro> <block>{ <expr><call><name>close</name><argument_list>()</argument_list></call></expr>; }</block>
+        <name>void</name> <macro><name>open</name><argument_list>(<argument>const fs::path&amp; p</argument>, <argument>std::ios_base::openmode mode = std::ios_base::out</argument>)</argument_list></macro></expr>;
+        <expr><name>bool</name> <macro><name>is_open</name><argument_list>()</argument_list></macro> <block>{ <return>return <expr><call><name><name>m_filebuf</name><operator>.</operator><name>is_open</name></name><argument_list>()</argument_list></call></expr>;</return> }</block>
+        <name>void</name> <call><name>close</name><argument_list>()</argument_list></call></expr>;
+
+    <expr><name>private</name><operator>:</operator>
+        <name>__gnu_cxx</name><operator>::</operator><name><name>stdio_filebuf</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name> <name>m_filebuf</name></expr>;
+        <expr><name>FILE</name><operator>*</operator> <name>m_file</name> <operator>=</operator> <name>nullptr</name></expr>;
+    }</block></expr></range></decl>;</decl_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>  <comment type="line">// !(WIN32 &amp;&amp; __GLIBCXX__)</comment>
+    <typedef>typedef <expr_stmt><expr><name>fs</name><operator>::</operator><name>ifstream</name> <name>ifstream</name></expr>;</expr_stmt></typedef>
+    <typedef>typedef <expr_stmt><expr><name>fs</name><operator>::</operator><name>ofstream</name> <name>ofstream</name></expr>;</expr_stmt></typedef>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// WIN32 &amp;&amp; __GLIBCXX__</comment>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_FS_H</comment>
+</unit>

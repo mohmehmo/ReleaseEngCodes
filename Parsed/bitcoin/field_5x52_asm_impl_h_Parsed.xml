@@ -1,0 +1,504 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/secp256k1/src/field_5x52_asm_impl.h"><comment type="block" format="doxygen">/**********************************************************************
+ * Copyright (c) 2013-2014 Diederik Huys, Pieter Wuille               *
+ * Distributed under the MIT software license, see the accompanying   *
+ * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
+ **********************************************************************/</comment>
+
+<comment type="block" format="doxygen">/**
+ * Changelog:
+ * - March 2013, Diederik Huys:    original version
+ * - November 2014, Pieter Wuille: updated to use Peter Dettman's parallel multiplication algorithm
+ * - December 2014, Pieter Wuille: converted from YASM to GCC inline assembly
+ */</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SECP256K1_FIELD_INNER5X52_IMPL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SECP256K1_FIELD_INNER5X52_IMPL_H</name></cpp:macro></cpp:define>
+
+<function><type><name>SECP256K1_INLINE</name> <specifier>static</specifier> <name>void</name></type> <name>secp256k1_fe_mul_inner</name><parameter_list>(<parameter><decl><type><name>uint64_t</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint64_t</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint64_t</name> <modifier>*</modifier> <name>SECP256K1_RESTRICT</name></type> <name>b</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<comment type="block" format="doxygen">/**
+ * Registers: rdx:rax = multiplication accumulator
+ *            r9:r8   = c
+ *            r15:rcx = d
+ *            r10-r14 = a0-a4
+ *            rbx     = b
+ *            rdi     = r
+ *            rsi     = a / t?
+ */</comment>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>tmp1</name></decl>, <decl><type ref="prev"/><name>tmp2</name></decl>, <decl><type ref="prev"/><name>tmp3</name></decl>;</decl_stmt>
+<asm>__asm__ <specifier>__volatile__</specifier>(
+    "movq 0(%%rsi),%%r10\n"
+    "movq 8(%%rsi),%%r11\n"
+    "movq 16(%%rsi),%%r12\n"
+    "movq 24(%%rsi),%%r13\n"
+    "movq 32(%%rsi),%%r14\n"
+
+    <comment type="block">/* d += a3 * b0 */</comment>
+    "movq 0(%%rbx),%%rax\n"
+    "mulq %%r13\n"
+    "movq %%rax,%%rcx\n"
+    "movq %%rdx,%%r15\n"
+    <comment type="block">/* d += a2 * b1 */</comment>
+    "movq 8(%%rbx),%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a1 * b2 */</comment>
+    "movq 16(%%rbx),%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d = a0 * b3 */</comment>
+    "movq 24(%%rbx),%%rax\n"
+    "mulq %%r10\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* c = a4 * b4 */</comment>
+    "movq 32(%%rbx),%%rax\n"
+    "mulq %%r14\n"
+    "movq %%rax,%%r8\n"
+    "movq %%rdx,%%r9\n"
+    <comment type="block">/* d += (c &amp; M) * R */</comment>
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* c &gt;&gt;= 52 (%%r8 only) */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    <comment type="block">/* t3 (tmp1) = d &amp; M */</comment>
+    "movq %%rcx,%%rsi\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rsi\n"
+    "movq %%rsi,%q1\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r15,%%rcx\n"
+    "xorq %%r15,%%r15\n"
+    <comment type="block">/* d += a4 * b0 */</comment>
+    "movq 0(%%rbx),%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a3 * b1 */</comment>
+    "movq 8(%%rbx),%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a2 * b2 */</comment>
+    "movq 16(%%rbx),%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a1 * b3 */</comment>
+    "movq 24(%%rbx),%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a0 * b4 */</comment>
+    "movq 32(%%rbx),%%rax\n"
+    "mulq %%r10\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += c * R */</comment>
+    "movq %%r8,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* t4 = d &amp; M (%%rsi) */</comment>
+    "movq %%rcx,%%rsi\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rsi\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r15,%%rcx\n"
+    "xorq %%r15,%%r15\n"
+    <comment type="block">/* tx = t4 &gt;&gt; 48 (tmp3) */</comment>
+    "movq %%rsi,%%rax\n"
+    "shrq $48,%%rax\n"
+    "movq %%rax,%q3\n"
+    <comment type="block">/* t4 &amp;= (M &gt;&gt; 4) (tmp2) */</comment>
+    "movq $0xffffffffffff,%%rax\n"
+    "andq %%rax,%%rsi\n"
+    "movq %%rsi,%q2\n"
+    <comment type="block">/* c = a0 * b0 */</comment>
+    "movq 0(%%rbx),%%rax\n"
+    "mulq %%r10\n"
+    "movq %%rax,%%r8\n"
+    "movq %%rdx,%%r9\n"
+    <comment type="block">/* d += a4 * b1 */</comment>
+    "movq 8(%%rbx),%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a3 * b2 */</comment>
+    "movq 16(%%rbx),%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a2 * b3 */</comment>
+    "movq 24(%%rbx),%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a1 * b4 */</comment>
+    "movq 32(%%rbx),%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* u0 = d &amp; M (%%rsi) */</comment>
+    "movq %%rcx,%%rsi\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rsi\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r15,%%rcx\n"
+    "xorq %%r15,%%r15\n"
+    <comment type="block">/* u0 = (u0 &lt;&lt; 4) | tx (%%rsi) */</comment>
+    "shlq $4,%%rsi\n"
+    "movq %q3,%%rax\n"
+    "orq %%rax,%%rsi\n"
+    <comment type="block">/* c += u0 * (R &gt;&gt; 4) */</comment>
+    "movq $0x1000003d1,%%rax\n"
+    "mulq %%rsi\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* r[0] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq %%rax,0(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    "xorq %%r9,%%r9\n"
+    <comment type="block">/* c += a1 * b0 */</comment>
+    "movq 0(%%rbx),%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* c += a0 * b1 */</comment>
+    "movq 8(%%rbx),%%rax\n"
+    "mulq %%r10\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d += a4 * b2 */</comment>
+    "movq 16(%%rbx),%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a3 * b3 */</comment>
+    "movq 24(%%rbx),%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a2 * b4 */</comment>
+    "movq 32(%%rbx),%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* c += (d &amp; M) * R */</comment>
+    "movq %%rcx,%%rax\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r15,%%rcx\n"
+    "xorq %%r15,%%r15\n"
+    <comment type="block">/* r[1] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq %%rax,8(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    "xorq %%r9,%%r9\n"
+    <comment type="block">/* c += a2 * b0 */</comment>
+    "movq 0(%%rbx),%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* c += a1 * b1 */</comment>
+    "movq 8(%%rbx),%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* c += a0 * b2 (last use of %%r10 = a0) */</comment>
+    "movq 16(%%rbx),%%rax\n"
+    "mulq %%r10\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* fetch t3 (%%r10, overwrites a0), t4 (%%rsi) */</comment>
+    "movq %q2,%%rsi\n"
+    "movq %q1,%%r10\n"
+    <comment type="block">/* d += a4 * b3 */</comment>
+    "movq 24(%%rbx),%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* d += a3 * b4 */</comment>
+    "movq 32(%%rbx),%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rcx\n"
+    "adcq %%rdx,%%r15\n"
+    <comment type="block">/* c += (d &amp; M) * R */</comment>
+    "movq %%rcx,%%rax\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d &gt;&gt;= 52 (%%rcx only) */</comment>
+    "shrdq $52,%%r15,%%rcx\n"
+    <comment type="block">/* r[2] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq %%rax,16(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    "xorq %%r9,%%r9\n"
+    <comment type="block">/* c += t3 */</comment>
+    "addq %%r10,%%r8\n"
+    <comment type="block">/* c += d * R */</comment>
+    "movq %%rcx,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* r[3] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "movq $0xfffffffffffff,%%rdx\n"
+    "andq %%rdx,%%rax\n"
+    "movq %%rax,24(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 (%%r8 only) */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    <comment type="block">/* c += t4 (%%r8 only) */</comment>
+    "addq %%rsi,%%r8\n"
+    <comment type="block">/* r[4] = c */</comment>
+    "movq %%r8,32(%%rdi)\n"
+: "+S"(a), "=m"(tmp1), "=m"(tmp2), "=m"(tmp3)
+: "b"(b), "D"(r)
+: "%rax", "%rcx", "%rdx", "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15", "cc", "memory"
+);</asm>
+</block_content>}</block></function>
+
+<function><type><name>SECP256K1_INLINE</name> <specifier>static</specifier> <name>void</name></type> <name>secp256k1_fe_sqr_inner</name><parameter_list>(<parameter><decl><type><name>uint64_t</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint64_t</name> <modifier>*</modifier></type><name>a</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<comment type="block" format="doxygen">/**
+ * Registers: rdx:rax = multiplication accumulator
+ *            r9:r8   = c
+ *            rcx:rbx = d
+ *            r10-r14 = a0-a4
+ *            r15     = M (0xfffffffffffff)
+ *            rdi     = r
+ *            rsi     = a / t?
+ */</comment>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>tmp1</name></decl>, <decl><type ref="prev"/><name>tmp2</name></decl>, <decl><type ref="prev"/><name>tmp3</name></decl>;</decl_stmt>
+<asm>__asm__ <specifier>__volatile__</specifier>(
+    "movq 0(%%rsi),%%r10\n"
+    "movq 8(%%rsi),%%r11\n"
+    "movq 16(%%rsi),%%r12\n"
+    "movq 24(%%rsi),%%r13\n"
+    "movq 32(%%rsi),%%r14\n"
+    "movq $0xfffffffffffff,%%r15\n"
+
+    <comment type="block">/* d = (a0*2) * a3 */</comment>
+    "leaq (%%r10,%%r10,1),%%rax\n"
+    "mulq %%r13\n"
+    "movq %%rax,%%rbx\n"
+    "movq %%rdx,%%rcx\n"
+    <comment type="block">/* d += (a1*2) * a2 */</comment>
+    "leaq (%%r11,%%r11,1),%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* c = a4 * a4 */</comment>
+    "movq %%r14,%%rax\n"
+    "mulq %%r14\n"
+    "movq %%rax,%%r8\n"
+    "movq %%rdx,%%r9\n"
+    <comment type="block">/* d += (c &amp; M) * R */</comment>
+    "andq %%r15,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* c &gt;&gt;= 52 (%%r8 only) */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    <comment type="block">/* t3 (tmp1) = d &amp; M */</comment>
+    "movq %%rbx,%%rsi\n"
+    "andq %%r15,%%rsi\n"
+    "movq %%rsi,%q1\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%rcx,%%rbx\n"
+    "xorq %%rcx,%%rcx\n"
+    <comment type="block">/* a4 *= 2 */</comment>
+    "addq %%r14,%%r14\n"
+    <comment type="block">/* d += a0 * a4 */</comment>
+    "movq %%r10,%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* d+= (a1*2) * a3 */</comment>
+    "leaq (%%r11,%%r11,1),%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* d += a2 * a2 */</comment>
+    "movq %%r12,%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* d += c * R */</comment>
+    "movq %%r8,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* t4 = d &amp; M (%%rsi) */</comment>
+    "movq %%rbx,%%rsi\n"
+    "andq %%r15,%%rsi\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%rcx,%%rbx\n"
+    "xorq %%rcx,%%rcx\n"
+    <comment type="block">/* tx = t4 &gt;&gt; 48 (tmp3) */</comment>
+    "movq %%rsi,%%rax\n"
+    "shrq $48,%%rax\n"
+    "movq %%rax,%q3\n"
+    <comment type="block">/* t4 &amp;= (M &gt;&gt; 4) (tmp2) */</comment>
+    "movq $0xffffffffffff,%%rax\n"
+    "andq %%rax,%%rsi\n"
+    "movq %%rsi,%q2\n"
+    <comment type="block">/* c = a0 * a0 */</comment>
+    "movq %%r10,%%rax\n"
+    "mulq %%r10\n"
+    "movq %%rax,%%r8\n"
+    "movq %%rdx,%%r9\n"
+    <comment type="block">/* d += a1 * a4 */</comment>
+    "movq %%r11,%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* d += (a2*2) * a3 */</comment>
+    "leaq (%%r12,%%r12,1),%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* u0 = d &amp; M (%%rsi) */</comment>
+    "movq %%rbx,%%rsi\n"
+    "andq %%r15,%%rsi\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%rcx,%%rbx\n"
+    "xorq %%rcx,%%rcx\n"
+    <comment type="block">/* u0 = (u0 &lt;&lt; 4) | tx (%%rsi) */</comment>
+    "shlq $4,%%rsi\n"
+    "movq %q3,%%rax\n"
+    "orq %%rax,%%rsi\n"
+    <comment type="block">/* c += u0 * (R &gt;&gt; 4) */</comment>
+    "movq $0x1000003d1,%%rax\n"
+    "mulq %%rsi\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* r[0] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "andq %%r15,%%rax\n"
+    "movq %%rax,0(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    "xorq %%r9,%%r9\n"
+    <comment type="block">/* a0 *= 2 */</comment>
+    "addq %%r10,%%r10\n"
+    <comment type="block">/* c += a0 * a1 */</comment>
+    "movq %%r10,%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d += a2 * a4 */</comment>
+    "movq %%r12,%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* d += a3 * a3 */</comment>
+    "movq %%r13,%%rax\n"
+    "mulq %%r13\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* c += (d &amp; M) * R */</comment>
+    "movq %%rbx,%%rax\n"
+    "andq %%r15,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%rcx,%%rbx\n"
+    "xorq %%rcx,%%rcx\n"
+    <comment type="block">/* r[1] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "andq %%r15,%%rax\n"
+    "movq %%rax,8(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    "xorq %%r9,%%r9\n"
+    <comment type="block">/* c += a0 * a2 (last use of %%r10) */</comment>
+    "movq %%r10,%%rax\n"
+    "mulq %%r12\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* fetch t3 (%%r10, overwrites a0),t4 (%%rsi) */</comment>
+    "movq %q2,%%rsi\n"
+    "movq %q1,%%r10\n"
+    <comment type="block">/* c += a1 * a1 */</comment>
+    "movq %%r11,%%rax\n"
+    "mulq %%r11\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d += a3 * a4 */</comment>
+    "movq %%r13,%%rax\n"
+    "mulq %%r14\n"
+    "addq %%rax,%%rbx\n"
+    "adcq %%rdx,%%rcx\n"
+    <comment type="block">/* c += (d &amp; M) * R */</comment>
+    "movq %%rbx,%%rax\n"
+    "andq %%r15,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* d &gt;&gt;= 52 (%%rbx only) */</comment>
+    "shrdq $52,%%rcx,%%rbx\n"
+    <comment type="block">/* r[2] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "andq %%r15,%%rax\n"
+    "movq %%rax,16(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    "xorq %%r9,%%r9\n"
+    <comment type="block">/* c += t3 */</comment>
+    "addq %%r10,%%r8\n"
+    <comment type="block">/* c += d * R */</comment>
+    "movq %%rbx,%%rax\n"
+    "movq $0x1000003d10,%%rdx\n"
+    "mulq %%rdx\n"
+    "addq %%rax,%%r8\n"
+    "adcq %%rdx,%%r9\n"
+    <comment type="block">/* r[3] = c &amp; M */</comment>
+    "movq %%r8,%%rax\n"
+    "andq %%r15,%%rax\n"
+    "movq %%rax,24(%%rdi)\n"
+    <comment type="block">/* c &gt;&gt;= 52 (%%r8 only) */</comment>
+    "shrdq $52,%%r9,%%r8\n"
+    <comment type="block">/* c += t4 (%%r8 only) */</comment>
+    "addq %%rsi,%%r8\n"
+    <comment type="block">/* r[4] = c */</comment>
+    "movq %%r8,32(%%rdi)\n"
+: "+S"(a), "=m"(tmp1), "=m"(tmp2), "=m"(tmp3)
+: "D"(r)
+: "%rax", "%rbx", "%rcx", "%rdx", "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15", "cc", "memory"
+);</asm>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* SECP256K1_FIELD_INNER5X52_IMPL_H */</comment>
+</unit>

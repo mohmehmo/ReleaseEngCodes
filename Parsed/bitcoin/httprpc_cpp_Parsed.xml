@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/httprpc.cpp"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;httprpc.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/hmac_sha256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;httpserver.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/protocol.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/server.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ui_interface.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;walletinitinterface.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdio.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string.hpp&gt;</cpp:file></cpp:include> <comment type="line">// boost::trim</comment>
+
+<comment type="block" format="doxygen">/** WWW-Authenticate to present with 401 Unauthorized response */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>WWW_AUTH_HEADER_DATA</name> <init>= <expr><literal type="string">"Basic realm=\"jsonrpc\""</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Simple one-shot callback timer to be used by the RPC mechanism to e.g.
+ * re-lock the wallet.
+ */</comment>
+<class>class <name>HTTPRPCTimer</name> <super_list>: <super><specifier>public</specifier> <name>RPCTimerBase</name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <constructor><name>HTTPRPCTimer</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>eventBase</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>func</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>millis</name></decl></parameter>)</parameter_list> <member_init_list>:
+        <call><name>ev</name><argument_list>(<argument><expr><name>eventBase</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><name>func</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+        <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>tv</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>tv</name><operator>.</operator><name>tv_sec</name></name> <operator>=</operator> <name>millis</name><operator>/</operator><literal type="number">1000</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tv</name><operator>.</operator><name>tv_usec</name></name> <operator>=</operator> <operator>(</operator><name>millis</name><operator>%</operator><literal type="number">1000</literal><operator>)</operator><operator>*</operator><literal type="number">1000</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ev</name><operator>.</operator><name>trigger</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>tv</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+</public><private>private:
+    <decl_stmt><decl><type><name>HTTPEvent</name></type> <name>ev</name></decl>;</decl_stmt>
+</private>}</block>;</class>
+
+<class>class <name>HTTPRPCTimerInterface</name> <super_list>: <super><specifier>public</specifier> <name>RPCTimerInterface</name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <constructor><specifier>explicit</specifier> <name>HTTPRPCTimerInterface</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>_base</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>base</name><argument_list>(<argument><expr><name>_base</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+    </block_content>}</block></constructor>
+    <function><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>Name</name><parameter_list>()</parameter_list> <specifier>override</specifier>
+    <block>{<block_content>
+        <return>return <expr><literal type="string">"HTTP"</literal></expr>;</return>
+    </block_content>}</block></function>
+    <function><type><name>RPCTimerBase</name><modifier>*</modifier></type> <name>NewTimer</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>func</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>millis</name></decl></parameter>)</parameter_list> <specifier>override</specifier>
+    <block>{<block_content>
+        <return>return <expr><operator>new</operator> <call><name>HTTPRPCTimer</name><argument_list>(<argument><expr><name>base</name></expr></argument>, <argument><expr><name>func</name></expr></argument>, <argument><expr><name>millis</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+</public><private>private:
+    <decl_stmt><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>base</name></decl>;</decl_stmt>
+</private>}</block>;</class>
+
+
+<comment type="block">/* Pre-base64-encoded authentication token */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strRPCUserColonPass</name></decl>;</decl_stmt>
+<comment type="block">/* Stored RPC timer interface (for unregistration) */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>HTTPRPCTimerInterface</name></expr></argument>&gt;</argument_list></name></type> <name>httpRPCTimerInterface</name></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>JSONErrorReply</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>objError</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>id</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Send error reply from json-rpc error object</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>nStatus</name> <init>= <expr><name>HTTP_INTERNAL_SERVER_ERROR</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>code</name> <init>= <expr><call><name>find_value</name><argument_list>(<argument><expr><name>objError</name></expr></argument>, <argument><expr><literal type="string">"code"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>get_int</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>code</name> <operator>==</operator> <name>RPC_INVALID_REQUEST</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nStatus</name> <operator>=</operator> <name>HTTP_BAD_REQUEST</name></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>code</name> <operator>==</operator> <name>RPC_METHOD_NOT_FOUND</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nStatus</name> <operator>=</operator> <name>HTTP_NOT_FOUND</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strReply</name> <init>= <expr><call><name>JSONRPCReply</name><argument_list>(<argument><expr><name>NullUniValue</name></expr></argument>, <argument><expr><name>objError</name></expr></argument>, <argument><expr><name>id</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>nStatus</name></expr></argument>, <argument><expr><name>strReply</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">//This function checks username and password against -rpcauth</comment>
+<comment type="line">//entries from config file.</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>multiUserAuthorized</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strUserPass</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strUserPass</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call> <operator>==</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strUser</name> <init>= <expr><call><name><name>strUserPass</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>strUserPass</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strPass</name> <init>= <expr><call><name><name>strUserPass</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><call><name><name>strUserPass</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strRPCAuth</name> <range>: <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArgs</name></name><argument_list>(<argument><expr><literal type="string">"-rpcauth"</literal></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <comment type="line">//Search for multi-user login/pass "rpcauth" from config</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vFields</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vFields</name></expr></argument>, <argument><expr><name>strRPCAuth</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">":$"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>vFields</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">3</literal></expr>)</condition> <block>{<block_content>
+            <comment type="line">//Incorrect formatting in config file</comment>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strName</name> <init>= <expr><name><name>vFields</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>TimingResistantEqual</name><argument_list>(<argument><expr><name>strName</name></expr></argument>, <argument><expr><name>strUser</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strSalt</name> <init>= <expr><name><name>vFields</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHash</name> <init>= <expr><name><name>vFields</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>KEY_SIZE</name> <init>= <expr><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>out</name><index>[<expr><name>KEY_SIZE</name></expr>]</index></name></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>CHMAC_SHA256</name><argument_list>(<argument><expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>strSalt</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr></argument>, <argument><expr><call><name><name>strSalt</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>Write</name><argument_list>(<argument><expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>strPass</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr></argument>, <argument><expr><call><name><name>strPass</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>Finalize</name><argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>hexvec</name><argument_list>(<argument><expr><name>out</name></expr></argument>, <argument><expr><name>out</name><operator>+</operator><name>KEY_SIZE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHashFromPass</name> <init>= <expr><call><name>HexStr</name><argument_list>(<argument><expr><name>hexvec</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>TimingResistantEqual</name><argument_list>(<argument><expr><name>strHashFromPass</name></expr></argument>, <argument><expr><name>strHash</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>RPCAuthorized</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAuth</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAuthUsernameOut</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strRPCUserColonPass</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Belt-and-suspenders measure if InitRPCAuthentication was not called</comment>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strAuth</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">6</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="string">"Basic "</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strUserPass64</name> <init>= <expr><call><name><name>strAuth</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">6</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>trim</name></name><argument_list>(<argument><expr><name>strUserPass64</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strUserPass</name> <init>= <expr><call><name>DecodeBase64</name><argument_list>(<argument><expr><name>strUserPass64</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>strUserPass</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>strAuthUsernameOut</name> <operator>=</operator> <call><name><name>strUserPass</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>strUserPass</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">//Check if authorized under single-user field</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>TimingResistantEqual</name><argument_list>(<argument><expr><name>strUserPass</name></expr></argument>, <argument><expr><name>strRPCUserColonPass</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>multiUserAuthorized</name><argument_list>(<argument><expr><name>strUserPass</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>HTTPReq_JSONRPC</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// JSONRPC handles only POST</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>req</name><operator>-&gt;</operator><name>GetRequestMethod</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name><name>HTTPRequest</name><operator>::</operator><name>POST</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_BAD_METHOD</name></expr></argument>, <argument><expr><literal type="string">"JSONRPC server handles only POST requests"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// Check authorization</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>authHeader</name> <init>= <expr><call><name><name>req</name><operator>-&gt;</operator><name>GetHeader</name></name><argument_list>(<argument><expr><literal type="string">"authorization"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>authHeader</name><operator>.</operator><name>first</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"WWW-Authenticate"</literal></expr></argument>, <argument><expr><name>WWW_AUTH_HEADER_DATA</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_UNAUTHORIZED</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>JSONRPCRequest</name></type> <name>jreq</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>jreq</name><operator>.</operator><name>peerAddr</name></name> <operator>=</operator> <call><name><name>req</name><operator>-&gt;</operator><name>GetPeer</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>RPCAuthorized</name><argument_list>(<argument><expr><name><name>authHeader</name><operator>.</operator><name>second</name></name></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>authUser</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"ThreadRPCServer incorrect password attempt from %s\n"</literal></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>peerAddr</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="block">/* Deter brute-forcing
+           If this results in a DoS the user really
+           shouldn't have their RPC port exposed. */</comment>
+        <expr_stmt><expr><call><name>MilliSleep</name><argument_list>(<argument><expr><literal type="number">250</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"WWW-Authenticate"</literal></expr></argument>, <argument><expr><name>WWW_AUTH_HEADER_DATA</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_UNAUTHORIZED</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <try>try <block>{<block_content>
+        <comment type="line">// Parse request</comment>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>valRequest</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>valRequest</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><call><name><name>req</name><operator>-&gt;</operator><name>ReadBody</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_PARSE_ERROR</name></expr></argument>, <argument><expr><literal type="string">"Parse error"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+        <comment type="line">// Set the URI</comment>
+        <expr_stmt><expr><name><name>jreq</name><operator>.</operator><name>URI</name></name> <operator>=</operator> <call><name><name>req</name><operator>-&gt;</operator><name>GetURI</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strReply</name></decl>;</decl_stmt>
+        <comment type="line">// singleton request</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>valRequest</name><operator>.</operator><name>isObject</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>jreq</name><operator>.</operator><name>parse</name></name><argument_list>(<argument><expr><name>valRequest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>result</name> <init>= <expr><call><name><name>tableRPC</name><operator>.</operator><name>execute</name></name><argument_list>(<argument><expr><name>jreq</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Send reply</comment>
+            <expr_stmt><expr><name>strReply</name> <operator>=</operator> <call><name>JSONRPCReply</name><argument_list>(<argument><expr><name>result</name></expr></argument>, <argument><expr><name>NullUniValue</name></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// array of requests</comment>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>valRequest</name><operator>.</operator><name>isArray</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>strReply</name> <operator>=</operator> <call><name>JSONRPCExecBatch</name><argument_list>(<argument><expr><name>jreq</name></expr></argument>, <argument><expr><call><name><name>valRequest</name><operator>.</operator><name>get_array</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_PARSE_ERROR</name></expr></argument>, <argument><expr><literal type="string">"Top-level object parse error"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></else></if_stmt>
+
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strReply</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>objError</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>JSONErrorReply</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>objError</name></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>JSONErrorReply</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_PARSE_ERROR</name></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></catch></try>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>InitRPCAuthentication</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcpassword"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="string">""</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"No rpcpassword set - using random cookie authentication.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>GenerateAuthCookie</name><argument_list>(<argument><expr><operator>&amp;</operator><name>strRPCUserColonPass</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ThreadSafeMessageBox</name></name><argument_list>(
+                <argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Error: A fatal internal error occurred, see debug.log for details"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <comment type="line">// Same message as AbortNode</comment>
+                <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><name><name>CClientUIInterface</name><operator>::</operator><name>MSG_ERROR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Config options rpcuser and rpcpassword will soon be deprecated. Locally-run instances may remove rpcuser to use cookie-based auth, or may be replaced with rpcauth. Please see share/rpcauth for rpcauth auth generation.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>strRPCUserColonPass</name> <operator>=</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcuser"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">":"</literal> <operator>+</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcpassword"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcauth"</literal></expr></argument>,<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="string">""</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using rpcauth authentication.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>StartHTTPRPC</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"Starting HTTP RPC server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>InitRPCAuthentication</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>RegisterHTTPHandler</name><argument_list>(<argument><expr><literal type="string">"/"</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>HTTPReq_JSONRPC</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>g_wallet_init_interface</name><operator>.</operator><name>HasWalletSupport</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RegisterHTTPHandler</name><argument_list>(<argument><expr><literal type="string">"/wallet/"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><name>HTTPReq_JSONRPC</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>eventBase</name> <init>= <expr><call><name>EventBase</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>eventBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>httpRPCTimerInterface</name> <operator>=</operator> <call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>HTTPRPCTimerInterface</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>eventBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>RPCSetTimerInterface</name><argument_list>(<argument><expr><call><name><name>httpRPCTimerInterface</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>InterruptHTTPRPC</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"Interrupting HTTP RPC server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StopHTTPRPC</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"Stopping HTTP RPC server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>UnregisterHTTPHandler</name><argument_list>(<argument><expr><literal type="string">"/"</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>g_wallet_init_interface</name><operator>.</operator><name>HasWalletSupport</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>UnregisterHTTPHandler</name><argument_list>(<argument><expr><literal type="string">"/wallet/"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>httpRPCTimerInterface</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RPCUnsetTimerInterface</name><argument_list>(<argument><expr><call><name><name>httpRPCTimerInterface</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>httpRPCTimerInterface</name><operator>.</operator><name>reset</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+</unit>

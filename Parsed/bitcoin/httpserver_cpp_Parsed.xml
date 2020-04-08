@@ -1,0 +1,660 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/httpserver.cpp"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;httpserver.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparamsbase.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;compat.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/threadnames.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netbase.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/protocol.h&gt;</cpp:file></cpp:include> <comment type="line">// For HTTP status codes</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;shutdown.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ui_interface.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;deque&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdio.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdlib.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/types.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/stat.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/thread.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/buffer.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/bufferevent.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/util.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/keyvalq_struct.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;support/events.h&gt;</cpp:file></cpp:include>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>EVENT__HAVE_NETINET_IN_H</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netinet/in.h&gt;</cpp:file></cpp:include>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>_XOPEN_SOURCE_EXTENDED</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;arpa/inet.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="block" format="doxygen">/** Maximum size of http request (request line + headers) */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>MAX_HEADERS_SIZE</name> <init>= <expr><literal type="number">8192</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** HTTP request work item */</comment>
+<class>class <name>HTTPWorkItem</name> <specifier>final</specifier> <super_list>: <super><specifier>public</specifier> <name>HTTPClosure</name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <constructor><name>HTTPWorkItem</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>HTTPRequest</name></expr></argument>&gt;</argument_list></name></type> <name>_req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>_path</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>HTTPRequestHandler</name><modifier>&amp;</modifier></type> <name>_func</name></decl></parameter>)</parameter_list><member_init_list>:
+        <call><name>req</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>_req</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>, <call><name>path</name><argument_list>(<argument><expr><name>_path</name></expr></argument>)</argument_list></call>, <call><name>func</name><argument_list>(<argument><expr><name>_func</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+    </block_content>}</block></constructor>
+    <function type="operator"><type><name>void</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list> <specifier>override</specifier>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>func</name><argument_list>(<argument><expr><call><name><name>req</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>HTTPRequest</name></expr></argument>&gt;</argument_list></name></type> <name>req</name></decl>;</decl_stmt>
+
+</public><private>private:
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>path</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>HTTPRequestHandler</name></type> <name>func</name></decl>;</decl_stmt>
+</private>}</block>;</class>
+
+<comment type="block" format="doxygen">/** Simple work queue for distributing work over multiple threads.
+ * Work items are simply callable objects.
+ */</comment>
+<class><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>WorkItem</name></parameter>&gt;</parameter_list></template>
+class <name>WorkQueue</name>
+<block>{<private type="default">
+</private><private>private:
+    <comment type="block" format="doxygen">/** Mutex protects entire object */</comment>
+    <decl_stmt><decl><type><name>Mutex</name></type> <name>cs</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>condition_variable</name></name></type> <name>cond</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>deque</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>WorkItem</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>queue</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>running</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>maxDepth</name></decl>;</decl_stmt>
+
+</private><public>public:
+    <constructor><specifier>explicit</specifier> <name>WorkQueue</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>_maxDepth</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>running</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call>,
+                                 <call><name>maxDepth</name><argument_list>(<argument><expr><name>_maxDepth</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+    </block_content>}</block></constructor>
+    <comment type="block" format="doxygen">/** Precondition: worker threads have all stopped (they have been joined).
+     */</comment>
+    <destructor><name>~WorkQueue</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+    </block_content>}</block></destructor>
+    <comment type="block" format="doxygen">/** Enqueue a work item */</comment>
+    <function><type><name>bool</name></type> <name>Enqueue</name><parameter_list>(<parameter><decl><type><name>WorkItem</name><modifier>*</modifier></type> <name>item</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>queue</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <name>maxDepth</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>queue</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>WorkItem</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>item</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>cond</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></function>
+    <comment type="block" format="doxygen">/** Thread function */</comment>
+    <function><type><name>void</name></type> <name>Run</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>WorkItem</name></expr></argument>&gt;</argument_list></name></type> <name>i</name></decl>;</decl_stmt>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>WAIT_LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>, <argument><expr><name>lock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <while>while <condition>(<expr><name>running</name> <operator>&amp;&amp;</operator> <call><name><name>queue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name><name>cond</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>lock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></while>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name>running</name></expr>)</condition><block type="pseudo"><block_content>
+                    <break>break;</break></block_content></block></if></if_stmt>
+                <expr_stmt><expr><name>i</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><call><name><name>queue</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>queue</name><operator>.</operator><name>pop_front</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block>
+            <expr_stmt><expr><call>(<modifier>*</modifier><name>i</name>)<argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></function>
+    <comment type="block" format="doxygen">/** Interrupt and exit loops */</comment>
+    <function><type><name>void</name></type> <name>Interrupt</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>running</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>cond</name><operator>.</operator><name>notify_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<struct>struct <name>HTTPPathHandler</name>
+<block>{<public type="default">
+    <constructor><name>HTTPPathHandler</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>_prefix</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>_exactMatch</name></decl></parameter>, <parameter><decl><type><name>HTTPRequestHandler</name></type> <name>_handler</name></decl></parameter>)</parameter_list><member_init_list>:
+        <call><name>prefix</name><argument_list>(<argument><expr><name>_prefix</name></expr></argument>)</argument_list></call>, <call><name>exactMatch</name><argument_list>(<argument><expr><name>_exactMatch</name></expr></argument>)</argument_list></call>, <call><name>handler</name><argument_list>(<argument><expr><name>_handler</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+    </block_content>}</block></constructor>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>prefix</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>exactMatch</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>HTTPRequestHandler</name></type> <name>handler</name></decl>;</decl_stmt>
+</public>}</block>;</struct>
+
+<comment type="block" format="doxygen">/** HTTP module state */</comment>
+
+<comment type="line" format="doxygen">//! libevent event loop</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>eventBase</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! HTTP server</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>struct</name> <name>evhttp</name></name><modifier>*</modifier></type> <name>eventHTTP</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! List of subnets to allow RPC connections from</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CSubNet</name></expr></argument>&gt;</argument_list></name></type> <name>rpc_allow_subnets</name></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Work queue for handling longer requests off the event loop thread</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>WorkQueue</name><argument_list type="generic">&lt;<argument><expr><name>HTTPClosure</name></expr></argument>&gt;</argument_list></name><modifier>*</modifier></type> <name>workQueue</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Handlers for (sub)paths</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>HTTPPathHandler</name></expr></argument>&gt;</argument_list></name></type> <name>pathHandlers</name></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Bound listening sockets</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>evhttp_bound_socket</name> <modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>boundSockets</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Check if a network address is allowed to access the HTTP server */</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>ClientAllowed</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CNetAddr</name><modifier>&amp;</modifier></type> <name>netaddr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>netaddr</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <for>for<control>(<init><decl><type><specifier>const</specifier> <name>CSubNet</name><modifier>&amp;</modifier></type> <name>subnet</name> <range>: <expr><name>rpc_allow_subnets</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>subnet</name><operator>.</operator><name>Match</name></name><argument_list>(<argument><expr><name>netaddr</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt></block_content></block></for>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Initialize ACL list for HTTP server */</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>InitHTTPAllowList</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>rpc_allow_subnets</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CNetAddr</name></type> <name>localv4</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CNetAddr</name></type> <name>localv6</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LookupHost</name><argument_list>(<argument><expr><literal type="string">"127.0.0.1"</literal></expr></argument>, <argument><expr><name>localv4</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LookupHost</name><argument_list>(<argument><expr><literal type="string">"::1"</literal></expr></argument>, <argument><expr><name>localv6</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>rpc_allow_subnets</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>CSubNet</name><argument_list>(<argument><expr><name>localv4</name></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>      <comment type="line">// always allow IPv4 local subnet</comment>
+    <expr_stmt><expr><call><name><name>rpc_allow_subnets</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>CSubNet</name><argument_list>(<argument><expr><name>localv6</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>         <comment type="line">// always allow IPv6 localhost</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAllow</name> <range>: <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArgs</name></name><argument_list>(<argument><expr><literal type="string">"-rpcallowip"</literal></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>CSubNet</name></type> <name>subnet</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>LookupSubNet</name><argument_list>(<argument><expr><call><name><name>strAllow</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>subnet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>subnet</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ThreadSafeMessageBox</name></name><argument_list>(
+                <argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"Invalid -rpcallowip subnet specification: %s. Valid are a single IP (e.g. 1.2.3.4), a network/netmask (e.g. 1.2.3.4/255.255.255.0) or a network/CIDR (e.g. 1.2.3.4/24)."</literal></expr></argument>, <argument><expr><name>strAllow</name></expr></argument>)</argument_list></call></expr></argument>,
+                <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><name><name>CClientUIInterface</name><operator>::</operator><name>MSG_ERROR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>rpc_allow_subnets</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>subnet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strAllowed</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CSubNet</name><modifier>&amp;</modifier></type> <name>subnet</name> <range>: <expr><name>rpc_allow_subnets</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>strAllowed</name> <operator>+=</operator> <call><name><name>subnet</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">" "</literal></expr>;</expr_stmt></block_content></block></for>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Allowing HTTP connections from: %s\n"</literal></expr></argument>, <argument><expr><name>strAllowed</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** HTTP request method as string - use for logging only */</comment>
+<function><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>RequestMethodString</name><parameter_list>(<parameter><decl><type><name><name>HTTPRequest</name><operator>::</operator><name>RequestMethod</name></name></type> <name>m</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <switch>switch <condition>(<expr><name>m</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>HTTPRequest</name><operator>::</operator><name>GET</name></name></expr>:</case>
+        <return>return <expr><literal type="string">"GET"</literal></expr>;</return>
+        <break>break;</break>
+    <case>case <expr><name><name>HTTPRequest</name><operator>::</operator><name>POST</name></name></expr>:</case>
+        <return>return <expr><literal type="string">"POST"</literal></expr>;</return>
+        <break>break;</break>
+    <case>case <expr><name><name>HTTPRequest</name><operator>::</operator><name>HEAD</name></name></expr>:</case>
+        <return>return <expr><literal type="string">"HEAD"</literal></expr>;</return>
+        <break>break;</break>
+    <case>case <expr><name><name>HTTPRequest</name><operator>::</operator><name>PUT</name></name></expr>:</case>
+        <return>return <expr><literal type="string">"PUT"</literal></expr>;</return>
+        <break>break;</break>
+    <default>default:</default>
+        <return>return <expr><literal type="string">"unknown"</literal></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** HTTP request callback */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>http_request_cb</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>evhttp_request</name></name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>arg</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Disable reading to work around a libevent bug, fixed in 2.2.0.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>event_get_version_number</name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <literal type="number">0x02010600</literal> <operator>&amp;&amp;</operator> <call><name>event_get_version_number</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">0x02020001</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>evhttp_connection</name><modifier>*</modifier></type> <name>conn</name> <init>= <expr><call><name>evhttp_request_get_connection</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>conn</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>bufferevent</name><modifier>*</modifier></type> <name>bev</name> <init>= <expr><call><name>evhttp_connection_get_bufferevent</name><argument_list>(<argument><expr><name>conn</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>bev</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>bufferevent_disable</name><argument_list>(<argument><expr><name>bev</name></expr></argument>, <argument><expr><name>EV_READ</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>HTTPRequest</name></expr></argument>&gt;</argument_list></name></type> <name>hreq</name><argument_list>(<argument><expr><operator>new</operator> <call><name>HTTPRequest</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// Early address-based allow check</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ClientAllowed</name><argument_list>(<argument><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetPeer</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"HTTP request from %s rejected: Client network is not allowed RPC access\n"</literal></expr></argument>,
+                 <argument><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetPeer</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_FORBIDDEN</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Early reject unknown HTTP methods</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetRequestMethod</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name><name>HTTPRequest</name><operator>::</operator><name>UNKNOWN</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"HTTP request from %s rejected: Unknown HTTP request method\n"</literal></expr></argument>,
+                 <argument><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetPeer</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_BADMETHOD</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Received a %s request for %s from %s\n"</literal></expr></argument>,
+             <argument><expr><call><name>RequestMethodString</name><argument_list>(<argument><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetRequestMethod</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>SanitizeString</name><argument_list>(<argument><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetURI</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>SAFE_CHARS_URI</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>substr</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetPeer</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Find registered handler for prefix</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strURI</name> <init>= <expr><call><name><name>hreq</name><operator>-&gt;</operator><name>GetURI</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>path</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>HTTPPathHandler</name></expr></argument>&gt;</argument_list><operator>::</operator><name>const_iterator</name></name></type> <name>i</name> <init>= <expr><call><name><name>pathHandlers</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>HTTPPathHandler</name></expr></argument>&gt;</argument_list><operator>::</operator><name>const_iterator</name></name></type> <name>iend</name> <init>= <expr><call><name><name>pathHandlers</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init>;</init> <condition><expr><name>i</name> <operator>!=</operator> <name>iend</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>bool</name></type> <name>match</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>-&gt;</operator><name>exactMatch</name></name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>match</name> <operator>=</operator> <operator>(</operator><name>strURI</name> <operator>==</operator> <name><name>i</name><operator>-&gt;</operator><name>prefix</name></name><operator>)</operator></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><name>match</name> <operator>=</operator> <operator>(</operator><call><name><name>strURI</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>i</name><operator>-&gt;</operator><name>prefix</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>==</operator> <name><name>i</name><operator>-&gt;</operator><name>prefix</name></name><operator>)</operator></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>match</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>path</name> <operator>=</operator> <call><name><name>strURI</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><call><name><name>i</name><operator>-&gt;</operator><name>prefix</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Dispatch to worker thread</comment>
+    <if_stmt><if>if <condition>(<expr><name>i</name> <operator>!=</operator> <name>iend</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>HTTPWorkItem</name></expr></argument>&gt;</argument_list></name></type> <name>item</name><argument_list>(<argument><expr><operator>new</operator> <call><name>HTTPWorkItem</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>hreq</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>path</name></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>handler</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>workQueue</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>workQueue</name><operator>-&gt;</operator><name>Enqueue</name></name><argument_list>(<argument><expr><call><name><name>item</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>item</name><operator>.</operator><name>release</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if> <comment type="block">/* if true, queue took ownership */</comment>
+        <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"WARNING: request rejected because http work queue depth exceeded, it can be increased with the -rpcworkqueue= setting\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>item</name><operator>-&gt;</operator><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_INTERNAL</name></expr></argument>, <argument><expr><literal type="string">"Work queue depth exceeded"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name><name>hreq</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_NOTFOUND</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Callback to reject HTTP requests after shutdown. */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>http_reject_request_cb</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>evhttp_request</name></name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Rejecting request while shutting down\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evhttp_send_error</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_SERVUNAVAIL</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Event dispatcher thread */</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>ThreadHTTP</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>base</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>ThreadRename</name></name><argument_list>(<argument><expr><literal type="string">"http"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Entering http event loop\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>event_base_dispatch</name><argument_list>(<argument><expr><name>base</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Event loop will be interrupted by InterruptHTTPServer()</comment>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Exited http event loop\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>event_base_got_break</name><argument_list>(<argument><expr><name>base</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Bind HTTP server to specified addresses */</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>HTTPBindAddresses</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>evhttp</name></name><modifier>*</modifier></type> <name>http</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>http_port</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcport"</literal></expr></argument>, <argument><expr><call><name>BaseParams</name><argument_list>()</argument_list></call><operator>.</operator><call><name>RPCPort</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>endpoints</name></decl>;</decl_stmt>
+
+    <comment type="line">// Determine what addresses to bind to</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><operator>(</operator><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-rpcallowip"</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-rpcbind"</literal></expr></argument>)</argument_list></call><operator>)</operator></expr>)</condition> <block>{<block_content> <comment type="line">// Default to loopback if not allowing external IPs</comment>
+        <expr_stmt><expr><call><name><name>endpoints</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="string">"::1"</literal></expr></argument>, <argument><expr><name>http_port</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>endpoints</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="string">"127.0.0.1"</literal></expr></argument>, <argument><expr><name>http_port</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-rpcallowip"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"WARNING: option -rpcallowip was specified without -rpcbind; this doesn't usually make sense\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-rpcbind"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"WARNING: option -rpcbind was ignored because -rpcallowip was not specified, refusing to allow everyone to connect\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-rpcbind"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content> <comment type="line">// Specific bind address</comment>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strRPCBind</name> <range>: <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArgs</name></name><argument_list>(<argument><expr><literal type="string">"-rpcbind"</literal></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>int</name></type> <name>port</name> <init>= <expr><name>http_port</name></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>host</name></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>SplitHostPort</name><argument_list>(<argument><expr><name>strRPCBind</name></expr></argument>, <argument><expr><name>port</name></expr></argument>, <argument><expr><name>host</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>endpoints</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>host</name></expr></argument>, <argument><expr><name>port</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Bind addresses</comment>
+    <for>for <control>(<init><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>i</name> <init>= <expr><call><name><name>endpoints</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>!=</operator> <call><name><name>endpoints</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Binding RPC on address %s port %i\n"</literal></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>first</name></name></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>evhttp_bound_socket</name> <modifier>*</modifier></type><name>bind_handle</name> <init>= <expr><call><name>evhttp_bind_socket_with_handle</name><argument_list>(<argument><expr><name>http</name></expr></argument>, <argument><expr><ternary><condition><expr><call><name><name>i</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><literal type="null">nullptr</literal></expr> </then><else>: <expr><call><name><name>i</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>bind_handle</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CNetAddr</name></type> <name>addr</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>i</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>(</operator><call><name>LookupHost</name><argument_list>(<argument><expr><call><name><name>i</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>addr</name><operator>.</operator><name>IsBindAny</name></name><argument_list>()</argument_list></call><operator>)</operator></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"WARNING: the RPC server is not safe to expose to untrusted networks such as the public internet\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>boundSockets</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>bind_handle</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Binding RPC on address %s port %i failed.\n"</literal></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>first</name></name></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><operator>!</operator><call><name><name>boundSockets</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Simple wrapper to set thread name and run work queue */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>HTTPWorkQueueRun</name><parameter_list>(<parameter><decl><type><name><name>WorkQueue</name><argument_list type="generic">&lt;<argument><expr><name>HTTPClosure</name></expr></argument>&gt;</argument_list></name><modifier>*</modifier></type> <name>queue</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>worker_num</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>ThreadRename</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"httpworker.%i"</literal></expr></argument>, <argument><expr><name>worker_num</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>queue</name><operator>-&gt;</operator><name>Run</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** libevent event log callback */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>libevent_log_cb</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>severity</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>msg</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>EVENT_LOG_WARN</name></cpp:ifndef>
+<comment type="line">// EVENT_LOG_WARN was added in 2.0.19; but before then _EVENT_LOG_WARN existed.</comment>
+<cpp:define># <cpp:directive>define</cpp:directive> <cpp:macro><name>EVENT_LOG_WARN</name></cpp:macro> <cpp:value>_EVENT_LOG_WARN</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <if_stmt><if>if <condition>(<expr><name>severity</name> <operator>&gt;=</operator> <name>EVENT_LOG_WARN</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Log warn messages and higher without debug category</comment>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"libevent: %s\n"</literal></expr></argument>, <argument><expr><name>msg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LIBEVENT</name></name></expr></argument>, <argument><expr><literal type="string">"libevent: %s\n"</literal></expr></argument>, <argument><expr><name>msg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>InitHTTPServer</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>InitHTTPAllowList</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Redirect libevent's logging to our own log</comment>
+    <expr_stmt><expr><call><name>event_set_log_callback</name><argument_list>(<argument><expr><operator>&amp;</operator><name>libevent_log_cb</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Update libevent's log handling. Returns false if our version of</comment>
+    <comment type="line">// libevent doesn't support debug logging, in which case we should</comment>
+    <comment type="line">// clear the BCLog::LIBEVENT flag.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>UpdateHTTPServerLogging</name><argument_list>(<argument><expr><call><name>LogInstance</name><argument_list>()</argument_list></call><operator>.</operator><call><name>WillLogCategory</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LIBEVENT</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogInstance</name><argument_list>()</argument_list></call><operator>.</operator><call><name>DisableCategory</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LIBEVENT</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+    <expr_stmt><expr><call><name>evthread_use_windows_threads</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <expr_stmt><expr><call><name>evthread_use_pthreads</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <decl_stmt><decl><type><name>raii_event_base</name></type> <name>base_ctr</name> <init>= <expr><call><name>obtain_event_base</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="block">/* Create a new evhttp object to handle requests. */</comment>
+    <decl_stmt><decl><type><name>raii_evhttp</name></type> <name>http_ctr</name> <init>= <expr><call><name>obtain_evhttp</name><argument_list>(<argument><expr><call><name><name>base_ctr</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>evhttp</name></name><modifier>*</modifier></type> <name>http</name> <init>= <expr><call><name><name>http_ctr</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>http</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"couldn't create evhttp. Exiting.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>evhttp_set_timeout</name><argument_list>(<argument><expr><name>http</name></expr></argument>, <argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcservertimeout"</literal></expr></argument>, <argument><expr><name>DEFAULT_HTTP_SERVER_TIMEOUT</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evhttp_set_max_headers_size</name><argument_list>(<argument><expr><name>http</name></expr></argument>, <argument><expr><name>MAX_HEADERS_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evhttp_set_max_body_size</name><argument_list>(<argument><expr><name>http</name></expr></argument>, <argument><expr><name>MAX_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evhttp_set_gencb</name><argument_list>(<argument><expr><name>http</name></expr></argument>, <argument><expr><name>http_request_cb</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>HTTPBindAddresses</name><argument_list>(<argument><expr><name>http</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Unable to bind any endpoint for RPC server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Initialized HTTP server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>workQueueDepth</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><operator>(</operator><name>long</name><operator>)</operator><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcworkqueue"</literal></expr></argument>, <argument><expr><name>DEFAULT_HTTP_WORKQUEUE</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">1L</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"HTTP: creating work queue of depth %d\n"</literal></expr></argument>, <argument><expr><name>workQueueDepth</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>workQueue</name> <operator>=</operator> <operator>new</operator> <call><name><name>WorkQueue</name><argument_list type="generic">&lt;<argument><expr><name>HTTPClosure</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>workQueueDepth</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// transfer ownership to eventBase/HTTP via .release()</comment>
+    <expr_stmt><expr><name>eventBase</name> <operator>=</operator> <call><name><name>base_ctr</name><operator>.</operator><name>release</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>eventHTTP</name> <operator>=</operator> <call><name><name>http_ctr</name><operator>.</operator><name>release</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>UpdateHTTPServerLogging</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>enable</name></decl></parameter>)</parameter_list> <block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>LIBEVENT_VERSION_NUMBER</name> <operator>&gt;=</operator> <literal type="number">0x02010100</literal></expr></cpp:if>
+    <if_stmt><if>if <condition>(<expr><name>enable</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>event_enable_debug_logging</name><argument_list>(<argument><expr><name>EVENT_DBG_ALL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>event_enable_debug_logging</name><argument_list>(<argument><expr><name>EVENT_DBG_NONE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <comment type="line">// Can't update libevent logging if version &lt; 02010100</comment>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>thread</name></name></type> <name>threadHTTP</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>thread</name></name></expr></argument>&gt;</argument_list></name></type> <name>g_thread_http_workers</name></decl>;</decl_stmt>
+
+<function><type><name>void</name></type> <name>StartHTTPServer</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Starting HTTP server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>rpcThreads</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><operator>(</operator><name>long</name><operator>)</operator><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcthreads"</literal></expr></argument>, <argument><expr><name>DEFAULT_HTTP_THREADS</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">1L</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"HTTP: starting %d worker threads\n"</literal></expr></argument>, <argument><expr><name>rpcThreads</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>threadHTTP</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>thread</name></name><argument_list>(<argument><expr><name>ThreadHTTP</name></expr></argument>, <argument><expr><name>eventBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>rpcThreads</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>g_thread_http_workers</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>HTTPWorkQueueRun</name></expr></argument>, <argument><expr><name>workQueue</name></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>InterruptHTTPServer</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Interrupting HTTP server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>eventHTTP</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Reject requests on current connections</comment>
+        <expr_stmt><expr><call><name>evhttp_set_gencb</name><argument_list>(<argument><expr><name>eventHTTP</name></expr></argument>, <argument><expr><name>http_reject_request_cb</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>workQueue</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>workQueue</name><operator>-&gt;</operator><name>Interrupt</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StopHTTPServer</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Stopping HTTP server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>workQueue</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Waiting for HTTP worker threads to exit\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>thread</name><operator>:</operator> <name>g_thread_http_workers</name></expr></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>thread</name><operator>.</operator><name>join</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><call><name><name>g_thread_http_workers</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>delete</operator> <name>workQueue</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>workQueue</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// Unlisten sockets, these are what make the event loop running, which means</comment>
+    <comment type="line">// that after this and all connections are closed the event loop will quit.</comment>
+    <for>for <control>(<init><decl><type><name>evhttp_bound_socket</name> <modifier>*</modifier></type><name>socket</name> <range>: <expr><name>boundSockets</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>evhttp_del_accept_socket</name><argument_list>(<argument><expr><name>eventHTTP</name></expr></argument>, <argument><expr><name>socket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>boundSockets</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>eventBase</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Waiting for HTTP event thread to exit\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>threadHTTP</name><operator>.</operator><name>join</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>eventHTTP</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>evhttp_free</name><argument_list>(<argument><expr><name>eventHTTP</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>eventHTTP</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>eventBase</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>event_base_free</name><argument_list>(<argument><expr><name>eventBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>eventBase</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Stopped HTTP server\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>EventBase</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name>eventBase</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>httpevent_callback_fn</name><parameter_list>(<parameter><decl><type><name>evutil_socket_t</name></type></decl></parameter>, <parameter><decl><type><name>short</name></type></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>data</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Static handler: simply call inner handler</comment>
+    <decl_stmt><decl><type><name>HTTPEvent</name> <modifier>*</modifier></type><name>self</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>HTTPEvent</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>handler</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>self</name><operator>-&gt;</operator><name>deleteWhenTriggered</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><operator>delete</operator> <name>self</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<constructor><name><name>HTTPEvent</name><operator>::</operator><name>HTTPEvent</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>base</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>_deleteWhenTriggered</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>_handler</name></decl></parameter>)</parameter_list><member_init_list>:
+    <call><name>deleteWhenTriggered</name><argument_list>(<argument><expr><name>_deleteWhenTriggered</name></expr></argument>)</argument_list></call>, <call><name>handler</name><argument_list>(<argument><expr><name>_handler</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>ev</name> <operator>=</operator> <call><name>event_new</name><argument_list>(<argument><expr><name>base</name></expr></argument>, <argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>httpevent_callback_fn</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>ev</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+<destructor><name><name>HTTPEvent</name><operator>::</operator><name>~HTTPEvent</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>event_free</name><argument_list>(<argument><expr><name>ev</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+<function><type><name>void</name></type> <name><name>HTTPEvent</name><operator>::</operator><name>trigger</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>timeval</name></name><modifier>*</modifier></type> <name>tv</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>tv</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>event_active</name><argument_list>(<argument><expr><name>ev</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if> <comment type="line">// immediately trigger event in main thread</comment>
+    <else>else<block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>evtimer_add</name><argument_list>(<argument><expr><name>ev</name></expr></argument>, <argument><expr><name>tv</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt> <comment type="line">// trigger after timeval passed</comment>
+</block_content>}</block></function>
+<constructor><name><name>HTTPRequest</name><operator>::</operator><name>HTTPRequest</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>evhttp_request</name></name><modifier>*</modifier></type> <name>_req</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>req</name><argument_list>(<argument><expr><name>_req</name></expr></argument>)</argument_list></call>,
+                                                       <call><name>replySent</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+<destructor><name><name>HTTPRequest</name><operator>::</operator><name>~HTTPRequest</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>replySent</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Keep track of whether reply was sent to avoid request leaks</comment>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"%s: Unhandled request\n"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>WriteReply</name><argument_list>(<argument><expr><name>HTTP_INTERNAL</name></expr></argument>, <argument><expr><literal type="string">"Unhandled request"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// evhttpd cleans up the request, as long as a reply was sent.</comment>
+</block_content>}</block></destructor>
+
+<function><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name><name>HTTPRequest</name><operator>::</operator><name>GetHeader</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>hdr</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>struct</name> <name>evkeyvalq</name></name><modifier>*</modifier></type> <name>headers</name> <init>= <expr><call><name>evhttp_request_get_input_headers</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>headers</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>val</name> <init>= <expr><call><name>evhttp_find_header</name><argument_list>(<argument><expr><name>headers</name></expr></argument>, <argument><expr><call><name><name>hdr</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>val</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>val</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name><name>HTTPRequest</name><operator>::</operator><name>ReadBody</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>struct</name> <name>evbuffer</name></name><modifier>*</modifier></type> <name>buf</name> <init>= <expr><call><name>evhttp_request_get_input_buffer</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>buf</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="string">""</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>size</name> <init>= <expr><call><name>evbuffer_get_length</name><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Trivial implementation: if this is ever a performance bottleneck,
+     * internal copying can be avoided in multi-segment buffers by using
+     * evbuffer_peek and an awkward loop. Though in that case, it'd be even
+     * better to not copy into an intermediate string but use a stream
+     * abstraction to consume the evbuffer on the fly in the parsing algorithm.
+     */</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>data</name> <init>= <expr><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator><operator>)</operator><call><name>evbuffer_pullup</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>data</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// returns nullptr in case of empty buffer</comment>
+        <return>return <expr><literal type="string">""</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>rv</name><argument_list>(<argument><expr><name>data</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>evbuffer_drain</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>rv</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>HTTPRequest</name><operator>::</operator><name>WriteHeader</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>hdr</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>value</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>struct</name> <name>evkeyvalq</name></name><modifier>*</modifier></type> <name>headers</name> <init>= <expr><call><name>evhttp_request_get_output_headers</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>headers</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evhttp_add_header</name><argument_list>(<argument><expr><name>headers</name></expr></argument>, <argument><expr><call><name><name>hdr</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>value</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Closure sent to main thread to request a reply to be sent to
+ * a HTTP request.
+ * Replies must be sent in the main loop in the main http thread,
+ * this cannot be done from worker threads.
+ */</comment>
+<function><type><name>void</name></type> <name><name>HTTPRequest</name><operator>::</operator><name>WriteReply</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>nStatus</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strReply</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><name>replySent</name> <operator>&amp;&amp;</operator> <name>req</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>ShutdownRequested</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>WriteHeader</name><argument_list>(<argument><expr><literal type="string">"Connection"</literal></expr></argument>, <argument><expr><literal type="string">"close"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// Send event to main http thread to send reply message</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>evbuffer</name></name><modifier>*</modifier></type> <name>evb</name> <init>= <expr><call><name>evhttp_request_get_output_buffer</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>evb</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evbuffer_add</name><argument_list>(<argument><expr><name>evb</name></expr></argument>, <argument><expr><call><name><name>strReply</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>strReply</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>req_copy</name> <init>= <expr><name>req</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>HTTPEvent</name><modifier>*</modifier></type> <name>ev</name> <init>= <expr><operator>new</operator> <call><name>HTTPEvent</name><argument_list>(<argument><expr><name>eventBase</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><lambda><capture>[<argument><name>req_copy</name></argument>, <argument><name>nStatus</name></argument>]</capture><block>{<block_content>
+        <expr_stmt><expr><call><name>evhttp_send_reply</name><argument_list>(<argument><expr><name>req_copy</name></expr></argument>, <argument><expr><name>nStatus</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Re-enable reading from the socket. This is the second part of the libevent</comment>
+        <comment type="line">// workaround above.</comment>
+        <if_stmt><if>if <condition>(<expr><call><name>event_get_version_number</name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <literal type="number">0x02010600</literal> <operator>&amp;&amp;</operator> <call><name>event_get_version_number</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">0x02020001</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>evhttp_connection</name><modifier>*</modifier> <name>conn</name> = <name>evhttp_request_get_connection</name>(<name>req_copy</name></type></decl>);</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>conn</name></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>bufferevent</name><modifier>*</modifier> <name>bev</name> = <name>evhttp_connection_get_bufferevent</name>(<name>conn</name></type></decl>);</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><name>bev</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name>bufferevent_enable</name><argument_list>(<argument><expr><name>bev</name></expr></argument>, <argument><expr><name>EV_READ</name> <operator>|</operator> <name>EV_WRITE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>ev</name><operator>-&gt;</operator><name>trigger</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>replySent</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>req</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt> <comment type="line">// transferred back to main thread</comment>
+</block_content>}</block></function>
+
+<function><type><name>CService</name></type> <name><name>HTTPRequest</name><operator>::</operator><name>GetPeer</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>evhttp_connection</name><modifier>*</modifier></type> <name>con</name> <init>= <expr><call><name>evhttp_request_get_connection</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CService</name></type> <name>peer</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>con</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// evhttp retains ownership over returned address string</comment>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>address</name> <init>= <expr><literal type="string">""</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>uint16_t</name></type> <name>port</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>evhttp_connection_get_peer</name><argument_list>(<argument><expr><name>con</name></expr></argument>, <argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>address</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>peer</name> <operator>=</operator> <call><name>LookupNumeric</name><argument_list>(<argument><expr><name>address</name></expr></argument>, <argument><expr><name>port</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>peer</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name><name>HTTPRequest</name><operator>::</operator><name>GetURI</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name>evhttp_request_get_uri</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>HTTPRequest</name><operator>::</operator><name>RequestMethod</name></name></type> <name><name>HTTPRequest</name><operator>::</operator><name>GetRequestMethod</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <switch>switch <condition>(<expr><call><name>evhttp_request_get_command</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name>EVHTTP_REQ_GET</name></expr>:</case>
+        <return>return <expr><name>GET</name></expr>;</return>
+        <break>break;</break>
+    <case>case <expr><name>EVHTTP_REQ_POST</name></expr>:</case>
+        <return>return <expr><name>POST</name></expr>;</return>
+        <break>break;</break>
+    <case>case <expr><name>EVHTTP_REQ_HEAD</name></expr>:</case>
+        <return>return <expr><name>HEAD</name></expr>;</return>
+        <break>break;</break>
+    <case>case <expr><name>EVHTTP_REQ_PUT</name></expr>:</case>
+        <return>return <expr><name>PUT</name></expr>;</return>
+        <break>break;</break>
+    <default>default:</default>
+        <return>return <expr><name>UNKNOWN</name></expr>;</return>
+        <break>break;</break>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>RegisterHTTPHandler</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>prefix</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>exactMatch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>HTTPRequestHandler</name> <modifier>&amp;</modifier></type><name>handler</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Registering HTTP handler for %s (exactmatch %d)\n"</literal></expr></argument>, <argument><expr><name>prefix</name></expr></argument>, <argument><expr><name>exactMatch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pathHandlers</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>HTTPPathHandler</name><argument_list>(<argument><expr><name>prefix</name></expr></argument>, <argument><expr><name>exactMatch</name></expr></argument>, <argument><expr><name>handler</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>UnregisterHTTPHandler</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>prefix</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>exactMatch</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>HTTPPathHandler</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>i</name> <init>= <expr><call><name><name>pathHandlers</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>HTTPPathHandler</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>iend</name> <init>= <expr><call><name><name>pathHandlers</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init>;</init> <condition><expr><name>i</name> <operator>!=</operator> <name>iend</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>-&gt;</operator><name>prefix</name></name> <operator>==</operator> <name>prefix</name> <operator>&amp;&amp;</operator> <name><name>i</name><operator>-&gt;</operator><name>exactMatch</name></name> <operator>==</operator> <name>exactMatch</name></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt></block_content></block></for>
+    <if_stmt><if>if <condition>(<expr><name>i</name> <operator>!=</operator> <name>iend</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>HTTP</name></name></expr></argument>, <argument><expr><literal type="string">"Unregistering HTTP handler for %s (exactmatch %d)\n"</literal></expr></argument>, <argument><expr><name>prefix</name></expr></argument>, <argument><expr><name>exactMatch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>pathHandlers</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+</unit>

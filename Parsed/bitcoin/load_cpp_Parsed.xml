@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/wallet/load.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/load.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;scheduler.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/string.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/wallet.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>bool</name></type> <name>VerifyWallets</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Chain</name></name><modifier>&amp;</modifier></type> <name>chain</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>wallet_files</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-walletdir"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>wallet_dir</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-walletdir"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>system</name><operator>::</operator><name>error_code</name></name></type> <name>error</name></decl>;</decl_stmt>
+        <comment type="line">// The canonical path cleans the path, preventing &gt;1 Berkeley environment instances for the same directory</comment>
+        <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>canonical_wallet_dir</name> <init>= <expr><call><name><name>fs</name><operator>::</operator><name>canonical</name></name><argument_list>(<argument><expr><name>wallet_dir</name></expr></argument>, <argument><expr><name>error</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>error</name> <operator>||</operator> <operator>!</operator><call><name><name>fs</name><operator>::</operator><name>exists</name></name><argument_list>(<argument><expr><name>wallet_dir</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initError</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Specified -walletdir \"%s\" does not exist"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><call><name><name>wallet_dir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name><name>fs</name><operator>::</operator><name>is_directory</name></name><argument_list>(<argument><expr><name>wallet_dir</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initError</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Specified -walletdir \"%s\" is not a directory"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><call><name><name>wallet_dir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        <comment type="line">// The canonical path transforms relative paths into absolute ones, so we check the non-canonical version</comment>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name><name>wallet_dir</name><operator>.</operator><name>is_absolute</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initError</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Specified -walletdir \"%s\" is a relative path"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><call><name><name>wallet_dir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>ForceSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-walletdir"</literal></expr></argument>, <argument><expr><call><name><name>canonical_wallet_dir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using wallet directory %s\n"</literal></expr></argument>, <argument><expr><call><name>GetWalletDir</name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initMessage</name></name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Verifying wallet(s)..."</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Parameter interaction code should have thrown an error if -salvagewallet</comment>
+    <comment type="line">// was enabled with more than wallet file, so the wallet_files size check</comment>
+    <comment type="line">// here should have no effect.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>salvage_wallet</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-salvagewallet"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>wallet_files</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Keep track of each wallet absolute path to detect duplicates.</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name><name>fs</name><operator>::</operator><name>path</name></name></expr></argument>&gt;</argument_list></name></type> <name>wallet_paths</name></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>wallet_file</name> <range>: <expr><name>wallet_files</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>WalletLocation</name></type> <name>location</name><argument_list>(<argument><expr><name>wallet_file</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>wallet_paths</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>location</name><operator>.</operator><name>GetPath</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initError</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Error loading wallet %s. Duplicate -wallet filename specified."</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><name>wallet_file</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>error_string</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>warnings</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>verify_success</name> <init>= <expr><call><name><name>CWallet</name><operator>::</operator><name>Verify</name></name><argument_list>(<argument><expr><name>chain</name></expr></argument>, <argument><expr><name>location</name></expr></argument>, <argument><expr><name>salvage_wallet</name></expr></argument>, <argument><expr><name>error_string</name></expr></argument>, <argument><expr><name>warnings</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>error_string</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initError</name></name><argument_list>(<argument><expr><name>error_string</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>warnings</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initWarning</name></name><argument_list>(<argument><expr><call><name>Join</name><argument_list>(<argument><expr><name>warnings</name></expr></argument>, <argument><expr><literal type="string">"\n"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>verify_success</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>LoadWallets</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Chain</name></name><modifier>&amp;</modifier></type> <name>chain</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>wallet_files</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>walletFile</name> <range>: <expr><name>wallet_files</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>error</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>warnings</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name></type> <name>pwallet</name> <init>= <expr><call><name><name>CWallet</name><operator>::</operator><name>CreateWalletFromFile</name></name><argument_list>(<argument><expr><name>chain</name></expr></argument>, <argument><expr><call><name>WalletLocation</name><argument_list>(<argument><expr><name>walletFile</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>error</name></expr></argument>, <argument><expr><name>warnings</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>warnings</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initWarning</name></name><argument_list>(<argument><expr><call><name>Join</name><argument_list>(<argument><expr><name>warnings</name></expr></argument>, <argument><expr><literal type="string">"\n"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>pwallet</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>chain</name><operator>.</operator><name>initError</name></name><argument_list>(<argument><expr><name>error</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>AddWallet</name><argument_list>(<argument><expr><name>pwallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StartWallets</name><parameter_list>(<parameter><decl><type><name>CScheduler</name><modifier>&amp;</modifier></type> <name>scheduler</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>pwallet</name> <range>: <expr><call><name>GetWallets</name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>postInitProcess</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Schedule periodic wallet flushes and tx rebroadcasts</comment>
+    <expr_stmt><expr><call><name><name>scheduler</name><operator>.</operator><name>scheduleEvery</name></name><argument_list>(<argument><expr><name>MaybeCompactWalletDB</name></expr></argument>, <argument><expr><literal type="number">500</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>scheduler</name><operator>.</operator><name>scheduleEvery</name></name><argument_list>(<argument><expr><name>MaybeResendWalletTxs</name></expr></argument>, <argument><expr><literal type="number">1000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>FlushWallets</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>pwallet</name> <range>: <expr><call><name>GetWallets</name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>Flush</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StopWallets</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>pwallet</name> <range>: <expr><call><name>GetWallets</name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>Flush</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>UnloadWallets</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>wallets</name> <init>= <expr><call><name>GetWallets</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><operator>!</operator><call><name><name>wallets</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>wallet</name> <init>= <expr><call><name><name>wallets</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>wallets</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>RemoveWallet</name><argument_list>(<argument><expr><name>wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>UnloadWallet</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>wallet</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/policy/fees.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_POLICY_FEES_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_POLICY_FEES_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;amount.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/feerate.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CAutoFile</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CFeeRate</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CTxMemPoolEntry</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CTxMemPool</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>TxConfirmStats</name></decl>;</decl_stmt>
+
+<comment type="block">/* Identifier for each of the 3 different TxConfirmStats which will track
+ * history over different time horizons. */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>FeeEstimateHorizon</name> <block>{<block_content>
+    <expr_stmt><expr><name>SHORT_HALFLIFE</name> <operator>=</operator> <literal type="number">0</literal></expr><operator>,</operator>
+    <expr><name>MED_HALFLIFE</name> <operator>=</operator> <literal type="number">1</literal></expr><operator>,</operator>
+    <expr><name>LONG_HALFLIFE</name> <operator>=</operator> <literal type="number">2</literal></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>StringForFeeEstimateHorizon</name><argument_list>(<argument>FeeEstimateHorizon horizon</argument>)</argument_list></macro></expr>;</expr_stmt>
+
+<comment type="block">/* Enumeration of reason for returned fee estimate */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>FeeReason</name> <block>{<block_content>
+    <expr_stmt><expr><name>NONE</name></expr><operator>,</operator>
+    <expr><name>HALF_ESTIMATE</name></expr><operator>,</operator>
+    <expr><name>FULL_ESTIMATE</name></expr><operator>,</operator>
+    <expr><name>DOUBLE_ESTIMATE</name></expr><operator>,</operator>
+    <expr><name>CONSERVATIVE</name></expr><operator>,</operator>
+    <expr><name>MEMPOOL_MIN</name></expr><operator>,</operator>
+    <expr><name>PAYTXFEE</name></expr><operator>,</operator>
+    <expr><name>FALLBACK</name></expr><operator>,</operator>
+    <expr><name>REQUIRED</name></expr><operator>,</operator></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block">/* Used to determine type of fee estimation requested */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>FeeEstimateMode</name> <block>{<block_content>
+    <expr_stmt><expr><name>UNSET</name></expr><operator>,</operator>        <comment type="line" format="doxygen">//!&lt; Use default settings based on other criteria</comment>
+    <expr><name>ECONOMICAL</name></expr><operator>,</operator>   <comment type="line" format="doxygen">//!&lt; Force estimateSmartFee to use non-conservative estimates</comment>
+    <expr><name>CONSERVATIVE</name></expr><operator>,</operator></expr_stmt> <comment type="line" format="doxygen">//!&lt; Force estimateSmartFee to use conservative estimates</comment>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block">/* Used to return detailed information about a feerate bucket */</comment>
+<struct>struct <name>EstimatorBucket</name>
+<block>{
+    <decl_stmt><decl><type><name>double</name></type> <name>start</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>end</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>withinTarget</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>totalConfirmed</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>inMempool</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>leftMempool</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/* Used to return detailed information about a fee estimate calculation */</comment>
+<struct>struct <name>EstimationResult</name>
+<block>{
+    <decl_stmt><decl><type><name>EstimatorBucket</name></type> <name>pass</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>EstimatorBucket</name></type> <name>fail</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>decay</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>scale</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>FeeCalculation</name>
+<block>{
+    <decl_stmt><decl><type><name>EstimationResult</name></type> <name>est</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>FeeReason</name></type> <name>reason</name> <init>= <expr><name>FeeReason</name><operator>::</operator><name>NONE</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>desiredTarget</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>returnedTarget</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** \class CBlockPolicyEstimator
+ * The BlockPolicyEstimator is used for estimating the feerate needed
+ * for a transaction to be included in a block within a certain number of
+ * blocks.
+ *
+ * At a high level the algorithm works by grouping transactions into buckets
+ * based on having similar feerates and then tracking how long it
+ * takes transactions in the various buckets to be mined.  It operates under
+ * the assumption that in general transactions of higher feerate will be
+ * included in blocks before transactions of lower feerate.   So for
+ * example if you wanted to know what feerate you should put on a transaction to
+ * be included in a block within the next 5 blocks, you would start by looking
+ * at the bucket with the highest feerate transactions and verifying that a
+ * sufficiently high percentage of them were confirmed within 5 blocks and
+ * then you would look at the next highest feerate bucket, and so on, stopping at
+ * the last bucket to pass the test.   The average feerate of transactions in this
+ * bucket will give you an indication of the lowest feerate you can put on a
+ * transaction and still have a sufficiently high chance of being confirmed
+ * within your desired 5 blocks.
+ *
+ * Here is a brief description of the implementation:
+ * When a transaction enters the mempool, we track the height of the block chain
+ * at entry.  All further calculations are conducted only on this set of "seen"
+ * transactions. Whenever a block comes in, we count the number of transactions
+ * in each bucket and the total amount of feerate paid in each bucket. Then we
+ * calculate how many blocks Y it took each transaction to be mined.  We convert
+ * from a number of blocks to a number of periods Y' each encompassing "scale"
+ * blocks.  This is tracked in 3 different data sets each up to a maximum
+ * number of periods. Within each data set we have an array of counters in each
+ * feerate bucket and we increment all the counters from Y' up to max periods
+ * representing that a tx was successfully confirmed in less than or equal to
+ * that many periods. We want to save a history of this information, so at any
+ * time we have a counter of the total number of transactions that happened in a
+ * given feerate bucket and the total number that were confirmed in each of the
+ * periods or less for any bucket.  We save this history by keeping an
+ * exponentially decaying moving average of each one of these stats.  This is
+ * done for a different decay in each of the 3 data sets to keep relevant data
+ * from different time horizons.  Furthermore we also keep track of the number
+ * unmined (in mempool or left mempool without being included in a block)
+ * transactions in each bucket and for how many blocks they have been
+ * outstanding and use both of these numbers to increase the number of transactions
+ * we've seen in that feerate bucket when calculating an estimate for any number
+ * of confirmations below the number of blocks they've been outstanding.
+ *
+ *  We want to be able to estimate feerates that are needed on tx's to be included in
+ * a certain number of blocks.  Every time a block is added to the best chain, this class records
+ * stats on the transactions included in that block
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockPolicyEstimator</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <comment type="block" format="doxygen">/** Track confirm delays up to 12 blocks for short horizon */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>SHORT_BLOCK_PERIODS</name> <init>= <expr><literal type="number">12</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>SHORT_SCALE</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Track confirm delays up to 48 blocks for medium horizon */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>MED_BLOCK_PERIODS</name> <init>= <expr><literal type="number">24</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>MED_SCALE</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Track confirm delays up to 1008 blocks for long horizon */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>LONG_BLOCK_PERIODS</name> <init>= <expr><literal type="number">42</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>LONG_SCALE</name> <init>= <expr><literal type="number">24</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Historical estimates that are older than this aren't valid */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>OLDEST_ESTIMATE_HISTORY</name> <init>= <expr><literal type="number">6</literal> <operator>*</operator> <literal type="number">1008</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Decay of .962 is a half-life of 18 blocks or about 3 hours */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>SHORT_DECAY</name> <init>= <expr><literal type="number">.962</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Decay of .998 is a half-life of 144 blocks or about 1 day */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>MED_DECAY</name> <init>= <expr><literal type="number">.9952</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Decay of .9995 is a half-life of 1008 blocks or about 1 week */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>LONG_DECAY</name> <init>= <expr><literal type="number">.99931</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Require greater than 60% of X feerate transactions to be confirmed within Y/2 blocks*/</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>HALF_SUCCESS_PCT</name> <init>= <expr><literal type="number">.6</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Require greater than 85% of X feerate transactions to be confirmed within Y blocks*/</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>SUCCESS_PCT</name> <init>= <expr><literal type="number">.85</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Require greater than 95% of X feerate transactions to be confirmed within 2 * Y blocks*/</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>DOUBLE_SUCCESS_PCT</name> <init>= <expr><literal type="number">.95</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Require an avg of 0.1 tx in the combined feerate bucket per block to have stat significance */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>SUFFICIENT_FEETXS</name> <init>= <expr><literal type="number">0.1</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Require an avg of 0.5 tx when using short decay since there are fewer blocks considered*/</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>SUFFICIENT_TXS_SHORT</name> <init>= <expr><literal type="number">0.5</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Minimum and Maximum values for tracking feerates
+     * The MIN_BUCKET_FEERATE should just be set to the lowest reasonable feerate we
+     * might ever want to track.  Historically this has been 1000 since it was
+     * inheriting DEFAULT_MIN_RELAY_TX_FEE and changing it is disruptive as it
+     * invalidates old estimates files. So leave it at 1000 unless it becomes
+     * necessary to lower it, and then lower it substantially.
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>MIN_BUCKET_FEERATE</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>MAX_BUCKET_FEERATE</name> <init>= <expr><literal type="number">1e7</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Spacing of FeeRate buckets
+     * We have to lump transactions into buckets based on feerate, but we want to be able
+     * to give accurate estimates over a large range of potential feerates
+     * Therefore it makes sense to exponentially space the buckets
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>FEE_SPACING</name> <init>= <expr><literal type="number">1.05</literal></expr></init></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Create new BlockPolicyEstimator and initialize stats tracking classes with default values */</comment>
+    <expr_stmt><expr><call><name>CBlockPolicyEstimator</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>~</operator><call><name>CBlockPolicyEstimator</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Process all the transactions that have been included in a block */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>processBlock</name><argument_list>(<argument><expr><name>unsigned</name> <name>int</name> <name>nBlockHeight</name></expr></argument>,
+                      <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>entries</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Process a transaction accepted to the mempool*/</comment>
+    <function_decl><type><name>void</name></type> <name>processTransaction</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>&amp;</modifier></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>validFeeEstimate</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Remove a transaction from the mempool tracking stats*/</comment>
+    <function_decl><type><name>bool</name></type> <name>removeTx</name><parameter_list>(<parameter><decl><type><name>uint256</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>inBlock</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** DEPRECATED. Return a feerate estimate */</comment>
+    <decl_stmt><decl><type><name>CFeeRate</name></type> <name>estimateFee</name><argument_list>(<argument><expr><name>int</name> <name>confTarget</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Estimate feerate needed to get be included in a block within confTarget
+     *  blocks. If no answer can be given at confTarget, return an estimate at
+     *  the closest target where one can be given.  'conservative' estimates are
+     *  valid over longer time horizons also.
+     */</comment>
+    <decl_stmt><decl><type><name>CFeeRate</name></type> <name>estimateSmartFee</name><argument_list>(<argument><expr><name>int</name> <name>confTarget</name></expr></argument>, <argument><expr><name>FeeCalculation</name> <operator>*</operator><name>feeCalc</name></expr></argument>, <argument><expr><name>bool</name> <name>conservative</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Return a specific fee estimate calculation with a given success
+     * threshold and time horizon, and optionally return detailed data about
+     * calculation
+     */</comment>
+    <decl_stmt><decl><type><name>CFeeRate</name></type> <name>estimateRawFee</name><argument_list>(<argument><expr><name>int</name> <name>confTarget</name></expr></argument>, <argument><expr><name>double</name> <name>successThreshold</name></expr></argument>, <argument><expr><name>FeeEstimateHorizon</name> <name>horizon</name></expr></argument>, <argument><expr><name>EstimationResult</name> <operator>*</operator><name>result</name> <operator>=</operator> <name>nullptr</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Write estimation data to a file */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>Write</name><argument_list>(<argument><expr><name>CAutoFile</name><operator>&amp;</operator> <name>fileout</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Read estimation data from a file */</comment>
+    <function_decl><type><name>bool</name></type> <name>Read</name><parameter_list>(<parameter><decl><type><name>CAutoFile</name><modifier>&amp;</modifier></type> <name>filein</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Empty mempool transactions on shutdown to record failure to confirm for txs still in mempool */</comment>
+    <function_decl><type><name>void</name></type> <name>FlushUnconfirmed</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Calculation of highest target that estimates are tracked for */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>HighestTargetTracked</name><argument_list>(<argument><expr><name>FeeEstimateHorizon</name> <name>horizon</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>mutable</name> <name>CCriticalSection</name></type> <name>m_cs_fee_estimator</name></decl>;</decl_stmt>
+
+    <function_decl><type><name>unsigned</name> <name>int</name> <name>nBestSeenHeight</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>unsigned</name> <name>int</name> <name>firstRecordedHeight</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>unsigned</name> <name>int</name> <name>historicalFirst</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>unsigned</name> <name>int</name> <name>historicalBest</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <struct>struct <name>TxStatsInfo</name>
+    <block>{
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>blockHeight</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>bucketIndex</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>TxStatsInfo</name><argument_list>()</argument_list></call> <operator>:</operator> <call><name>blockHeight</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>bucketIndex</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro> <expr><block>{}</block></expr></expr_stmt>
+    }</block>;</struct>
+
+    <comment type="line">// map of txids to information about that transaction</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>TxStatsInfo</name></expr></argument>&gt;</argument_list></name> <name>mapMemPoolTxs</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Classes to track historical data on transaction confirmations */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name> <name>feeStats</name> <call><name>PT_GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name> <name>shortStats</name> <call><name>PT_GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxConfirmStats</name></expr></argument>&gt;</argument_list></name> <name>longStats</name> <call><name>PT_GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <function_decl><type><name>unsigned</name> <name>int</name> <name>trackedTxs</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>unsigned</name> <name>int</name> <name>untrackedTxs</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name> <name>buckets</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// The upper-bound of the range for the bucket (inclusive)</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name> <name>bucketMap</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Map of bucket upper-bound to index into all vectors by bucket</comment>
+
+    <comment type="block" format="doxygen">/** Process a transaction confirmed in a block*/</comment>
+    <function_decl><type><name>bool</name></type> <name>processBlockTx</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nBlockHeight</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>*</modifier></type> <name>entry</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>m_cs_fee_estimator</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Helper for estimateSmartFee */</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>estimateCombinedFee</name><argument_list>(<argument><expr><name>unsigned</name> <name>int</name> <name>confTarget</name></expr></argument>, <argument><expr><name>double</name> <name>successThreshold</name></expr></argument>, <argument><expr><name>bool</name> <name>checkShorterHorizon</name></expr></argument>, <argument><expr><name>EstimationResult</name> <operator>*</operator><name>result</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Helper for estimateSmartFee */</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>estimateConservativeFee</name><argument_list>(<argument><expr><name>unsigned</name> <name>int</name> <name>doubleTarget</name></expr></argument>, <argument><expr><name>EstimationResult</name> <operator>*</operator><name>result</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Number of blocks of data recorded while fee estimates have been running */</comment>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>BlockSpan</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <call><name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block" format="doxygen">/** Number of blocks of recorded fee estimate data represented in saved data file */</comment>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>HistoricalBlockSpan</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <call><name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block" format="doxygen">/** Calculation of highest target that reasonable estimate can be provided for */</comment>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>MaxUsableEstimate</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <call><name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>m_cs_fee_estimator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>FeeFilterRounder</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>MAX_FILTER_FEERATE</name> <init>= <expr><literal type="number">1e7</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** FEE_FILTER_SPACING is just used to provide some quantization of fee
+     * filter results.  Historically it reused FEE_SPACING, but it is completely
+     * unrelated, and was made a separate constant so the two concepts are not
+     * tied together */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>double</name></type> <name>FEE_FILTER_SPACING</name> <init>= <expr><literal type="number">1.1</literal></expr></init></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Create new FeeFilterRounder */</comment>
+    <function_decl><type><name>explicit</name></type> <name>FeeFilterRounder</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CFeeRate</name><modifier>&amp;</modifier></type> <name>minIncrementalFee</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Quantize a minimum fee for privacy purpose before broadcast **/</comment>
+    <function_decl><type><name>CAmount</name></type> <name>round</name><parameter_list>(<parameter><decl><type><name>CAmount</name></type> <name>currentMinFee</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>double</name></expr></argument>&gt;</argument_list></name> <name>feeset</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>FastRandomContext</name></type> <name>insecure_rand</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_POLICY_FEES_H</comment>
+</unit>

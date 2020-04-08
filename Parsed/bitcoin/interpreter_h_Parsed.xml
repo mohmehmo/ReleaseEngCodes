@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/script/interpreter.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_SCRIPT_INTERPRETER_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_SCRIPT_INTERPRETER_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script_error.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CPubKey</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CScript</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CTransaction</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint256</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Signature hash types/flags */</comment>
+<enum>enum
+<block>{
+    <decl><name>SIGHASH_ALL</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>,
+    <decl><name>SIGHASH_NONE</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>,
+    <decl><name>SIGHASH_SINGLE</name> <init>= <expr><literal type="number">3</literal></expr></init></decl>,
+    <decl><name>SIGHASH_ANYONECANPAY</name> <init>= <expr><literal type="number">0x80</literal></expr></init></decl>,
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/** Script verification flags.
+ *
+ *  All flags are intended to be soft forks: the set of acceptable scripts under
+ *  flags (A | B) is a subset of the acceptable scripts under flag (A).
+ */</comment>
+<enum>enum
+<block>{
+    <decl><name>SCRIPT_VERIFY_NONE</name>      <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+
+    <comment type="line">// Evaluate P2SH subscripts (BIP16).</comment>
+    <decl><name>SCRIPT_VERIFY_P2SH</name>      <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Passing a non-strict-DER signature or one with undefined hashtype to a checksig operation causes script failure.</comment>
+    <comment type="line">// Evaluating a pubkey that is not (0x04 + 64 bytes) or (0x02 or 0x03 + 32 bytes) by checksig causes script failure.</comment>
+    <comment type="line">// (not used or intended as a consensus rule).</comment>
+    <decl><name>SCRIPT_VERIFY_STRICTENC</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Passing a non-strict-DER signature to a checksig operation causes script failure (BIP62 rule 1)</comment>
+    <decl><name>SCRIPT_VERIFY_DERSIG</name>    <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Passing a non-strict-DER signature or one with S &gt; order/2 to a checksig operation causes script failure</comment>
+    <comment type="line">// (BIP62 rule 5).</comment>
+    <decl><name>SCRIPT_VERIFY_LOW_S</name>     <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">3</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// verify dummy stack item consumed by CHECKMULTISIG is of zero-length (BIP62 rule 7).</comment>
+    <decl><name>SCRIPT_VERIFY_NULLDUMMY</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">4</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Using a non-push operator in the scriptSig causes script failure (BIP62 rule 2).</comment>
+    <decl><name>SCRIPT_VERIFY_SIGPUSHONLY</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">5</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Require minimal encodings for all push operations (OP_0... OP_16, OP_1NEGATE where possible, direct</comment>
+    <comment type="line">// pushes up to 75 bytes, OP_PUSHDATA up to 255 bytes, OP_PUSHDATA2 for anything larger). Evaluating</comment>
+    <comment type="line">// any other push causes the script to fail (BIP62 rule 3).</comment>
+    <comment type="line">// In addition, whenever a stack element is interpreted as a number, it must be of minimal length (BIP62 rule 4).</comment>
+    <decl><name>SCRIPT_VERIFY_MINIMALDATA</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">6</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Discourage use of NOPs reserved for upgrades (NOP1-10)</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// Provided so that nodes can avoid accepting or mining transactions</comment>
+    <comment type="line">// containing executed NOP's whose meaning may change after a soft-fork,</comment>
+    <comment type="line">// thus rendering the script invalid; with this flag set executing</comment>
+    <comment type="line">// discouraged NOPs fails the script. This verification flag will never be</comment>
+    <comment type="line">// a mandatory flag applied to scripts in a block. NOPs that are not</comment>
+    <comment type="line">// executed, e.g.  within an unexecuted IF ENDIF block, are *not* rejected.</comment>
+    <comment type="line">// NOPs that have associated forks to give them new meaning (CLTV, CSV)</comment>
+    <comment type="line">// are not subject to this rule.</comment>
+    <decl><name>SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS</name>  <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">7</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Require that only a single stack element remains after evaluation. This changes the success criterion from</comment>
+    <comment type="line">// "At least one stack element must remain, and when interpreted as a boolean, it must be true" to</comment>
+    <comment type="line">// "Exactly one stack element must remain, and when interpreted as a boolean, it must be true".</comment>
+    <comment type="line">// (BIP62 rule 6)</comment>
+    <comment type="line">// Note: CLEANSTACK should never be used without P2SH or WITNESS.</comment>
+    <decl><name>SCRIPT_VERIFY_CLEANSTACK</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Verify CHECKLOCKTIMEVERIFY</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// See BIP65 for details.</comment>
+    <decl><name>SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">9</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// support CHECKSEQUENCEVERIFY opcode</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// See BIP112 for details</comment>
+    <decl><name>SCRIPT_VERIFY_CHECKSEQUENCEVERIFY</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">10</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Support segregated witness</comment>
+    <comment type="line">//</comment>
+    <decl><name>SCRIPT_VERIFY_WITNESS</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">11</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Making v1-v16 witness program non-standard</comment>
+    <comment type="line">//</comment>
+    <decl><name>SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">12</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Segwit script only: Require the argument of OP_IF/NOTIF to be exactly 0x01 or empty vector</comment>
+    <comment type="line">//</comment>
+    <decl><name>SCRIPT_VERIFY_MINIMALIF</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">13</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Signature(s) must be empty vector if a CHECK(MULTI)SIG operation failed</comment>
+    <comment type="line">//</comment>
+    <decl><name>SCRIPT_VERIFY_NULLFAIL</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">14</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Public keys in segregated witness scripts must be compressed</comment>
+    <comment type="line">//</comment>
+    <decl><name>SCRIPT_VERIFY_WITNESS_PUBKEYTYPE</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">15</literal><operator>)</operator></expr></init></decl>,
+
+    <comment type="line">// Making OP_CODESEPARATOR and FindAndDelete fail any non-segwit scripts</comment>
+    <comment type="line">//</comment>
+    <decl><name>SCRIPT_VERIFY_CONST_SCRIPTCODE</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">16</literal><operator>)</operator></expr></init></decl>,
+}</block>;</enum>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>CheckSignatureEncoding</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vchSig</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>flags</name></expr></argument>, <argument><expr><name>ScriptError</name><operator>*</operator> <name>serror</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<struct>struct <name>PrecomputedTransactionData</name>
+<block>{
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hashPrevouts</name></decl>, <decl><type ref="prev"/><name>hashSequence</name></decl>, <decl><type ref="prev"/><name>hashOutputs</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ready</name> <init>= <expr><name>false</name></expr></init></decl>;</decl_stmt>
+
+    <function_decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>class</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+    <name>explicit</name></type> <name>PrecomputedTransactionData</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>;</function_decl>
+}</block>;</struct>
+
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>SigVersion</name>
+<block>{<block_content>
+    <expr_stmt><expr><name>BASE</name> <operator>=</operator> <literal type="number">0</literal></expr><operator>,</operator>
+    <expr><name>WITNESS_V0</name> <operator>=</operator> <literal type="number">1</literal></expr><operator>,</operator></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** Signature hash sizes */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>size_t</name></type> <name>WITNESS_V0_SCRIPTHASH_SIZE</name> <init>= <expr><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>size_t</name></type> <name>WITNESS_V0_KEYHASH_SIZE</name> <init>= <expr><literal type="number">20</literal></expr></init></decl>;</decl_stmt>
+
+<function_decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>class</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>uint256</name></type> <name>SignatureHash</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptCode</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>txTo</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nIn</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nHashType</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>amount</name></decl></parameter>, <parameter><decl><type><name>SigVersion</name></type> <name>sigversion</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>PrecomputedTransactionData</name><modifier>*</modifier></type> <name>cache</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+<decl_stmt><decl><type><name>class</name></type> <name>BaseSignatureChecker</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>CheckSig</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>scriptSig</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchPubKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>scriptCode</name></expr></argument>, <argument><expr><name>SigVersion</name> <name>sigversion</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <return>return <expr><name>false</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>CheckLockTime</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>nLockTime</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+         <return>return <expr><name>false</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>CheckSequence</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>nSequence</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+         <return>return <expr><name>false</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><macro><name>BaseSignatureChecker</name><argument_list>()</argument_list></macro> <block>{}</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>class</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>GenericTransactionSignatureChecker</name> <range>: <expr><name>public</name> <name>BaseSignatureChecker</name>
+<block>{
+<expr><name>private</name><operator>:</operator>
+    <specifier>const</specifier> <name>T</name><operator>*</operator> <name>txTo</name></expr>;
+    <expr><name>unsigned</name> <name>int</name> <name>nIn</name></expr>;
+    <expr><specifier>const</specifier> <name>CAmount</name> <name>amount</name></expr>;
+    <expr><specifier>const</specifier> <name>PrecomputedTransactionData</name><operator>*</operator> <name>txdata</name></expr>;
+
+<expr><name>protected</name><operator>:</operator>
+    <name>virtual</name> <name>bool</name> <macro><name>VerifySignature</name><argument_list>(<argument>const std::vector&lt;unsigned char&gt;&amp; vchSig</argument>, <argument>const CPubKey&amp; vchPubKey</argument>, <argument>const uint256&amp; sighash</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+
+<expr><name>public</name><operator>:</operator>
+    <macro><name>GenericTransactionSignatureChecker</name><argument_list>(<argument>const T* txToIn</argument>, <argument>unsigned int nInIn</argument>, <argument>const CAmount&amp; amountIn</argument>)</argument_list></macro> <operator>:</operator> <call><name>txTo</name><argument_list>(<argument><expr><name>txToIn</name></expr></argument>)</argument_list></call></expr>, <expr><call><name>nIn</name><argument_list>(<argument><expr><name>nInIn</name></expr></argument>)</argument_list></call></expr>, <expr><call><name>amount</name><argument_list>(<argument><expr><name>amountIn</name></expr></argument>)</argument_list></call></expr>, <macro><name>txdata</name><argument_list>(<argument>nullptr</argument>)</argument_list></macro> <expr><block>{}</block>
+    <macro><name>GenericTransactionSignatureChecker</name><argument_list>(<argument>const T* txToIn</argument>, <argument>unsigned int nInIn</argument>, <argument>const CAmount&amp; amountIn</argument>, <argument>const PrecomputedTransactionData&amp; txdataIn</argument>)</argument_list></macro> <operator>:</operator> <call><name>txTo</name><argument_list>(<argument><expr><name>txToIn</name></expr></argument>)</argument_list></call></expr>, <expr><call><name>nIn</name><argument_list>(<argument><expr><name>nInIn</name></expr></argument>)</argument_list></call></expr>, <expr><call><name>amount</name><argument_list>(<argument><expr><name>amountIn</name></expr></argument>)</argument_list></call></expr>, <macro><name>txdata</name><argument_list>(<argument>&amp;txdataIn</argument>)</argument_list></macro> <expr><block>{}</block>
+    <name>bool</name> <macro><name>CheckSig</name><argument_list>(<argument>const std::vector&lt;unsigned char&gt;&amp; scriptSig</argument>, <argument>const std::vector&lt;unsigned char&gt;&amp; vchPubKey</argument>, <argument>const CScript&amp; scriptCode</argument>, <argument>SigVersion sigversion</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>CheckLockTime</name><argument_list>(<argument>const CScriptNum&amp; nLockTime</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>CheckSequence</name><argument_list>(<argument>const CScriptNum&amp; nSequence</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>using</name></type> <name>TransactionSignatureChecker</name> <init>= <expr><name><name>GenericTransactionSignatureChecker</name><argument_list type="generic">&lt;<argument><expr><name>CTransaction</name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>using</name></type> <name>MutableTransactionSignatureChecker</name> <init>= <expr><name><name>GenericTransactionSignatureChecker</name><argument_list type="generic">&lt;<argument><expr><name>CMutableTransaction</name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>EvalScript</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name><operator>&amp;</operator> <name>stack</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>script</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>flags</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>BaseSignatureChecker</name><operator>&amp;</operator> <name>checker</name></expr></argument>, <argument><expr><name>SigVersion</name> <name>sigversion</name></expr></argument>, <argument><expr><name>ScriptError</name><operator>*</operator> <name>error</name> <operator>=</operator> <name>nullptr</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<function_decl><type><name>bool</name></type> <name>VerifyScript</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptSig</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptPubKey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScriptWitness</name><modifier>*</modifier></type> <name>witness</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>flags</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>BaseSignatureChecker</name><modifier>&amp;</modifier></type> <name>checker</name></decl></parameter>, <parameter><decl><type><name>ScriptError</name><modifier>*</modifier></type> <name>serror</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><name>size_t</name></type> <name>CountWitnessSigOps</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptSig</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>scriptPubKey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScriptWitness</name><modifier>*</modifier></type> <name>witness</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>flags</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><name>int</name></type> <name>FindAndDelete</name><parameter_list>(<parameter><decl><type><name>CScript</name><modifier>&amp;</modifier></type> <name>script</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_SCRIPT_INTERPRETER_H</comment>
+</unit>
