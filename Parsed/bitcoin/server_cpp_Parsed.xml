@@ -1,0 +1,501 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/rpc/server.cpp"><comment type="line">// Copyright (c) 2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/server.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/util.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;shutdown.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/signals2/signal.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string/classification.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string/split.hpp&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include> <comment type="line">// for unique_ptr</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unordered_map&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>CCriticalSection</name></type> <name>cs_rpcWarmup</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>g_rpc_running</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<function_decl><type><specifier>static</specifier> <name>bool</name> <name>fRPCInWarmup</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_rpcWarmup</name></type></decl></parameter>)</parameter_list> <init>= <expr><literal type="boolean">true</literal></expr></init>;</function_decl>
+<function_decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <name>rpcWarmupStatus</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_rpcWarmup</name></type></decl></parameter>)</parameter_list> <init>= <expr><literal type="string">"RPC server started"</literal></expr></init>;</function_decl>
+<comment type="block">/* Timer-creating functions */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>RPCTimerInterface</name><modifier>*</modifier></type> <name>timerInterface</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+<comment type="block">/* Map of name to timer. */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>RPCTimerBase</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>deadlineTimers</name></decl>;</decl_stmt>
+<function_decl><type><specifier>static</specifier> <name>bool</name></type> <name>ExecuteCommand</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CRPCCommand</name><modifier>&amp;</modifier></type> <name>command</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>request</name></decl></parameter>, <parameter><decl><type><name>UniValue</name><modifier>&amp;</modifier></type> <name>result</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>last_handler</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<struct>struct <name>RPCCommandExecutionInfo</name>
+<block>{<public type="default">
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>method</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>start</name></decl>;</decl_stmt>
+</public>}</block>;</struct>
+
+<struct>struct <name>RPCServerInfo</name>
+<block>{<public type="default">
+    <decl_stmt><decl><type><name>Mutex</name></type> <name>mutex</name></decl>;</decl_stmt>
+    <function_decl><type><name><name>std</name><operator>::</operator><name>list</name><argument_list type="generic">&lt;<argument><expr><name>RPCCommandExecutionInfo</name></expr></argument>&gt;</argument_list></name> <name>active_commands</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>mutex</name></type></decl></parameter>)</parameter_list>;</function_decl>
+</public>}</block>;</struct>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>RPCServerInfo</name></type> <name>g_rpc_server_info</name></decl>;</decl_stmt>
+
+<struct>struct <name>RPCCommandExecution</name>
+<block>{<public type="default">
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>list</name><argument_list type="generic">&lt;<argument><expr><name>RPCCommandExecutionInfo</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>it</name></decl>;</decl_stmt>
+    <constructor><specifier>explicit</specifier> <name>RPCCommandExecution</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>method</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>g_rpc_server_info</name><operator>.</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>it</name> <operator>=</operator> <call><name><name>g_rpc_server_info</name><operator>.</operator><name>active_commands</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>g_rpc_server_info</name><operator>.</operator><name>active_commands</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <block>{<block_content><expr><name>method</name></expr><operator>,</operator> <macro><name>GetTimeMicros</name><argument_list>()</argument_list></macro></block_content>}</block></argument_list></call></expr></expr_stmt>)</block_content></block><empty_stmt>;</empty_stmt></constructor>
+    </public>}</block>
+    <decl><name>~RPCCommandExecution</name><argument_list>()</argument_list>
+    <argument_list>{
+        <argument><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>g_rpc_server_info</name><operator>.</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr></argument>;
+        <argument><expr><call><name><name>g_rpc_server_info</name><operator>.</operator><name>active_commands</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call></expr></argument>;
+    }</argument_list></decl></struct>
+};
+
+<struct><specifier>static</specifier> struct <name>CRPCSignals</name>
+<block>{<public type="default">
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>signals2</name><operator>::</operator><name>signal</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>Started</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>signals2</name><operator>::</operator><name>signal</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>Stopped</name></decl>;</decl_stmt>
+</public>}</block> <decl><name>g_rpcSignals</name></decl>;</struct>
+
+<function><type><name>void</name></type> <name><name>RPCServer</name><operator>::</operator><name>OnStarted</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>slot</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>g_rpcSignals</name><operator>.</operator><name>Started</name><operator>.</operator><name>connect</name></name><argument_list>(<argument><expr><name>slot</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>RPCServer</name><operator>::</operator><name>OnStopped</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>slot</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>g_rpcSignals</name><operator>.</operator><name>Stopped</name><operator>.</operator><name>connect</name></name><argument_list>(<argument><expr><name>slot</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name><name>CRPCTable</name><operator>::</operator><name>help</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strCommand</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>helpreq</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strRet</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>category</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name>intptr_t</name></expr></argument>&gt;</argument_list></name></type> <name>setDone</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CRPCCommand</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>vCommands</name></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>entry</name> <range>: <expr><name>mapCommands</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>vCommands</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>make_pair</name><argument_list>(<argument><expr><call><name><name>entry</name><operator>.</operator><name>second</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>category</name> <operator>+</operator> <name><name>entry</name><operator>.</operator><name>first</name></name></expr></argument>, <argument><expr><call><name><name>entry</name><operator>.</operator><name>second</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <expr_stmt><expr><call><name>sort</name><argument_list>(<argument><expr><call><name><name>vCommands</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vCommands</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>JSONRPCRequest</name></type> <name>jreq</name><argument_list>(<argument><expr><name>helpreq</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>jreq</name><operator>.</operator><name>fHelp</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>jreq</name><operator>.</operator><name>params</name></name> <operator>=</operator> <call><name>UniValue</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CRPCCommand</name><operator>*</operator></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>command</name> <range>: <expr><name>vCommands</name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CRPCCommand</name> <modifier>*</modifier></type><name>pcmd</name> <init>= <expr><name><name>command</name><operator>.</operator><name>second</name></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strMethod</name> <init>= <expr><name><name>pcmd</name><operator>-&gt;</operator><name>name</name></name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>(</operator><name>strCommand</name> <operator>!=</operator> <literal type="string">""</literal> <operator>||</operator> <name><name>pcmd</name><operator>-&gt;</operator><name>category</name></name> <operator>==</operator> <literal type="string">"hidden"</literal><operator>)</operator> <operator>&amp;&amp;</operator> <name>strMethod</name> <operator>!=</operator> <name>strCommand</name></expr>)</condition><block type="pseudo"><block_content>
+            <continue>continue;</continue></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name><name>jreq</name><operator>.</operator><name>strMethod</name></name> <operator>=</operator> <name>strMethod</name></expr>;</expr_stmt>
+        <try>try
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>unused_result</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>setDone</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name><name>pcmd</name><operator>-&gt;</operator><name>unique_id</name></name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>pcmd</name><operator>-&gt;</operator><name>actor</name></name><argument_list>(<argument><expr><name>jreq</name></expr></argument>, <argument><expr><name>unused_result</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument> <comment type="block">/* last_handler */</comment>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block>
+        <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list>
+        <block>{<block_content>
+            <comment type="line">// Help text is returned in an exception</comment>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHelp</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>strCommand</name> <operator>==</operator> <literal type="string">""</literal></expr>)</condition>
+            <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><call><name><name>strHelp</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'\n'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><name>strHelp</name> <operator>=</operator> <call><name><name>strHelp</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>strHelp</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'\n'</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+                <if_stmt><if>if <condition>(<expr><name>category</name> <operator>!=</operator> <name><name>pcmd</name><operator>-&gt;</operator><name>category</name></name></expr>)</condition>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>category</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                        <expr_stmt><expr><name>strRet</name> <operator>+=</operator> <literal type="string">"\n"</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                    <expr_stmt><expr><name>category</name> <operator>=</operator> <name><name>pcmd</name><operator>-&gt;</operator><name>category</name></name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>strRet</name> <operator>+=</operator> <literal type="string">"== "</literal> <operator>+</operator> <call><name>Capitalize</name><argument_list>(<argument><expr><name>category</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" ==\n"</literal></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name>strRet</name> <operator>+=</operator> <name>strHelp</name> <operator>+</operator> <literal type="string">"\n"</literal></expr>;</expr_stmt>
+        </block_content>}</block></catch></try>
+    </block_content>}</block></for>
+    <if_stmt><if>if <condition>(<expr><name>strRet</name> <operator>==</operator> <literal type="string">""</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>strRet</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"help: unknown command: %s\n"</literal></expr></argument>, <argument><expr><name>strCommand</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>strRet</name> <operator>=</operator> <call><name><name>strRet</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>,<argument><expr><call><name><name>strRet</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>strRet</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>UniValue</name></type> <name>help</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>jsonRequest</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>jsonRequest</name><operator>.</operator><name>fHelp</name></name> <operator>||</operator> <call><name><name>jsonRequest</name><operator>.</operator><name>params</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(
+            <argument><expr><call><name>RPCHelpMan</name><argument_list>{<argument><expr><literal type="string">"help"</literal></expr></argument>,
+                <argument><expr><literal type="string">"\nList all commands, or get help for a specified command.\n"</literal></expr></argument>,
+                <block>{<block_content>
+                    <block>{<block_content><expr_stmt><expr><literal type="string">"command"</literal></expr><operator>,</operator> <expr><name><name>RPCArg</name><operator>::</operator><name>Type</name><operator>::</operator><name>STR</name></name></expr><operator>,</operator> <comment type="block">/* default */</comment> <expr><literal type="string">"all commands"</literal></expr><operator>,</operator> <expr><literal type="string">"The command to get help on"</literal></expr></expr_stmt>}</block_content></block><operator>,</operator>
+                <expr_stmt/>}</block_content></block>,
+                <argument><expr><call><name>RPCResult</name><argument_list>{
+            <argument><expr><literal type="string">"\"text\"     (string) The help text\n"</literal></expr></argument>
+                }</argument_list></call></expr></argument>,
+                <argument><expr><call><name>RPCExamples</name><argument_list>{<argument><expr><literal type="string">""</literal></expr></argument>}</argument_list></call></expr></argument>,
+            }</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>
+        )</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strCommand</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>jsonRequest</name><operator>.</operator><name>params</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>strCommand</name> <operator>=</operator> <name><name>jsonRequest</name><operator>.</operator><name>params</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>get_str</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name><name>tableRPC</name><operator>.</operator><name>help</name></name><argument_list>(<argument><expr><name>strCommand</name></expr></argument>, <argument><expr><name>jsonRequest</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+
+<function><type><name>UniValue</name></type> <name>stop</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>jsonRequest</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Accept the deprecated and ignored 'detach' boolean argument</comment>
+    <comment type="line">// Also accept the hidden 'wait' integer argument (milliseconds)</comment>
+    <comment type="line">// For instance, 'stop 1000' makes the call wait 1 second before returning</comment>
+    <comment type="line">// to the client (intended for testing)</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>jsonRequest</name><operator>.</operator><name>fHelp</name></name> <operator>||</operator> <call><name><name>jsonRequest</name><operator>.</operator><name>params</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(
+            <argument><expr><call><name>RPCHelpMan</name><argument_list>{<argument><expr><literal type="string">"stop"</literal></expr></argument>,
+                <argument><expr><literal type="string">"\nRequest a graceful shutdown of "</literal> <name>PACKAGE_NAME</name> <literal type="string">"."</literal></expr></argument>,
+                <block>{<block_content><expr_stmt/>}</block_content></block>,
+                <argument><expr><call><name>RPCResults</name><argument_list>{}</argument_list></call></expr></argument>,
+                <argument><expr><call><name>RPCExamples</name><argument_list>{<argument><expr><literal type="string">""</literal></expr></argument>}</argument_list></call></expr></argument>,
+            }</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <comment type="line">// Event loop will exit after current HTTP requests have been handled, so</comment>
+    <comment type="line">// this reply will get back to the client.</comment>
+    <expr_stmt><expr><call><name>StartShutdown</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>jsonRequest</name><operator>.</operator><name>params</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>isNum</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>MilliSleep</name><argument_list>(<argument><expr><name><name>jsonRequest</name><operator>.</operator><name>params</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>get_int</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>PACKAGE_NAME</name> <literal type="string">" stopping"</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>UniValue</name></type> <name>uptime</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>jsonRequest</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+            <expr_stmt><expr><call><name>RPCHelpMan</name><argument_list>{<argument><expr><literal type="string">"uptime"</literal></expr></argument>,
+                <argument><expr><literal type="string">"\nReturns the total uptime of the server.\n"</literal></expr></argument>,
+                            <block>{<block_content><expr_stmt/>}</block_content></block>,
+                            <argument><expr><call><name>RPCResult</name><argument_list>{
+                        <argument><expr><literal type="string">"ttt        (numeric) The number of seconds that the server has been running\n"</literal></expr></argument>
+                            }</argument_list></call></expr></argument>,
+                <argument><expr><call><name>RPCExamples</name><argument_list>{
+                    <argument><expr><call><name>HelpExampleCli</name><argument_list>(<argument><expr><literal type="string">"uptime"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call>
+                <operator>+</operator> <macro><name>HelpExampleRpc</name><argument_list>(<argument><literal type="string">"uptime"</literal></argument>, <argument><literal type="string">""</literal></argument>)</argument_list></macro></expr></argument>
+                }</argument_list></call></expr></argument>,
+            }</argument_list></call><operator>.</operator><call><name>Check</name><argument_list>(<argument><expr><name>jsonRequest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><call><name>GetTime</name><argument_list>()</argument_list></call> <operator>-</operator> <call><name>GetStartupTime</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>UniValue</name></type> <name>getrpcinfo</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>request</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+            <expr_stmt><expr><call><name>RPCHelpMan</name><argument_list>{<argument><expr><literal type="string">"getrpcinfo"</literal></expr></argument>,
+                <argument><expr><literal type="string">"\nReturns details of the RPC server.\n"</literal></expr></argument>,
+                <block>{<block_content><expr_stmt/>}</block_content></block>,
+                <argument><expr><call><name>RPCResult</name><argument_list>{
+            <argument><expr><literal type="string">"{\n"</literal>
+            <literal type="string">" \"active_commands\" (array) All active commands\n"</literal>
+            <literal type="string">"  [\n"</literal>
+            <literal type="string">"   {               (object) Information about an active command\n"</literal>
+            <literal type="string">"    \"method\"       (string)  The name of the RPC command \n"</literal>
+            <literal type="string">"    \"duration\"     (numeric)  The running time in microseconds\n"</literal>
+            <literal type="string">"   },...\n"</literal>
+            <literal type="string">"  ],\n"</literal>
+            <literal type="string">" \"logpath\": \"xxx\" (string) The complete file path to the debug log\n"</literal>
+            <literal type="string">"}\n"</literal></expr></argument>
+                }</argument_list></call></expr></argument>,
+                <argument><expr><call><name>RPCExamples</name><argument_list>{
+                    <argument><expr><call><name>HelpExampleCli</name><argument_list>(<argument><expr><literal type="string">"getrpcinfo"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call>
+                <operator>+</operator> <macro><name>HelpExampleRpc</name><argument_list>(<argument><literal type="string">"getrpcinfo"</literal></argument>, <argument><literal type="string">""</literal></argument>)</argument_list></macro></expr></argument>}</argument_list></call></expr></argument>,
+            }</argument_list></call><operator>.</operator><call><name>Check</name><argument_list>(<argument><expr><name>request</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>g_rpc_server_info</name><operator>.</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>active_commands</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VARR</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>RPCCommandExecutionInfo</name><modifier>&amp;</modifier></type> <name>info</name> <range>: <expr><name><name>g_rpc_server_info</name><operator>.</operator><name>active_commands</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>entry</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>entry</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"method"</literal></expr></argument>, <argument><expr><name><name>info</name><operator>.</operator><name>method</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>entry</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"duration"</literal></expr></argument>, <argument><expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call> <operator>-</operator> <name><name>info</name><operator>.</operator><name>start</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>active_commands</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>result</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>result</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"active_commands"</literal></expr></argument>, <argument><expr><name>active_commands</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>path</name> <init>= <expr><call><name>LogInstance</name><argument_list>()</argument_list></call><operator>.</operator><call><name><name>m_file_path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>log_path</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VSTR</name></name></expr></argument>, <argument><expr><name>path</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>result</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"logpath"</literal></expr></argument>, <argument><expr><name>log_path</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// clang-format off</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>CRPCCommand</name></type> <name><name>vRPCCommands</name><index>[]</index></name> <init>=
+<expr><block>{ <comment type="line">//  category              name                      actor (function)         argNames</comment>
+  <comment type="line">//  --------------------- ------------------------  -----------------------  ----------</comment>
+    <comment type="block">/* Overall control/query calls */</comment>
+    <expr><block>{ <expr><literal type="string">"control"</literal></expr>,            <expr><literal type="string">"getrpcinfo"</literal></expr>,             <expr><operator>&amp;</operator><name>getrpcinfo</name></expr>,             <expr><block>{}</block></expr>  }</block></expr>,
+    <expr><block>{ <expr><literal type="string">"control"</literal></expr>,            <expr><literal type="string">"help"</literal></expr>,                   <expr><operator>&amp;</operator><name>help</name></expr>,                   <expr><block>{<expr><literal type="string">"command"</literal></expr>}</block></expr>  }</block></expr>,
+    <expr><block>{ <expr><literal type="string">"control"</literal></expr>,            <expr><literal type="string">"stop"</literal></expr>,                   <expr><operator>&amp;</operator><name>stop</name></expr>,                   <expr><block>{<expr><literal type="string">"wait"</literal></expr>}</block></expr>  }</block></expr>,
+    <expr><block>{ <expr><literal type="string">"control"</literal></expr>,            <expr><literal type="string">"uptime"</literal></expr>,                 <expr><operator>&amp;</operator><name>uptime</name></expr>,                 <expr><block>{}</block></expr>  }</block></expr>,
+}</block></expr></init></decl>;</decl_stmt>
+<comment type="line">// clang-format on</comment>
+
+<constructor><name><name>CRPCTable</name><operator>::</operator><name>CRPCTable</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>vcidx</name></decl>;</decl_stmt>
+    <for>for <control>(<init><expr><name>vcidx</name> <operator>=</operator> <literal type="number">0</literal></expr>;</init> <condition><expr><name>vcidx</name> <operator>&lt;</operator> <operator>(</operator><sizeof>sizeof<argument_list>(<argument><expr><name>vRPCCommands</name></expr></argument>)</argument_list></sizeof> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name><name>vRPCCommands</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr>;</condition> <incr><expr><name>vcidx</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CRPCCommand</name> <modifier>*</modifier></type><name>pcmd</name></decl>;</decl_stmt>
+
+        <expr_stmt><expr><name>pcmd</name> <operator>=</operator> <operator>&amp;</operator><name><name>vRPCCommands</name><index>[<expr><name>vcidx</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>mapCommands</name><index>[<expr><name><name>pcmd</name><operator>-&gt;</operator><name>name</name></name></expr>]</index></name><operator>.</operator><call><name>push_back</name><argument_list>(<argument><expr><name>pcmd</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>CRPCTable</name><operator>::</operator><name>appendCommand</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>name</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CRPCCommand</name><modifier>*</modifier></type> <name>pcmd</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name>IsRPCRunning</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name><name>mapCommands</name><index>[<expr><name>name</name></expr>]</index></name><operator>.</operator><call><name>push_back</name><argument_list>(<argument><expr><name>pcmd</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CRPCTable</name><operator>::</operator><name>removeCommand</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>name</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CRPCCommand</name><modifier>*</modifier></type> <name>pcmd</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>mapCommands</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>it</name> <operator>!=</operator> <call><name><name>mapCommands</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>new_end</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>remove</name></name><argument_list>(<argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>pcmd</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>new_end</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>new_end</name></expr></argument>, <argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StartRPC</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"Starting RPC\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>g_rpc_running</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>g_rpcSignals</name><operator>.</operator><name>Started</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>InterruptRPC</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"Interrupting RPC\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Interrupt e.g. running longpolls</comment>
+    <expr_stmt><expr><name>g_rpc_running</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StopRPC</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"Stopping RPC\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>deadlineTimers</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>DeleteAuthCookie</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>g_rpcSignals</name><operator>.</operator><name>Stopped</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsRPCRunning</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name>g_rpc_running</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>SetRPCWarmupStatus</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>newStatus</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_rpcWarmup</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>rpcWarmupStatus</name> <operator>=</operator> <name>newStatus</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>SetRPCWarmupFinished</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_rpcWarmup</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>fRPCInWarmup</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fRPCInWarmup</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>RPCIsInWarmup</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name> <modifier>*</modifier></type><name>outStatus</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_rpcWarmup</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>outStatus</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><operator>*</operator><name>outStatus</name> <operator>=</operator> <name>rpcWarmupStatus</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <return>return <expr><name>fRPCInWarmup</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsDeprecatedRPCEnabled</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>method</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>enabled_methods</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArgs</name></name><argument_list>(<argument><expr><literal type="string">"-deprecatedrpc"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <return>return <expr><call><name>find</name><argument_list>(<argument><expr><call><name><name>enabled_methods</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>enabled_methods</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>method</name></expr></argument>)</argument_list></call> <operator>!=</operator> <call><name><name>enabled_methods</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>UniValue</name></type> <name>JSONRPCExecOne</name><parameter_list>(<parameter><decl><type><name>JSONRPCRequest</name></type> <name>jreq</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>req</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>rpc_result</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name><name>jreq</name><operator>.</operator><name>parse</name></name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>result</name> <init>= <expr><call><name><name>tableRPC</name><operator>.</operator><name>execute</name></name><argument_list>(<argument><expr><name>jreq</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>rpc_result</name> <operator>=</operator> <call><name>JSONRPCReplyObj</name><argument_list>(<argument><expr><name>result</name></expr></argument>, <argument><expr><name>NullUniValue</name></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>objError</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>rpc_result</name> <operator>=</operator> <call><name>JSONRPCReplyObj</name><argument_list>(<argument><expr><name>NullUniValue</name></expr></argument>, <argument><expr><name>objError</name></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>rpc_result</name> <operator>=</operator> <call><name>JSONRPCReplyObj</name><argument_list>(<argument><expr><name>NullUniValue</name></expr></argument>,
+                                     <argument><expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_PARSE_ERROR</name></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>jreq</name><operator>.</operator><name>id</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+
+    <return>return <expr><name>rpc_result</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>JSONRPCExecBatch</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>jreq</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>vReq</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>ret</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VARR</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>reqIdx</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>reqIdx</name> <operator>&lt;</operator> <call><name><name>vReq</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>reqIdx</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>ret</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>JSONRPCExecOne</name><argument_list>(<argument><expr><name>jreq</name></expr></argument>, <argument><expr><name><name>vReq</name><index>[<expr><name>reqIdx</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <return>return <expr><call><name><name>ret</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Process named arguments into a vector of positional arguments, based on the
+ * passed-in specification for the RPC call's arguments.
+ */</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>JSONRPCRequest</name></type> <name>transformNamedArguments</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>in</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>argNames</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>JSONRPCRequest</name></type> <name>out</name> <init>= <expr><name>in</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>out</name><operator>.</operator><name>params</name></name> <operator>=</operator> <call><name>UniValue</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VARR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Build a map of parameters, and remove ones that have been processed, so that we can throw a focused error if</comment>
+    <comment type="line">// there is an unknown one.</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>keys</name> <init>= <expr><call><name><name>in</name><operator>.</operator><name>params</name><operator>.</operator><name>getKeys</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>UniValue</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>values</name> <init>= <expr><call><name><name>in</name><operator>.</operator><name>params</name><operator>.</operator><name>getValues</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><specifier>const</specifier> <name>UniValue</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>argsIn</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><call><name><name>keys</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>argsIn</name><index>[<expr><name><name>keys</name><index>[<expr><name>i</name></expr>]</index></name></expr>]</index></name> <operator>=</operator> <operator>&amp;</operator><name><name>values</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// Process expected parameters.</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>hole</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>argNamePattern</name><range>: <expr><name>argNames</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vargNames</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>algorithm</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vargNames</name></expr></argument>, <argument><expr><name>argNamePattern</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>algorithm</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">"|"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>auto</name></type> <name>fr</name> <init>= <expr><call><name><name>argsIn</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type> <name>argName</name> <range>: <expr><name>vargNames</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>fr</name> <operator>=</operator> <call><name><name>argsIn</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>argName</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>fr</name> <operator>!=</operator> <call><name><name>argsIn</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+        <if_stmt><if>if <condition>(<expr><name>fr</name> <operator>!=</operator> <call><name><name>argsIn</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>hole</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+                <comment type="line">// Fill hole between specified parameters with JSON nulls,</comment>
+                <comment type="line">// but not at the end (for backwards compatibility with calls</comment>
+                <comment type="line">// that act based on number of specified parameters).</comment>
+                <expr_stmt><expr><call><name><name>out</name><operator>.</operator><name>params</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>UniValue</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+            <expr_stmt><expr><name>hole</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>out</name><operator>.</operator><name>params</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>*</operator><name><name>fr</name><operator>-&gt;</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>argsIn</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>fr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><name>hole</name> <operator>+=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// If there are still arguments in the argsIn map, this is an error.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>argsIn</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_INVALID_PARAMETER</name></expr></argument>, <argument><expr><literal type="string">"Unknown named parameter "</literal> <operator>+</operator> <call><name><name>argsIn</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>first</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// Return request with named arguments transformed to positional arguments</comment>
+    <return>return <expr><name>out</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>UniValue</name></type> <name><name>CRPCTable</name><operator>::</operator><name>execute</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name> <modifier>&amp;</modifier></type><name>request</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// Return immediately if in warmup</comment>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_rpcWarmup</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>fRPCInWarmup</name></expr>)</condition><block type="pseudo"><block_content>
+            <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_IN_WARMUP</name></expr></argument>, <argument><expr><name>rpcWarmupStatus</name></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    </block_content>}</block>
+
+    <comment type="line">// Find method</comment>
+    <decl_stmt><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>mapCommands</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name><name>request</name><operator>.</operator><name>strMethod</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>it</name> <operator>!=</operator> <call><name><name>mapCommands</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>result</name></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>command</name> <range>: <expr><name><name>it</name><operator>-&gt;</operator><name>second</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name>ExecuteCommand</name><argument_list>(<argument><expr><operator>*</operator><name>command</name></expr></argument>, <argument><expr><name>request</name></expr></argument>, <argument><expr><name>result</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>command</name> <operator>==</operator> <operator>&amp;</operator><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <return>return <expr><name>result</name></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+    <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_METHOD_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"Method not found"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>ExecuteCommand</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CRPCCommand</name><modifier>&amp;</modifier></type> <name>command</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>request</name></decl></parameter>, <parameter><decl><type><name>UniValue</name><modifier>&amp;</modifier></type> <name>result</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>last_handler</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <try>try
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>RPCCommandExecution</name></type> <name>execution</name><argument_list>(<argument><expr><name><name>request</name><operator>.</operator><name>strMethod</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <comment type="line">// Execute, convert arguments to array if necessary</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>request</name><operator>.</operator><name>params</name><operator>.</operator><name>isObject</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name><name>command</name><operator>.</operator><name>actor</name></name><argument_list>(<argument><expr><call><name>transformNamedArguments</name><argument_list>(<argument><expr><name>request</name></expr></argument>, <argument><expr><name><name>command</name><operator>.</operator><name>argNames</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>result</name></expr></argument>, <argument><expr><name>last_handler</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <return>return <expr><call><name><name>command</name><operator>.</operator><name>actor</name></name><argument_list>(<argument><expr><name>request</name></expr></argument>, <argument><expr><name>result</name></expr></argument>, <argument><expr><name>last_handler</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_MISC_ERROR</name></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></catch></try>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name><name>CRPCTable</name><operator>::</operator><name>listCommands</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>commandList</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>mapCommands</name></expr></range></decl></init>)</control><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>commandList</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name><name>i</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <return>return <expr><name>commandList</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>RPCSetTimerInterfaceIfUnset</name><parameter_list>(<parameter><decl><type><name>RPCTimerInterface</name> <modifier>*</modifier></type><name>iface</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>timerInterface</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>timerInterface</name> <operator>=</operator> <name>iface</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>RPCSetTimerInterface</name><parameter_list>(<parameter><decl><type><name>RPCTimerInterface</name> <modifier>*</modifier></type><name>iface</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>timerInterface</name> <operator>=</operator> <name>iface</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>RPCUnsetTimerInterface</name><parameter_list>(<parameter><decl><type><name>RPCTimerInterface</name> <modifier>*</modifier></type><name>iface</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>timerInterface</name> <operator>==</operator> <name>iface</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>timerInterface</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>RPCRunLater</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>name</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>func</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nSeconds</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>timerInterface</name></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name>JSONRPCError</name><argument_list>(<argument><expr><name>RPC_INTERNAL_ERROR</name></expr></argument>, <argument><expr><literal type="string">"No timer handler registered for RPC"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>deadlineTimers</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RPC</name></name></expr></argument>, <argument><expr><literal type="string">"queue run of timer %s in %i seconds (using %s)\n"</literal></expr></argument>, <argument><expr><name>name</name></expr></argument>, <argument><expr><name>nSeconds</name></expr></argument>, <argument><expr><call><name><name>timerInterface</name><operator>-&gt;</operator><name>Name</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>deadlineTimers</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>RPCTimerBase</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>timerInterface</name><operator>-&gt;</operator><name>NewTimer</name></name><argument_list>(<argument><expr><name>func</name></expr></argument>, <argument><expr><name>nSeconds</name><operator>*</operator><literal type="number">1000</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name>RPCSerializationFlags</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>flag</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-rpcserialversion"</literal></expr></argument>, <argument><expr><name>DEFAULT_RPC_SERIALIZE_VERSION</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>flag</name> <operator>|=</operator> <name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <return>return <expr><name>flag</name></expr>;</return>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name>CRPCTable</name></type> <name>tableRPC</name></decl>;</decl_stmt>
+</unit>

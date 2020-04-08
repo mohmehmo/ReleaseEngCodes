@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/policy/rbf.cpp"><comment type="line">// Copyright (c) 2016-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/rbf.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/rbf.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>RBFTransactionState</name></type> <name>IsRBFOptIn</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTxMemPool</name><modifier>&amp;</modifier></type> <name>pool</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>AssertLockHeld</name><argument_list>(<argument><expr><name><name>pool</name><operator>.</operator><name>cs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>setEntries</name></name></type> <name>setAncestors</name></decl>;</decl_stmt>
+
+    <comment type="line">// First check the transaction itself.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>SignalsOptInRBF</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name><name>RBFTransactionState</name><operator>::</operator><name>REPLACEABLE_BIP125</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// If this transaction is not in our mempool, then we can't be sure</comment>
+    <comment type="line">// we will know about all its inputs.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pool</name><operator>.</operator><name>exists</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name><name>RBFTransactionState</name><operator>::</operator><name>UNKNOWN</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// If all the inputs have nSequence &gt;= maxint-1, it still might be</comment>
+    <comment type="line">// signaled for RBF if any unconfirmed parents have signaled.</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>noLimit</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>dummy</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CTxMemPoolEntry</name></type> <name>entry</name> <init>= <expr><operator>*</operator><call><name><name>pool</name><operator>.</operator><name>mapTx</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pool</name><operator>.</operator><name>CalculateMemPoolAncestors</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>, <argument><expr><name>setAncestors</name></expr></argument>, <argument><expr><name>noLimit</name></expr></argument>, <argument><expr><name>noLimit</name></expr></argument>, <argument><expr><name>noLimit</name></expr></argument>, <argument><expr><name>noLimit</name></expr></argument>, <argument><expr><name>dummy</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></type> <name>it</name> <range>: <expr><name>setAncestors</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name>SignalsOptInRBF</name><argument_list>(<argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><name><name>RBFTransactionState</name><operator>::</operator><name>REPLACEABLE_BIP125</name></name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><name><name>RBFTransactionState</name><operator>::</operator><name>FINAL</name></name></expr>;</return>
+</block_content>}</block></function>
+</unit>

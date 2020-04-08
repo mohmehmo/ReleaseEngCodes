@@ -1,0 +1,616 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/psbt.h"><comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_PSBT_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_PSBT_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;attributes.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;node/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;optional.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/feerate.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pubkey.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/sign.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/signingprovider.h&gt;</cpp:file></cpp:include>
+
+<comment type="line">// Magic bytes</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name><name>PSBT_MAGIC_BYTES</name><index>[<expr><literal type="number">5</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="char">'p'</literal></expr>, <expr><literal type="char">'s'</literal></expr>, <expr><literal type="char">'b'</literal></expr>, <expr><literal type="char">'t'</literal></expr>, <expr><literal type="number">0xff</literal></expr>}</block></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Global types</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_GLOBAL_UNSIGNED_TX</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Input types</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_NON_WITNESS_UTXO</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_WITNESS_UTXO</name> <init>= <expr><literal type="number">0x01</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_PARTIAL_SIG</name> <init>= <expr><literal type="number">0x02</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_SIGHASH</name> <init>= <expr><literal type="number">0x03</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_REDEEMSCRIPT</name> <init>= <expr><literal type="number">0x04</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_WITNESSSCRIPT</name> <init>= <expr><literal type="number">0x05</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_BIP32_DERIVATION</name> <init>= <expr><literal type="number">0x06</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_SCRIPTSIG</name> <init>= <expr><literal type="number">0x07</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_IN_SCRIPTWITNESS</name> <init>= <expr><literal type="number">0x08</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Output types</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_OUT_REDEEMSCRIPT</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_OUT_WITNESSSCRIPT</name> <init>= <expr><literal type="number">0x01</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_OUT_BIP32_DERIVATION</name> <init>= <expr><literal type="number">0x02</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// The separator is 0x00. Reading this in means that the unserializer can interpret it</comment>
+<comment type="line">// as a 0 length key which indicates that this is the separator. The separator has no value.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>uint8_t</name></type> <name>PSBT_SEPARATOR</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** A structure for PSBTs which contain per-input information */</comment>
+<struct>struct <name>PSBTInput</name>
+<block>{
+    <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>non_witness_utxo</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>witness_utxo</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>redeem_script</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>witness_script</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>final_script_sig</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CScriptWitness</name></type> <name>final_script_witness</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CPubKey</name></expr></argument>, <argument><expr><name>KeyOriginInfo</name></expr></argument>&gt;</argument_list></name> <name>hd_keypaths</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>SigPair</name></expr></argument>&gt;</argument_list></name> <name>partial_sigs</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>unknown</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>sighash_type</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsNull</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>void</name></type> <name>FillSignatureData</name><argument_list>(<argument><expr><name>SignatureData</name><operator>&amp;</operator> <name>sigdata</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>FromSignatureData</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SignatureData</name><modifier>&amp;</modifier></type> <name>sigdata</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>Merge</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function><type><name>bool</name></type> <name>IsSane</name><parameter_list>()</parameter_list> const;</function>
+    <macro><name>PSBTInput</name><argument_list>()</argument_list></macro> <block>{<block_content/>}</block>
+
+    <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>)</argument_list> const <block>{<block_content>
+        <comment type="line">// Write the utxo</comment>
+        <comment type="line">// If there is a non-witness utxo, then don't add the witness one.</comment>
+        <if_stmt><if>if <condition>(<expr><name>non_witness_utxo</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_NON_WITNESS_UTXO</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name><name>OverrideStream</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name></type> <name>os</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetType</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetVersion</name></name><argument_list>()</argument_list></call> <operator>|</operator> <name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>non_witness_utxo</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_WITNESS_UTXO</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>witness_utxo</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>final_script_sig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Write any partial signatures</comment>
+            <for>for <control>(<init><decl><type><name>auto</name></type> <name>sig_pair</name> <range>: <expr><name>partial_sigs</name></expr></range></decl></init>)</control> <block>{<block_content>
+                <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_PARTIAL_SIG</name></expr></argument>, <argument><expr><call><name>MakeSpan</name><argument_list>(<argument><expr><name><name>sig_pair</name><operator>.</operator><name>second</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>sig_pair</name><operator>.</operator><name>second</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+            </block_content>}</block></for>
+
+            <comment type="line">// Write the sighash type</comment>
+            <if_stmt><if>if <condition>(<expr><name>sighash_type</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_SIGHASH</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>sighash_type</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Write the redeem script</comment>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_REDEEMSCRIPT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>redeem_script</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Write the witness script</comment>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_WITNESSSCRIPT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>witness_script</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Write any hd keypaths</comment>
+            <expr_stmt><expr><call><name>SerializeHDKeypaths</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>hd_keypaths</name></expr></argument>, <argument><expr><name>PSBT_IN_BIP32_DERIVATION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Write script sig</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>final_script_sig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_SCRIPTSIG</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>final_script_sig</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// write script witness</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_IN_SCRIPTWITNESS</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name><name>final_script_witness</name><operator>.</operator><name>stack</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Write unknown things</comment>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>entry</name> <operator>:</operator> <name>unknown</name></expr></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>first</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>PSBT_SEPARATOR</name></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <comment type="line">// Used for duplicate key detection</comment>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>key_lookup</name></expr>;</expr_stmt>
+
+        <comment type="line">// Read loop</comment>
+        <decl_stmt><decl><type><name>bool</name></type> <name>found_sep</name> <init>= <expr><name>false</name></expr></init></decl>;</decl_stmt>
+        <while>while<condition>(<expr><operator>!</operator><call><name><name>s</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Read</comment>
+            <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>key</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>key</name></expr>;</expr_stmt>
+
+            <comment type="line">// the key is empty if that was actually a separator byte</comment>
+            <comment type="line">// This is a special case for key lengths 0 as those are not allowed (except for separator)</comment>
+            <if_stmt><if>if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>found_sep</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// First byte of key is the type</comment>
+            <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>type</name> <init>= <expr><name><name>key</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Do stuff based on type</comment>
+            <switch>switch<condition>(<expr><name>type</name></expr>)</condition> <block>{<block_content>
+                <case>case <expr><name>PSBT_IN_NON_WITNESS_UTXO</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input non-witness utxo already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Non-witness utxo key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <comment type="line">// Set the stream to unserialize with witness since this is always a valid network transaction</comment>
+                    <decl_stmt><decl><type><name><name>OverrideStream</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name></type> <name>os</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetType</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetVersion</name></name><argument_list>()</argument_list></call> <operator>&amp;</operator> <operator>~</operator><name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <expr_stmt><expr><call><name>UnserializeFromVector</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>non_witness_utxo</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_IN_WITNESS_UTXO</name></expr>:</case>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input witness utxo already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Witness utxo key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><call><name>UnserializeFromVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>witness_utxo</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                <case>case <expr><name>PSBT_IN_PARTIAL_SIG</name></expr>:</case>
+                <block>{<block_content>
+                    <comment type="line">// Make sure that the key is the size of pubkey + 1</comment>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>CPubKey</name><operator>::</operator><name>SIZE</name> <operator>+</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>CPubKey</name><operator>::</operator><name>COMPRESSED_SIZE</name> <operator>+</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Size of key was not the expected size for the type partial signature pubkey"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <comment type="line">// Read in the pubkey from key</comment>
+                    <decl_stmt><decl><type><name>CPubKey</name></type> <name>pubkey</name><argument_list>(<argument><expr><call><name><name>key</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><call><name><name>key</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pubkey</name><operator>.</operator><name>IsFullyValid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                       <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Invalid pubkey"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>partial_sigs</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><call><name><name>pubkey</name><operator>.</operator><name>GetID</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input partial signature for pubkey already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+
+                    <comment type="line">// Read in the signature from value</comment>
+                    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>sig</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>sig</name></expr>;</expr_stmt>
+
+                    <comment type="line">// Add to list</comment>
+                    <expr_stmt><expr><call><name><name>partial_sigs</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><call><name><name>pubkey</name><operator>.</operator><name>GetID</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>SigPair</name><argument_list>(<argument><expr><name>pubkey</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>sig</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_IN_SIGHASH</name></expr>:</case>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input sighash type already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Sighash type key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><call><name>UnserializeFromVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>sighash_type</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                <case>case <expr><name>PSBT_IN_REDEEMSCRIPT</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input redeemScript already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Input redeemScript key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>redeem_script</name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_IN_WITNESSSCRIPT</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input witnessScript already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Input witnessScript key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>witness_script</name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_IN_BIP32_DERIVATION</name></expr>:</case>
+                <block>{<block_content>
+                    <expr_stmt><expr><call><name>DeserializeHDKeypaths</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>key</name></expr></argument>, <argument><expr><name>hd_keypaths</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_IN_SCRIPTSIG</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input final scriptSig already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Final scriptSig key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>final_script_sig</name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_IN_SCRIPTWITNESS</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, input final scriptWitness already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Final scriptWitness key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><call><name>UnserializeFromVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name><name>final_script_witness</name><operator>.</operator><name>stack</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <comment type="line">// Unknown stuff</comment>
+                <default>default:</default>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>unknown</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, key for unknown value already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <comment type="line">// Read in the value</comment>
+                    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>val_bytes</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>val_bytes</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>unknown</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>val_bytes</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+            </block_content>}</block></switch>
+        </block_content>}</block></while>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>found_sep</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Separator is missing at the end of an input map"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name></type>
+    <name>PSBTInput</name><parameter_list>(<parameter><decl><type><name>deserialize_type</name></type></decl></parameter>, <parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** A structure for PSBTs which contains per output information */</comment>
+<struct>struct <name>PSBTOutput</name>
+<block>{
+    <decl_stmt><decl><type><name>CScript</name></type> <name>redeem_script</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>witness_script</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CPubKey</name></expr></argument>, <argument><expr><name>KeyOriginInfo</name></expr></argument>&gt;</argument_list></name> <name>hd_keypaths</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>unknown</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsNull</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>void</name></type> <name>FillSignatureData</name><argument_list>(<argument><expr><name>SignatureData</name><operator>&amp;</operator> <name>sigdata</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>FromSignatureData</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SignatureData</name><modifier>&amp;</modifier></type> <name>sigdata</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>Merge</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PSBTOutput</name><modifier>&amp;</modifier></type> <name>output</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function><type><name>bool</name></type> <name>IsSane</name><parameter_list>()</parameter_list> const;</function>
+    <macro><name>PSBTOutput</name><argument_list>()</argument_list></macro> <block>{<block_content/>}</block>
+
+    <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>)</argument_list> const <block>{<block_content>
+        <comment type="line">// Write the redeem script</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_OUT_REDEEMSCRIPT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>redeem_script</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Write the witness script</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_OUT_WITNESSSCRIPT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>witness_script</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Write any hd keypaths</comment>
+        <expr_stmt><expr><call><name>SerializeHDKeypaths</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>hd_keypaths</name></expr></argument>, <argument><expr><name>PSBT_OUT_BIP32_DERIVATION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Write unknown things</comment>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>entry</name> <operator>:</operator> <name>unknown</name></expr></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>first</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>PSBT_SEPARATOR</name></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <comment type="line">// Used for duplicate key detection</comment>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>key_lookup</name></expr>;</expr_stmt>
+
+        <comment type="line">// Read loop</comment>
+        <decl_stmt><decl><type><name>bool</name></type> <name>found_sep</name> <init>= <expr><name>false</name></expr></init></decl>;</decl_stmt>
+        <while>while<condition>(<expr><operator>!</operator><call><name><name>s</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Read</comment>
+            <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>key</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>key</name></expr>;</expr_stmt>
+
+            <comment type="line">// the key is empty if that was actually a separator byte</comment>
+            <comment type="line">// This is a special case for key lengths 0 as those are not allowed (except for separator)</comment>
+            <if_stmt><if>if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>found_sep</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// First byte of key is the type</comment>
+            <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>type</name> <init>= <expr><name><name>key</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Do stuff based on type</comment>
+            <switch>switch<condition>(<expr><name>type</name></expr>)</condition> <block>{<block_content>
+                <case>case <expr><name>PSBT_OUT_REDEEMSCRIPT</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, output redeemScript already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Output redeemScript key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>redeem_script</name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_OUT_WITNESSSCRIPT</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, output witnessScript already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Output witnessScript key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>witness_script</name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <case>case <expr><name>PSBT_OUT_BIP32_DERIVATION</name></expr>:</case>
+                <block>{<block_content>
+                    <expr_stmt><expr><call><name>DeserializeHDKeypaths</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>key</name></expr></argument>, <argument><expr><name>hd_keypaths</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+                <comment type="line">// Unknown stuff</comment>
+                <default>default:</default> <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>unknown</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, key for unknown value already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <comment type="line">// Read in the value</comment>
+                    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>val_bytes</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>val_bytes</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>unknown</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>val_bytes</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block>
+            </block_content>}</block></switch>
+        </block_content>}</block></while>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>found_sep</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Separator is missing at the end of an output map"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name></type>
+    <name>PSBTOutput</name><parameter_list>(<parameter><decl><type><name>deserialize_type</name></type></decl></parameter>, <parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** A version of CTransaction with the PSBT format*/</comment>
+<struct>struct <name>PartiallySignedTransaction</name>
+<block>{
+    <decl_stmt><decl><type><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>CMutableTransaction</name></expr></argument>&gt;</argument_list></name></type> <name>tx</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>PSBTInput</name></expr></argument>&gt;</argument_list></name> <name>inputs</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>PSBTOutput</name></expr></argument>&gt;</argument_list></name> <name>outputs</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>unknown</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsNull</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Merge psbt into this. The two psbts must have the same underlying CTransaction (i.e. the
+      * same actual Bitcoin transaction.) Returns true if the merge succeeded, false otherwise. */</comment>
+    <function_decl><type><name>NODISCARD</name> <name>bool</name></type> <name>Merge</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function><type><name>bool</name></type> <name>IsSane</name><parameter_list>()</parameter_list> const;</function>
+    <function_decl><type><name>bool</name></type> <name>AddInput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name></decl></parameter>, <parameter><decl><type><name>PSBTInput</name><modifier>&amp;</modifier></type> <name>psbtin</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>AddOutput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>PSBTOutput</name><modifier>&amp;</modifier></type> <name>psbtout</name></decl></parameter>)</parameter_list>;</function_decl>
+    <macro><name>PartiallySignedTransaction</name><argument_list>()</argument_list></macro> <block>{<block_content/>}</block>
+    <function_decl><type><name>explicit</name></type> <name>PartiallySignedTransaction</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/**
+     * Finds the UTXO for a given input index
+     *
+     * @param[out] utxo The UTXO of the input if found
+     * @param[in] input_index Index of the input to retrieve the UTXO of
+     * @return Whether the UTXO for the specified input was found
+     */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetInputUTXO</name><argument_list>(<argument><expr><name>CTxOut</name><operator>&amp;</operator> <name>utxo</name></expr></argument>, <argument><expr><name>int</name> <name>input_index</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>)</argument_list> const <block>{<block_content>
+
+        <comment type="line">// magic bytes</comment>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>PSBT_MAGIC_BYTES</name></expr>;</expr_stmt>
+
+        <comment type="line">// unsigned tx flag</comment>
+        <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>PSBT_GLOBAL_UNSIGNED_TX</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Write serialized tx to a stream</comment>
+        <decl_stmt><decl><type><name><name>OverrideStream</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name></type> <name>os</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetType</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetVersion</name></name><argument_list>()</argument_list></call> <operator>|</operator> <name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>SerializeToVector</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><operator>*</operator><name>tx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Write the unknown things</comment>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>entry</name> <operator>:</operator> <name>unknown</name></expr></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>first</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <comment type="line">// Separator</comment>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>PSBT_SEPARATOR</name></expr>;</expr_stmt>
+
+        <comment type="line">// Write inputs</comment>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name> <range>: <expr><name>inputs</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>input</name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <comment type="line">// Write outputs</comment>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>PSBTOutput</name><modifier>&amp;</modifier></type> <name>output</name> <range>: <expr><name>outputs</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>output</name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></decl></decl_stmt>
+
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <comment type="line">// Read the magic bytes</comment>
+        <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>magic</name><index>[<expr><literal type="number">5</literal></expr>]</index></name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>magic</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>std</name><operator>::</operator><call><name>equal</name><argument_list>(<argument><expr><name>magic</name></expr></argument>, <argument><expr><name>magic</name> <operator>+</operator> <literal type="number">5</literal></expr></argument>, <argument><expr><name>PSBT_MAGIC_BYTES</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Invalid PSBT magic bytes"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Used for duplicate key detection</comment>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>key_lookup</name></expr>;</expr_stmt>
+
+        <comment type="line">// Read global data</comment>
+        <decl_stmt><decl><type><name>bool</name></type> <name>found_sep</name> <init>= <expr><name>false</name></expr></init></decl>;</decl_stmt>
+        <while>while<condition>(<expr><operator>!</operator><call><name><name>s</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Read</comment>
+            <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>key</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>key</name></expr>;</expr_stmt>
+
+            <comment type="line">// the key is empty if that was actually a separator byte</comment>
+            <comment type="line">// This is a special case for key lengths 0 as those are not allowed (except for separator)</comment>
+            <if_stmt><if>if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>found_sep</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// First byte of key is the type</comment>
+            <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>type</name> <init>= <expr><name><name>key</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Do stuff based on type</comment>
+            <switch>switch<condition>(<expr><name>type</name></expr>)</condition> <block>{<block_content>
+                <case>case <expr><name>PSBT_GLOBAL_UNSIGNED_TX</name></expr>:</case>
+                <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key_lookup</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, unsigned tx already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Global unsigned tx key is more than one byte type"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>mtx</name></decl>;</decl_stmt>
+                    <comment type="line">// Set the stream to serialize with non-witness since this should always be non-witness</comment>
+                    <decl_stmt><decl><type><name><name>OverrideStream</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name></type> <name>os</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetType</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>GetVersion</name></name><argument_list>()</argument_list></call> <operator>|</operator> <name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <expr_stmt><expr><call><name>UnserializeFromVector</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>mtx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>tx</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>mtx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <comment type="line">// Make sure that all scriptSigs and scriptWitnesses are empty</comment>
+                    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>-&gt;</operator><name>vin</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+                        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><call><name><name>txin</name><operator>.</operator><name>scriptWitness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Unsigned tx does not have empty scriptSigs and scriptWitnesses."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                        </block_content>}</block></if></if_stmt>
+                    </block_content>}</block></for>
+                    <break>break;</break>
+                </block_content>}</block>
+                <comment type="line">// Unknown stuff</comment>
+                <default>default:</default> <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>unknown</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Duplicate Key, key for unknown value already provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <comment type="line">// Read in the value</comment>
+                    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>val_bytes</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>val_bytes</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>unknown</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>val_bytes</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block>
+            </block_content>}</block></switch>
+        </block_content>}</block></while>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>found_sep</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Separator is missing at the end of the global map"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Make sure that we got an unsigned tx</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>tx</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"No unsigned transcation was provided"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Read input data</comment>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <while>while <condition>(<expr><operator>!</operator><call><name><name>s</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>PSBTInput</name></type> <name>input</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>input</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>inputs</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>input</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <comment type="line">// Make sure the non-witness utxo matches the outpoint</comment>
+            <if_stmt><if>if <condition>(<expr><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name> <operator>&amp;&amp;</operator> <call><name><name>input</name><operator>.</operator><name>non_witness_utxo</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name><name>tx</name><operator>-&gt;</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>hash</name></name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Non-witness UTXO does not match outpoint hash"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><operator>++</operator><name>i</name></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <comment type="line">// Make sure that the number of inputs matches the number of inputs in the transaction</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>inputs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <call><name><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Inputs provided does not match the number of inputs in transaction."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Read output data</comment>
+        <expr_stmt><expr><name>i</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <while>while <condition>(<expr><operator>!</operator><call><name><name>s</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>-&gt;</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>PSBTOutput</name></type> <name>output</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>output</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>outputs</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>output</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><operator>++</operator><name>i</name></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <comment type="line">// Make sure that the number of outputs matches the number of outputs in the transaction</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>outputs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <call><name><name>tx</name><operator>-&gt;</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"Outputs provided does not match the number of outputs in transaction."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Sanity check</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsSane</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"PSBT is not sane."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name></type>
+    <name>PartiallySignedTransaction</name><parameter_list>(<parameter><decl><type><name>deserialize_type</name></type></decl></parameter>, <parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+}</block>;</struct>
+
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>PSBTRole</name> <block>{<block_content>
+    <expr_stmt><expr><name>UPDATER</name></expr><operator>,</operator>
+    <expr><name>SIGNER</name></expr><operator>,</operator>
+    <expr><name>FINALIZER</name></expr><operator>,</operator>
+    <expr><name>EXTRACTOR</name></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>PSBTRoleName</name><argument_list>(<argument>PSBTRole role</argument>)</argument_list></macro></expr>;</expr_stmt>
+
+<comment type="block" format="doxygen">/** Checks whether a PSBTInput is already signed. */</comment>
+<function_decl><type><name>bool</name></type> <name>PSBTInputSigned</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/** Signs a PSBTInput, verifying that all provided data matches what is being signed. */</comment>
+<function_decl><type><name>bool</name></type> <name>SignPSBTInput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SigningProvider</name><modifier>&amp;</modifier></type> <name>provider</name></decl></parameter>, <parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>index</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>sighash</name> <init>= <expr><name>SIGHASH_ALL</name></expr></init></decl></parameter>, <parameter><decl><type><name>SignatureData</name><modifier>*</modifier></type> <name>out_sigdata</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>use_dummy</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/** Updates a PSBTOutput with information from provider.
+ *
+ * This fills in the redeem_script, witness_script, and hd_keypaths where possible.
+ */</comment>
+<function_decl><type><name>void</name></type> <name>UpdatePSBTOutput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SigningProvider</name><modifier>&amp;</modifier></type> <name>provider</name></decl></parameter>, <parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>index</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * Finalizes a PSBT if possible, combining partial signatures.
+ *
+ * @param[in,out] &amp;psbtx reference to PartiallySignedTransaction to finalize
+ * return True if the PSBT is now complete, false otherwise
+ */</comment>
+<function_decl><type><name>bool</name></type> <name>FinalizePSBT</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbtx</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * Finalizes a PSBT if possible, and extracts it to a CMutableTransaction if it could be finalized.
+ *
+ * @param[in]  &amp;psbtx reference to PartiallySignedTransaction
+ * @param[out] result CMutableTransaction representing the complete transaction, if successful
+ * @return True if we successfully extracted the transaction, false otherwise
+ */</comment>
+<function_decl><type><name>bool</name></type> <name>FinalizeAndExtractPSBT</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbtx</name></decl></parameter>, <parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>result</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * Combines PSBTs with the same underlying transaction, resulting in a single PSBT with all partial signatures from each input.
+ *
+ * @param[out] &amp;out   the combined PSBT, if successful
+ * @param[in]  psbtxs the PSBTs to combine
+ * @return error (OK if we successfully combined the transactions, other error if they were not compatible)
+ */</comment>
+<decl_stmt><decl><type><name>NODISCARD</name> <name>TransactionError</name></type> <name>CombinePSBTs</name><argument_list>(<argument><expr><name>PartiallySignedTransaction</name><operator>&amp;</operator> <name>out</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>PartiallySignedTransaction</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>psbtxs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="line" format="doxygen">//! Decode a base64ed PSBT into a PartiallySignedTransaction</comment>
+<decl_stmt><decl><type><name>NODISCARD</name> <name>bool</name></type> <name>DecodeBase64PSBT</name><argument_list>(<argument><expr><name>PartiallySignedTransaction</name><operator>&amp;</operator> <name>decoded_psbt</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>base64_psbt</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>error</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Decode a raw (binary blob) PSBT into a PartiallySignedTransaction</comment>
+<decl_stmt><decl><type><name>NODISCARD</name> <name>bool</name></type> <name>DecodeRawPSBT</name><argument_list>(<argument><expr><name>PartiallySignedTransaction</name><operator>&amp;</operator> <name>decoded_psbt</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>raw_psbt</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>error</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_PSBT_H</comment>
+</unit>

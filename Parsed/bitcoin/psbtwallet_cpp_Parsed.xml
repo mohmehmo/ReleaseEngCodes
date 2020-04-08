@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/wallet/psbtwallet.cpp"><comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/psbtwallet.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>TransactionError</name></type> <name>FillPSBT</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CWallet</name><modifier>*</modifier></type> <name>pwallet</name></decl></parameter>, <parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbtx</name></decl></parameter>, <parameter><decl><type><name>bool</name><modifier>&amp;</modifier></type> <name>complete</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>sighash_type</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>sign</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>bip32derivs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>pwallet</name><operator>-&gt;</operator><name>cs_wallet</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Get all of the previous transactions</comment>
+    <expr_stmt><expr><name>complete</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>psbtx</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <init>= <expr><name><name>psbtx</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name> <init>= <expr><call><name><name>psbtx</name><operator>.</operator><name>inputs</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>PSBTInputSigned</name><argument_list>(<argument><expr><name>input</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Verify input looks sane. This will check that we have at most one uxto, witness or non-witness.</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>IsSane</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><name><name>TransactionError</name><operator>::</operator><name>INVALID_PSBT</name></name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// If we have no utxo, grab it from the wallet.</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name> <operator>&amp;&amp;</operator> <call><name><name>input</name><operator>.</operator><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txhash</name> <init>= <expr><name><name>txin</name><operator>.</operator><name>prevout</name><operator>.</operator><name>hash</name></name></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><specifier>const</specifier> <specifier>auto</specifier></type> <name>it</name> <init>= <expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>mapWallet</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>txhash</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>it</name> <operator>!=</operator> <call><name><name>pwallet</name><operator>-&gt;</operator><name>mapWallet</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><specifier>const</specifier> <name>CWalletTx</name><modifier>&amp;</modifier></type> <name>wtx</name> <init>= <expr><name><name>it</name><operator>-&gt;</operator><name>second</name></name></expr></init></decl>;</decl_stmt>
+                <comment type="line">// We only need the non_witness_utxo, which is a superset of the witness_utxo.</comment>
+                <comment type="line">//   The signing code will switch to the smaller witness_utxo if this is ok.</comment>
+                <expr_stmt><expr><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name> <operator>=</operator> <name><name>wtx</name><operator>.</operator><name>tx</name></name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Get the Sighash type</comment>
+        <if_stmt><if>if <condition>(<expr><name>sign</name> <operator>&amp;&amp;</operator> <name><name>input</name><operator>.</operator><name>sighash_type</name></name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>input</name><operator>.</operator><name>sighash_type</name></name> <operator>!=</operator> <name>sighash_type</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><name><name>TransactionError</name><operator>::</operator><name>SIGHASH_MISMATCH</name></name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Get the scriptPubKey to know which SigningProvider to use</comment>
+        <decl_stmt><decl><type><name>CScript</name></type> <name>script</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>script</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>witness_utxo</name><operator>.</operator><name>scriptPubKey</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>script</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>non_witness_utxo</name><operator>-&gt;</operator><name>vout</name><index>[<expr><name><name>txin</name><operator>.</operator><name>prevout</name><operator>.</operator><name>n</name></name></expr>]</index></name><operator>.</operator><name>scriptPubKey</name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <comment type="line">// There's no UTXO so we can just skip this now</comment>
+            <expr_stmt><expr><name>complete</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></else></if_stmt>
+        <decl_stmt><decl><type><name>SignatureData</name></type> <name>sigdata</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>input</name><operator>.</operator><name>FillSignatureData</name></name><argument_list>(<argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>SigningProvider</name><modifier>*</modifier></type> <name>provider</name> <init>= <expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetSigningProvider</name></name><argument_list>(<argument><expr><name>script</name></expr></argument>, <argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>provider</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>complete</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><name>complete</name> <operator>&amp;=</operator> <call><name>SignPSBTInput</name><argument_list>(<argument><expr><call><name>HidingSigningProvider</name><argument_list>(<argument><expr><name>provider</name></expr></argument>, <argument><expr><operator>!</operator><name>sign</name></expr></argument>, <argument><expr><operator>!</operator><name>bip32derivs</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>psbtx</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name>sighash_type</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Fill in the bip32 keypaths and redeemscripts for the outputs so that hardware wallets can identify change</comment>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>psbtx</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>out</name> <init>= <expr><call><name><name>psbtx</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>vout</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>SigningProvider</name><modifier>*</modifier></type> <name>provider</name> <init>= <expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetSigningProvider</name></name><argument_list>(<argument><expr><name><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>provider</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>UpdatePSBTOutput</name><argument_list>(<argument><expr><call><name>HidingSigningProvider</name><argument_list>(<argument><expr><name>provider</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><operator>!</operator><name>bip32derivs</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>psbtx</name></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><name><name>TransactionError</name><operator>::</operator><name>OK</name></name></expr>;</return>
+</block_content>}</block></function>
+</unit>

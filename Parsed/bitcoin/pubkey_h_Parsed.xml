@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/pubkey.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Copyright (c) 2017 The Zcash developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_PUBKEY_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_PUBKEY_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;hash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdexcept&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>BIP32_EXTKEY_SIZE</name> <init>= <expr><literal type="number">74</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** A reference to a CKey: the Hash160 of its serialized public key */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CKeyID</name> <range>: <expr><name>public</name> <name>uint160</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <call><name>CKeyID</name><argument_list>()</argument_list></call> <operator>:</operator> <macro><name>uint160</name><argument_list>()</argument_list></macro> <block>{}</block>
+    <name>explicit</name> <call><name>CKeyID</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint160</name><operator>&amp;</operator> <name>in</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>uint160</name><argument_list>(<argument>in</argument>)</argument_list></macro> <block>{}</block></expr>
+}</block></expr></range></decl>;</decl_stmt>
+
+<typedef>typedef <type><name>uint256</name></type> <name>ChainCode</name>;</typedef>
+
+<comment type="block" format="doxygen">/** An encapsulated public key. */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CPubKey</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/**
+     * secp256k1:
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>SIZE</name>                   <init>= <expr><literal type="number">65</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>COMPRESSED_SIZE</name>        <init>= <expr><literal type="number">33</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>SIGNATURE_SIZE</name>         <init>= <expr><literal type="number">72</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>unsigned</name> <name>int</name></type> <name>COMPACT_SIGNATURE_SIZE</name> <init>= <expr><literal type="number">65</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/**
+     * see www.keylength.com
+     * script supports up to 75 for single byte push
+     */</comment>
+    <expr_stmt><expr><call><name>static_assert</name><argument_list>(
+        <argument><expr><name>SIZE</name> <operator>&gt;=</operator> <name>COMPRESSED_SIZE</name></expr></argument>,
+        <argument><expr><literal type="string">"COMPRESSED_SIZE is larger than SIZE"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<label><name>private</name>:</label>
+
+    <comment type="block" format="doxygen">/**
+     * Just store the serialized data.
+     * Its length can very cheaply be computed from the first byte.
+     */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>vch</name><index>[<expr><name>SIZE</name></expr>]</index></name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Compute the length of a pubkey with a given first byte.</comment>
+    <function><type><name>unsigned</name> <name>int</name> <specifier>static</specifier></type> <name>GetLen</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>chHeader</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>chHeader</name> <operator>==</operator> <literal type="number">2</literal> <operator>||</operator> <name>chHeader</name> <operator>==</operator> <literal type="number">3</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>COMPRESSED_SIZE</name></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>chHeader</name> <operator>==</operator> <literal type="number">4</literal> <operator>||</operator> <name>chHeader</name> <operator>==</operator> <literal type="number">6</literal> <operator>||</operator> <name>chHeader</name> <operator>==</operator> <literal type="number">7</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>SIZE</name></expr>;</return></block_content></block></if></if_stmt>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="line" format="doxygen">//! Set this key data to be invalid</comment>
+    <function><type><name>void</name></type> <name>Invalidate</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0xFF</literal></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+<label><name>public</name>:</label>
+
+    <decl_stmt><decl><type><name>bool</name> <specifier>static</specifier></type> <name>ValidSize</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vch</name></expr></argument>)</argument_list> <block>{<block_content>
+      <return>return <expr><call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name>GetLen</name><argument_list>(<argument><expr><name><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call> <operator>==</operator> <call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <comment type="line" format="doxygen">//! Construct an invalid public key.</comment>
+    <macro><name>CPubKey</name><argument_list>()</argument_list></macro>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>Invalidate</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <comment type="line" format="doxygen">//! Initialize a public key using begin/end iterators to byte data.</comment>
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Set</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>T</name></type> <name>pbegin</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>T</name></type> <name>pend</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>len</name> <init>= <expr><ternary><condition><expr><name>pend</name> <operator>==</operator> <name>pbegin</name></expr> ?</condition><then> <expr><literal type="number">0</literal></expr> </then><else>: <expr><call><name>GetLen</name><argument_list>(<argument><expr><name><name>pbegin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></else></ternary></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>len</name> <operator>&amp;&amp;</operator> <name>len</name> <operator>==</operator> <operator>(</operator><name>pend</name> <operator>-</operator> <name>pbegin</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>vch</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name><name>pbegin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><name>len</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Invalidate</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    </block_content>}</block></function>
+
+    <comment type="line" format="doxygen">//! Construct a public key using begin/end iterators to byte data.</comment>
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name></type>
+    <name>CPubKey</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>T</name></type> <name>pbegin</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>T</name></type> <name>pend</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>Set</name><argument_list>(<argument><expr><name>pbegin</name></expr></argument>, <argument><expr><name>pend</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="line" format="doxygen">//! Construct a public key from a byte vector.</comment>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>CPubKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>_vch</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>Set</name><argument_list>(<argument><expr><call><name><name>_vch</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>_vch</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <comment type="line" format="doxygen">//! Simple read-only vector-like interface to the pubkey data.</comment>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>size</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><call><name>GetLen</name><argument_list>(<argument><expr><name><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator> <macro><name>data</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>vch</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator> <macro><name>begin</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>vch</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator> <macro><name>end</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>vch</name> <operator>+</operator> <call><name>size</name><argument_list>()</argument_list></call></expr>;</return> }</block></expr></expr_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>&amp;</modifier></type> <name><name>operator</name><index>[]</index></name><argument_list>(<argument><expr><name>unsigned</name> <name>int</name> <name>pos</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name><name>vch</name><index>[<expr><name>pos</name></expr>]</index></name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+    <comment type="line" format="doxygen">//! Comparator implementation.</comment>
+    <expr_stmt><expr><name>friend</name> <name>bool</name> <name>operator</name><operator>==</operator><operator>(</operator><specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <return>return <expr><name><name>a</name><operator>.</operator><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name><name>b</name><operator>.</operator><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>&amp;&amp;</operator>
+               <call><name>memcmp</name><argument_list>(<argument><expr><name><name>a</name><operator>.</operator><name>vch</name></name></expr></argument>, <argument><expr><name><name>b</name><operator>.</operator><name>vch</name></name></expr></argument>, <argument><expr><call><name><name>a</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>;</return>
+    }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>bool</name> <name>operator</name><operator>!=</operator><operator>(</operator><specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <return>return <expr><operator>!</operator><operator>(</operator><name>a</name> <operator>==</operator> <name>b</name><operator>)</operator></expr>;</return>
+    }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>bool</name> <name>operator</name><operator>&lt;</operator><operator>(</operator><specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <return>return <expr><name><name>a</name><operator>.</operator><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>&lt;</operator> <name><name>b</name><operator>.</operator><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>||</operator>
+               <operator>(</operator><name><name>a</name><operator>.</operator><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name><name>b</name><operator>.</operator><name>vch</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>&amp;&amp;</operator> <call><name>memcmp</name><argument_list>(<argument><expr><name><name>a</name><operator>.</operator><name>vch</name></name></expr></argument>, <argument><expr><name><name>b</name><operator>.</operator><name>vch</name></name></expr></argument>, <argument><expr><call><name><name>a</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! Implement serialization, as if this was a byte vector.</comment>
+    <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>len</name> <init>= <expr><call><name>size</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><operator>::</operator><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>len</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><name>vch</name></expr></argument>, <argument><expr><name>len</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>len</name> <init>= <expr><operator>::</operator><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>len</name> <operator>&lt;=</operator> <name>SIZE</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><name>vch</name></expr></argument>, <argument><expr><name>len</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <comment type="line">// invalid pubkey, skip available data</comment>
+            <decl_stmt><decl><type><name>char</name></type> <name>dummy</name></decl>;</decl_stmt>
+            <while>while <condition>(<expr><name>len</name><operator>--</operator></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummy</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></while>
+            <expr_stmt><expr><call><name>Invalidate</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+
+    <comment type="line" format="doxygen">//! Get the KeyID of this public key (hash of its serialization)</comment>
+    <expr_stmt><expr><name>CKeyID</name> <macro><name>GetID</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name>CKeyID</name><argument_list>(<argument><expr><call><name>Hash160</name><argument_list>(<argument><expr><name>vch</name></expr></argument>, <argument><expr><name>vch</name> <operator>+</operator> <call><name>size</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! Get the 256-bit hash of this public key.</comment>
+    <expr_stmt><expr><name>uint256</name> <macro><name>GetHash</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name>Hash</name><argument_list>(<argument><expr><name>vch</name></expr></argument>, <argument><expr><name>vch</name> <operator>+</operator> <call><name>size</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="block">/*
+     * Check syntactic correctness.
+     *
+     * Note that this is consensus critical as CheckSig() calls it!
+     */</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsValid</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name>size</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! fully validate whether this is a valid public key (more expensive than IsValid())</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsFullyValid</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Check whether this is a compressed public key.</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsCompressed</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name>size</name><argument_list>()</argument_list></call> <operator>==</operator> <name>COMPRESSED_SIZE</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Verify a DER signature (~72 bytes).
+     * If this public key is not fully valid, the return value will be false.
+     */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>Verify</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchSig</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Check whether a signature is normalized (lower-S).
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>CheckLowS</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchSig</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Recover a public key from a compact signature.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>RecoverCompact</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchSig</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Turn this public key into an uncompressed public key.</comment>
+    <function_decl><type><name>bool</name></type> <name>Decompress</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Derive BIP32 child pubkey.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>Derive</name><argument_list>(<argument><expr><name>CPubKey</name><operator>&amp;</operator> <name>pubkeyChild</name></expr></argument>, <argument><expr><name>ChainCode</name> <operator>&amp;</operator><name>ccChild</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>nChild</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>ChainCode</name><operator>&amp;</operator> <name>cc</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<struct>struct <name>CExtPubKey</name> <block>{
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>nDepth</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>vchFingerprint</name><index>[<expr><literal type="number">4</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nChild</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>ChainCode</name></type> <name>chaincode</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CPubKey</name></type> <name>pubkey</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name>friend</name> <name>bool</name> <name>operator</name><operator>==</operator><operator>(</operator><specifier>const</specifier> <name>CExtPubKey</name> <operator>&amp;</operator><name>a</name><operator>,</operator> <specifier>const</specifier> <name>CExtPubKey</name> <operator>&amp;</operator><name>b</name><operator>)</operator>
+    <block>{
+        <return>return <expr><name><name>a</name><operator>.</operator><name>nDepth</name></name> <operator>==</operator> <name><name>b</name><operator>.</operator><name>nDepth</name></name> <operator>&amp;&amp;</operator>
+            <call><name>memcmp</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>a</name><operator>.</operator><name>vchFingerprint</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>b</name><operator>.</operator><name>vchFingerprint</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>vchFingerprint</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator>
+            <name><name>a</name><operator>.</operator><name>nChild</name></name> <operator>==</operator> <name><name>b</name><operator>.</operator><name>nChild</name></name> <operator>&amp;&amp;</operator>
+            <name><name>a</name><operator>.</operator><name>chaincode</name></name> <operator>==</operator> <name><name>b</name><operator>.</operator><name>chaincode</name></name> <operator>&amp;&amp;</operator>
+            <name><name>a</name><operator>.</operator><name>pubkey</name></name> <operator>==</operator> <name><name>b</name><operator>.</operator><name>pubkey</name></name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <decl_stmt><decl><type><name>void</name></type> <name>Encode</name><argument_list>(<argument><expr><name>unsigned</name> <name>char</name> <name><name>code</name><index>[<expr><name>BIP32_EXTKEY_SIZE</name></expr>]</index></name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>Decode</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name></type> <name><name>code</name><index>[<expr><name>BIP32_EXTKEY_SIZE</name></expr>]</index></name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>bool</name></type> <name>Derive</name><argument_list>(<argument><expr><name>CExtPubKey</name><operator>&amp;</operator> <name>out</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>nChild</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** Users of this module must hold an ECCVerifyHandle. The constructor and
+ *  destructor of these are not allowed to run in parallel, though. */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>ECCVerifyHandle</name>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>int</name></type> <name>refcount</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>ECCVerifyHandle</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>~</operator><call><name>ECCVerifyHandle</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_PUBKEY_H</comment>
+</unit>

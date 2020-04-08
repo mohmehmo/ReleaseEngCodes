@@ -1,0 +1,420 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/wallet/scriptpubkeyman.h"><comment type="line">// Copyright (c) 2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_WALLET_SCRIPTPUBKEYMAN_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_WALLET_SCRIPTPUBKEYMAN_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/signingprovider.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/standard.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/crypter.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/ismine.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/walletdb.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/walletutil.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/signals2/signal.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>OutputType</name></decl>;</decl_stmt>
+
+<comment type="line">// Wallet storage things that ScriptPubKeyMans need in order to be able to store things to the wallet database.</comment>
+<comment type="line">// It provides access to things that are part of the entire wallet and not specific to a ScriptPubKeyMan such as</comment>
+<comment type="line">// wallet flags, wallet version, encryption keys, encryption status, and the database itself. This allows a</comment>
+<comment type="line">// ScriptPubKeyMan to have callbacks into CWallet without causing a circular dependency.</comment>
+<comment type="line">// WalletStorage should be the same for all ScriptPubKeyMans of a wallet.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>WalletStorage</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><call><name>WalletStorage</name><argument_list>()</argument_list></call> <operator>=</operator> default</expr>;</expr_stmt>
+    <expr_stmt><expr><name>virtual</name> <specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <macro><name>GetDisplayName</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <function_decl><type><name>virtual</name> <name>WalletDatabase</name><modifier>&amp;</modifier></type> <name>GetDatabase</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>IsWalletFlagSet</name><argument_list>(<argument><expr><name>uint64_t</name></expr></argument>)</argument_list> const <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>UnsetBlankWalletFlag</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>CanSupportFeature</name><argument_list>(<argument><expr>enum <name>WalletFeature</name></expr></argument>)</argument_list> const <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>SetMinVersion</name><parameter_list>(<parameter><decl><type><name><name>enum</name> <name>WalletFeature</name></name></type></decl></parameter>, <parameter><decl><type><name>WalletBatch</name><modifier>*</modifier></type> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>, <parameter><decl><type><name>bool</name></type> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+    <expr_stmt><expr><name>virtual</name> <name>bool</name> <macro><name>IsLocked</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line" format="doxygen">//! Default for -keypool</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>DEFAULT_KEYPOOL_SIZE</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+
+<expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>&gt;</argument_list></name> <call><name>GetAffectedKeys</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>spk</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>SigningProvider</name><operator>&amp;</operator> <name>provider</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<comment type="block" format="doxygen">/** A key from a CWallet's keypool
+ *
+ * The wallet holds one (for pre HD-split wallets) or several keypools. These
+ * are sets of keys that have not yet been used to provide addresses or receive
+ * change.
+ *
+ * The Bitcoin Core wallet was originally a collection of unrelated private
+ * keys with their associated addresses. If a non-HD wallet generated a
+ * key/address, gave that address out and then restored a backup from before
+ * that key's generation, then any funds sent to that address would be
+ * lost definitively.
+ *
+ * The keypool was implemented to avoid this scenario (commit: 10384941). The
+ * wallet would generate a set of keys (100 by default). When a new public key
+ * was required, either to give out as an address or to use in a change output,
+ * it would be drawn from the keypool. The keypool would then be topped up to
+ * maintain 100 keys. This ensured that as long as the wallet hadn't used more
+ * than 100 keys since the previous backup, all funds would be safe, since a
+ * restored wallet would be able to scan for all owned addresses.
+ *
+ * A keypool also allowed encrypted wallets to give out addresses without
+ * having to be decrypted to generate a new private key.
+ *
+ * With the introduction of HD wallets (commit: f1902510), the keypool
+ * essentially became an address look-ahead pool. Restoring old backups can no
+ * longer definitively lose funds as long as the addresses used were from the
+ * wallet's HD seed (since all private keys can be rederived from the seed).
+ * However, if many addresses were used since the backup, then the wallet may
+ * not know how far ahead in the HD chain to look for its addresses. The
+ * keypool is used to implement a 'gap limit'. The keypool maintains a set of
+ * keys (by default 1000) ahead of the last used key and scans for the
+ * addresses of those keys.  This avoids the risk of not seeing transactions
+ * involving the wallet's addresses, or of re-using the same address.
+ *
+ * The HD-split wallet feature added a second keypool (commit: 02592f4c). There
+ * is an external keypool (for addresses to hand out) and an internal keypool
+ * (for change addresses).
+ *
+ * Keypool keys are stored in the wallet/keystore's keymap. The keypool data is
+ * stored as sets of indexes in the wallet (setInternalKeyPool,
+ * setExternalKeyPool and set_pre_split_keypool), and a map from the key to the
+ * index (m_pool_key_to_index). The CKeyPool object is used to
+ * serialize/deserialize the pool data to/from the database.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CKeyPool</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <comment type="line" format="doxygen">//! The time at which the key was generated. Set in AddKeypoolPubKeyWithDB</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTime</name></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! The public key</comment>
+    <decl_stmt><decl><type><name>CPubKey</name></type> <name>vchPubKey</name></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! Whether this keypool entry is in the internal keypool (for change outputs)</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fInternal</name></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! Whether this key was generated for a keypool before the wallet was upgraded to HD-split</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>m_pre_split</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>CKeyPool</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <macro><name>CKeyPool</name><argument_list>(<argument>const CPubKey&amp; vchPubKeyIn</argument>, <argument>bool internalIn</argument>)</argument_list></macro><empty_stmt>;</empty_stmt>
+
+    <expr_stmt><expr><name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nVersion</name> <init>= <expr><call><name><name>s</name><operator>.</operator><name>GetVersion</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><operator>(</operator><call><name><name>s</name><operator>.</operator><name>GetType</name></name><argument_list>()</argument_list></call> <operator>&amp;</operator> <name>SER_GETHASH</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nVersion</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nTime</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vchPubKey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>ser_action</name><operator>.</operator><name>ForRead</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <macro><name>try</name></macro> <block>{<block_content>
+                <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>fInternal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block>
+            <macro><name>catch</name> <argument_list>(<argument>std::ios_base::failure&amp;</argument>)</argument_list></macro> <block>{<block_content>
+                <comment type="block">/* flag as external address if we can't read the internal boolean
+                   (this will be the case for any wallet before the HD chain split version) */</comment>
+                <expr_stmt><expr><name>fInternal</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+            </block_content>}</block>
+            <macro><name>try</name></macro> <block>{<block_content>
+                <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>m_pre_split</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block>
+            <macro><name>catch</name> <argument_list>(<argument>std::ios_base::failure&amp;</argument>)</argument_list></macro> <block>{<block_content>
+                <comment type="block">/* flag as postsplit address if we can't read the m_pre_split boolean
+                   (this will be the case for any wallet that upgrades to HD chain split)*/</comment>
+                <expr_stmt><expr><name>m_pre_split</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+            </block_content>}</block>
+        </block_content>}</block></if>
+        <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>fInternal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>m_pre_split</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block">/*
+ * A class implementing ScriptPubKeyMan manages some (or all) scriptPubKeys used in a wallet.
+ * It contains the scripts and keys related to the scriptPubKeys it manages.
+ * A ScriptPubKeyMan will be able to give out scriptPubKeys to be used, as well as marking
+ * when a scriptPubKey has been used. It also handles when and how to store a scriptPubKey
+ * and its related scripts and keys, including encryption.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>ScriptPubKeyMan</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <decl_stmt><decl><type><name>WalletStorage</name><modifier>&amp;</modifier></type> <name>m_storage</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>ScriptPubKeyMan</name><argument_list>(<argument><expr><name>WalletStorage</name><operator>&amp;</operator> <name>storage</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>m_storage</name><argument_list>(<argument>storage</argument>)</argument_list></macro> <block>{}</block>
+    <name>virtual</name> <operator>~</operator><macro><name>ScriptPubKeyMan</name><argument_list>()</argument_list></macro> <block>{}</block></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>GetNewDestination</name><argument_list>(<argument><expr><specifier>const</specifier> <name>OutputType</name> <name>type</name></expr></argument>, <argument><expr><name>CTxDestination</name><operator>&amp;</operator> <name>dest</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>error</name></expr></argument>)</argument_list> <block>{<block_content> <return>return <expr><name>false</name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>isminetype</name></type> <name>IsMine</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>script</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name>ISMINE_NO</name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+    <function><type><name>virtual</name> <name>bool</name></type> <name>GetReservedDestination</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>OutputType</name></type> <name>type</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>internal</name></decl></parameter>, <parameter><decl><type><name>CTxDestination</name><modifier>&amp;</modifier></type> <name>address</name></decl></parameter>, <parameter><decl><type><name>int64_t</name><modifier>&amp;</modifier></type> <name>index</name></decl></parameter>, <parameter><decl><type><name>CKeyPool</name><modifier>&amp;</modifier></type> <name>keypool</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>false</name></expr>;</return> </block_content>}</block></function>
+    <function><type><name>virtual</name> <name>void</name></type> <name>KeepDestination</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>index</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>OutputType</name><modifier>&amp;</modifier></type> <name>type</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+    <function><type><name>virtual</name> <name>void</name></type> <name>ReturnDestination</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>index</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>internal</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTxDestination</name><modifier>&amp;</modifier></type> <name>addr</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+
+    <function><type><name>virtual</name> <name>bool</name></type> <name>TopUp</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>size</name> <init>= <expr><literal type="number">0</literal></expr></init></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>false</name></expr>;</return> </block_content>}</block></function>
+
+    <comment type="line" format="doxygen">//! Mark unused addresses as being used</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>MarkUnusedAddresses</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>script</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+
+    <comment type="block" format="doxygen">/** Sets up the key generation stuff, i.e. generates new HD seeds and sets them as active.
+      * Returns false if already setup or setup fails, true if setup is successful
+      * Set force=true to make it re-setup if already setup, used for upgrades
+      */</comment>
+    <function><type><name>virtual</name> <name>bool</name></type> <name>SetupGeneration</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>force</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>false</name></expr>;</return> </block_content>}</block></function>
+
+    <comment type="block">/* Returns true if HD is enabled */</comment>
+    <expr_stmt><expr><name>virtual</name> <name>bool</name> <macro><name>IsHDEnabled</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>false</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <comment type="block">/* Returns true if the wallet can give out new addresses. This means it has keys in the keypool or can generate new keys */</comment>
+    <function><type><name>virtual</name> <name>bool</name></type> <name>CanGetAddresses</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>internal</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>false</name></expr>;</return> </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Upgrades the wallet to the specified version */</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>Upgrade</name><argument_list>(<argument><expr><name>int</name> <name>prev_version</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>error</name></expr></argument>)</argument_list> <block>{<block_content> <return>return <expr><name>false</name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+    <expr_stmt><expr><name>virtual</name> <name>bool</name> <macro><name>HavePrivateKeys</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>false</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! The action to do when the DB needs rewrite</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>RewriteDB</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></function>
+
+    <function><type><name>virtual</name> <name>int64_t</name></type> <name>GetOldestKeyPoolTime</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><call><name>GetTime</name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></function>
+
+    <function><type><name>virtual</name> <name>size_t</name></type> <name>KeypoolCountExternalKeys</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><literal type="number">0</literal></expr>;</return> </block_content>}</block></function>
+    <expr_stmt><expr><name>virtual</name> <name>unsigned</name> <name>int</name> <macro><name>GetKeyPoolSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><literal type="number">0</literal></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>virtual</name> <name>int64_t</name> <macro><name>GetTimeFirstKey</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><literal type="number">0</literal></expr>;</return> }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! Return address metadata</comment>
+    <decl_stmt><decl><type><name>virtual</name> <specifier>const</specifier> <name>CKeyMetadata</name><modifier>*</modifier></type> <name>GetMetadata</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTxDestination</name><operator>&amp;</operator> <name>dest</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name>nullptr</name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>LegacyScriptPubKeyMan</name> <range>: <expr><name>public</name> <name>ScriptPubKeyMan</name></expr></range></decl>, <decl><type ref="prev"/><name>public</name> <name>FillableSigningProvider</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>using</name></type> <name>WatchOnlySet</name> <init>= <expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CScript</name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>using</name></type> <name>WatchKeyMap</name> <init>= <expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>CPubKey</name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+
+    <function_decl><type><name>WalletBatch</name> <modifier>*</modifier><name>encrypted_batch</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list> <init>= <expr><name>nullptr</name></expr></init>;</function_decl>
+
+    <decl_stmt><decl><type><name>using</name></type> <name>CryptedKeyMap</name> <init>= <expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>CPubKey</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+
+    <function_decl><type><name>CryptedKeyMap</name> <name>mapCryptedKeys</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_KeyStore</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>WatchOnlySet</name> <name>setWatchOnly</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_KeyStore</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>WatchKeyMap</name> <name>mapWatchKeys</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_KeyStore</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>int64_t</name> <name>nTimeFirstKey</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>AddKeyPubKeyInner</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPubKey</name> <modifier>&amp;</modifier></type><name>pubkey</name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>bool</name></type> <name>AddCryptedKeyInner</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CPubKey</name> <operator>&amp;</operator><name>vchPubKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vchCryptedSecret</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Private version of AddWatchOnly method which does not accept a
+     * timestamp, and which will reset the wallet's nTimeFirstKey value to 1 if
+     * the watch key did not previously have a timestamp associated with it.
+     * Because this is an inherited virtual method, it is accessible despite
+     * being marked private, but it is marked private anyway to encourage use
+     * of the other AddWatchOnly which accepts a timestamp and sets
+     * nTimeFirstKey more intelligently for more efficient rescans.
+     */</comment>
+    <function_decl><type><name>bool</name></type> <name>AddWatchOnly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>dest</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>AddWatchOnlyWithDB</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name> <modifier>&amp;</modifier></type><name>batch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>dest</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>AddWatchOnlyInMem</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>dest</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Adds a watch-only address to the store, and saves it to disk.</comment>
+    <function_decl><type><name>bool</name></type> <name>AddWatchOnlyWithDB</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name> <modifier>&amp;</modifier></type><name>batch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>dest</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>create_time</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Adds a key to the store, and saves it to disk.</comment>
+    <function_decl><type><name>bool</name></type> <name>AddKeyPubKeyWithDB</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name> <modifier>&amp;</modifier></type><name>batch</name></decl></parameter>,<parameter><decl><type><specifier>const</specifier> <name>CKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPubKey</name> <modifier>&amp;</modifier></type><name>pubkey</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>void</name></type> <name>AddKeypoolPubkeyWithDB</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>pubkey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>bool</name></type> <name>internal</name></decl></parameter>, <parameter><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type> <name>batch</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Adds a script to the store and saves it to disk</comment>
+    <function_decl><type><name>bool</name></type> <name>AddCScriptWithDB</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type> <name>batch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>script</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Add a KeyOriginInfo to the wallet */</comment>
+    <function_decl><type><name>bool</name></type> <name>AddKeyOriginWithDB</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type> <name>batch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>pubkey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>KeyOriginInfo</name><modifier>&amp;</modifier></type> <name>info</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block">/* the HD chain data model (external chain counters) */</comment>
+    <decl_stmt><decl><type><name>CHDChain</name></type> <name>hdChain</name></decl>;</decl_stmt>
+
+    <comment type="block">/* HD derive new child key (on internal or external chain) */</comment>
+    <function_decl><type><name>void</name></type> <name>DeriveNewChildKey</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type> <name>batch</name></decl></parameter>, <parameter><decl><type><name>CKeyMetadata</name><modifier>&amp;</modifier></type> <name>metadata</name></decl></parameter>, <parameter><decl><type><name>CKey</name><modifier>&amp;</modifier></type> <name>secret</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>internal</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name> <name>setInternalKeyPool</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name> <name>setExternalKeyPool</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name> <name>set_pre_split_keypool</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <function_decl><type><name>int64_t</name> <name>m_max_keypool_index</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name> <name>m_pool_key_to_index</name></expr>;</expr_stmt>
+    <comment type="line">// Tracks keypool indexes to CKeyIDs of keys that have been taken out of the keypool but may be returned to it</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>, <argument><expr><name>CKeyID</name></expr></argument>&gt;</argument_list></name> <name>m_index_to_reserved_key</name></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Fetches a key from the keypool</comment>
+    <function_decl><type><name>bool</name></type> <name>GetKeyFromPool</name><parameter_list>(<parameter><decl><type><name>CPubKey</name> <modifier>&amp;</modifier></type><name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>OutputType</name></type> <name>type</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>internal</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Reserves a key from the keypool and sets nIndex to its index
+     *
+     * @param[out] nIndex the index of the key in keypool
+     * @param[out] keypool the keypool the key was drawn from, which could be the
+     *     the pre-split pool if present, or the internal or external pool
+     * @param fRequestedInternal true if the caller would like the key drawn
+     *     from the internal keypool, false if external is preferred
+     *
+     * @return true if succeeded, false if failed due to empty keypool
+     * @throws std::runtime_error if keypool read failed, key was invalid,
+     *     was not found in the wallet, or was misclassified in the internal
+     *     or external keypool
+     */</comment>
+    <function_decl><type><name>bool</name></type> <name>ReserveKeyFromKeyPool</name><parameter_list>(<parameter><decl><type><name>int64_t</name><modifier>&amp;</modifier></type> <name>nIndex</name></decl></parameter>, <parameter><decl><type><name>CKeyPool</name><modifier>&amp;</modifier></type> <name>keypool</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fRequestedInternal</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetNewDestination</name><argument_list>(<argument><expr><specifier>const</specifier> <name>OutputType</name> <name>type</name></expr></argument>, <argument><expr><name>CTxDestination</name><operator>&amp;</operator> <name>dest</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>error</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>isminetype</name></type> <name>IsMine</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>script</name></expr></argument>)</argument_list> const <name>override</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! will encrypt previously unencrypted keys</comment>
+    <function_decl><type><name>bool</name></type> <name>EncryptKeys</name><parameter_list>(<parameter><decl><type><name>CKeyingMaterial</name><modifier>&amp;</modifier></type> <name>vMasterKeyIn</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetReservedDestination</name><argument_list>(<argument><expr><specifier>const</specifier> <name>OutputType</name> <name>type</name></expr></argument>, <argument><expr><name>bool</name> <name>internal</name></expr></argument>, <argument><expr><name>CTxDestination</name><operator>&amp;</operator> <name>address</name></expr></argument>, <argument><expr><name>int64_t</name><operator>&amp;</operator> <name>index</name></expr></argument>, <argument><expr><name>CKeyPool</name><operator>&amp;</operator> <name>keypool</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>void</name></type> <name>KeepDestination</name><argument_list>(<argument><expr><name>int64_t</name> <name>index</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>OutputType</name><operator>&amp;</operator> <name>type</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>void</name></type> <name>ReturnDestination</name><argument_list>(<argument><expr><name>int64_t</name> <name>index</name></expr></argument>, <argument><expr><name>bool</name> <name>internal</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CTxDestination</name><operator>&amp;</operator></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>TopUp</name><argument_list>(<argument><expr><name>unsigned</name> <name>int</name> <name>size</name> <operator>=</operator> <literal type="number">0</literal></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>void</name></type> <name>MarkUnusedAddresses</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>script</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Upgrade stored CKeyMetadata objects to store key origin info as KeyOriginInfo</comment>
+    <function_decl><type><name>void</name></type> <name>UpgradeKeyMetadata</name><parameter_list>()</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsHDEnabled</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>SetupGeneration</name><argument_list>(<argument><expr><name>bool</name> <name>force</name> <operator>=</operator> <name>false</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>Upgrade</name><argument_list>(<argument><expr><name>int</name> <name>prev_version</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>error</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>HavePrivateKeys</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>void</name> <macro><name>RewriteDB</name><argument_list>()</argument_list></macro> <name>override</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>int64_t</name> <macro><name>GetOldestKeyPoolTime</name><argument_list>()</argument_list></macro> <name>override</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>size_t</name> <macro><name>KeypoolCountExternalKeys</name><argument_list>()</argument_list></macro> <name>override</name> <call><name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>GetKeyPoolSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>int64_t</name> <macro><name>GetTimeFirstKey</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CKeyMetadata</name><modifier>*</modifier></type> <name>GetMetadata</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTxDestination</name><operator>&amp;</operator> <name>dest</name></expr></argument>)</argument_list> const <name>override</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>CanGetAddresses</name><argument_list>(<argument><expr><name>bool</name> <name>internal</name> <operator>=</operator> <name>false</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+
+    <comment type="line">// Map from Key ID to key metadata.</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>CKeyMetadata</name></expr></argument>&gt;</argument_list></name> <name>mapKeyMetadata</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Map from Script ID to key metadata (for watch-only keys).</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CScriptID</name></expr></argument>, <argument><expr><name>CKeyMetadata</name></expr></argument>&gt;</argument_list></name> <name>m_script_metadata</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Adds a key to the store, and saves it to disk.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>AddKeyPubKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKey</name><operator>&amp;</operator> <name>key</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CPubKey</name> <operator>&amp;</operator><name>pubkey</name></expr></argument>)</argument_list> <name>override</name> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! Adds a key to the store, without saving it to disk (used by LoadWallet)</comment>
+    <function_decl><type><name>bool</name></type> <name>LoadKey</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPubKey</name> <modifier>&amp;</modifier></type><name>pubkey</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Adds an encrypted key to the store, and saves it to disk.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>AddCryptedKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CPubKey</name> <operator>&amp;</operator><name>vchPubKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vchCryptedSecret</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! Adds an encrypted key to the store, without saving it to disk (used by LoadWallet)</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>LoadCryptedKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CPubKey</name> <operator>&amp;</operator><name>vchPubKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vchCryptedSecret</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>UpdateTimeFirstKey</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nCreateTime</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Adds a CScript to the store</comment>
+    <function_decl><type><name>bool</name></type> <name>LoadCScript</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>redeemScript</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Load metadata (used by LoadWallet)</comment>
+    <function_decl><type><name>void</name></type> <name>LoadKeyMetadata</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CKeyID</name><modifier>&amp;</modifier></type> <name>keyID</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name> <modifier>&amp;</modifier></type><name>metadata</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>LoadScriptMetadata</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScriptID</name><modifier>&amp;</modifier></type> <name>script_id</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name> <modifier>&amp;</modifier></type><name>metadata</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Generate a new key</comment>
+    <function_decl><type><name>CPubKey</name></type> <name>GenerateNewKey</name><parameter_list>(<parameter><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type> <name>batch</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>internal</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block">/* Set the HD chain model (chain child index counters) */</comment>
+    <function_decl><type><name>void</name></type> <name>SetHDChain</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CHDChain</name><modifier>&amp;</modifier></type> <name>chain</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>memonly</name></decl></parameter>)</parameter_list>;</function_decl>
+    <expr_stmt><expr><specifier>const</specifier> <name>CHDChain</name><operator>&amp;</operator> <macro><name>GetHDChain</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>hdChain</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! Adds a watch-only address to the store, without saving it to disk (used by LoadWallet)</comment>
+    <function_decl><type><name>bool</name></type> <name>LoadWatchOnly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>dest</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Returns whether the watch-only script is in the wallet</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>HaveWatchOnly</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name> <operator>&amp;</operator><name>dest</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! Returns whether there are any watch-only things in the wallet</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>HaveWatchOnly</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <comment type="line" format="doxygen">//! Remove a watch only script from the keystore</comment>
+    <function_decl><type><name>bool</name></type> <name>RemoveWatchOnly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>dest</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>AddWatchOnly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>dest</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nCreateTime</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Fetches a pubkey from mapWatchKeys if it exists there</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetWatchPubKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyID</name> <operator>&amp;</operator><name>address</name></expr></argument>, <argument><expr><name>CPubKey</name> <operator>&amp;</operator><name>pubkey_out</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block">/* SigningProvider overrides */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>HaveKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyID</name> <operator>&amp;</operator><name>address</name></expr></argument>)</argument_list> const <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyID</name> <operator>&amp;</operator><name>address</name></expr></argument>, <argument><expr><name>CKey</name><operator>&amp;</operator> <name>keyOut</name></expr></argument>)</argument_list> const <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetPubKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyID</name> <operator>&amp;</operator><name>address</name></expr></argument>, <argument><expr><name>CPubKey</name><operator>&amp;</operator> <name>vchPubKeyOut</name></expr></argument>)</argument_list> const <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>AddCScript</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>redeemScript</name></expr></argument>)</argument_list> <name>override</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetKeyOrigin</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyID</name><operator>&amp;</operator> <name>keyid</name></expr></argument>, <argument><expr><name>KeyOriginInfo</name><operator>&amp;</operator> <name>info</name></expr></argument>)</argument_list> const <name>override</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Load a keypool entry</comment>
+    <function_decl><type><name>void</name></type> <name>LoadKeyPool</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nIndex</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyPool</name> <modifier>&amp;</modifier></type><name>keypool</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>NewKeyPool</name><parameter_list>()</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>MarkPreSplitKeys</name><parameter_list>()</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>ImportScripts</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CScript</name></expr></argument>&gt;</argument_list></name> <name>scripts</name></expr></argument>, <argument><expr><name>int64_t</name> <name>timestamp</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ImportPrivKeys</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>CKey</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>privkey_map</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>int64_t</name> <name>timestamp</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ImportPubKeys</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>ordered_pubkeys</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>CPubKey</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>pubkey_map</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>CPubKey</name></expr></argument>, <argument><expr><name>KeyOriginInfo</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>key_origins</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>bool</name> <name>add_keypool</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>bool</name> <name>internal</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>int64_t</name> <name>timestamp</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ImportScriptPubKeys</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CScript</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>script_pub_keys</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>bool</name> <name>have_solving_data</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>int64_t</name> <name>timestamp</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs_wallet</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block">/* Returns true if the wallet can generate new keys */</comment>
+    <function_decl><type><name>bool</name></type> <name>CanGenerateKeys</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block">/* Generates a new HD seed (will not be activated) */</comment>
+    <function_decl><type><name>CPubKey</name></type> <name>GenerateNewSeed</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block">/* Derives a new HD seed (will not be activated) */</comment>
+    <function_decl><type><name>CPubKey</name></type> <name>DeriveNewSeed</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block">/* Set the current HD seed (will reset the chain child index counters)
+       Sets the seed's version based on the current wallet version (so the
+       caller must ensure the current wallet version is correct before calling
+       this function). */</comment>
+    <function_decl><type><name>void</name></type> <name>SetHDSeed</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Explicitly make the wallet learn the related scripts for outputs to the
+     * given key. This is purely to make the wallet file compatible with older
+     * software, as FillableSigningProvider automatically does this implicitly for all
+     * keys now.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>LearnRelatedScripts</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><name>OutputType</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Same as LearnRelatedScripts, but when the OutputType is not known (and could
+     * be anything).
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>LearnAllRelatedScripts</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Marks all keys in the keypool up to and including reserve_key as used.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>MarkReserveKeysAsUsed</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>keypool_id</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs_wallet</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <expr_stmt><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>, <argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <macro><name>GetAllReserveKeys</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>m_pool_key_to_index</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CKeyID</name></expr></argument>&gt;</argument_list></name> <macro><name>GetKeys</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;</expr_stmt>
+    <comment type="line">// Temporary CWallet accessors and aliases.</comment>
+    <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>CWallet</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>ReserveDestination</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LegacyScriptPubKeyMan</name><argument_list>(<argument><expr><name>CWallet</name><operator>&amp;</operator> <name>wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <function_decl><type><name>bool</name></type> <name>SetCrypted</name><parameter_list>()</parameter_list>;</function_decl>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsCrypted</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>void</name></type> <name>NotifyWatchonlyChanged</name><argument_list>(<argument><expr><name>bool</name> <name>fHaveWatchOnly</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <expr_stmt><expr><name>void</name> <macro><name>NotifyCanGetAddressesChanged</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name><modifier>...</modifier> <name>Params</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>WalletLogPrintf</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>fmt</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Params</name><operator>&amp;</operator><operator>...</operator> <name>parameters</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CWallet</name><modifier>&amp;</modifier></type> <name>m_wallet</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CCriticalSection</name><modifier>&amp;</modifier></type> <name>cs_wallet</name></decl>;</decl_stmt>
+    <function_decl><type><name>CKeyingMaterial</name><modifier>&amp;</modifier> <name>vMasterKey</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_KeyStore</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>fUseCrypto</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name><modifier>&amp;</modifier></type> <name>fDecryptionThoroughlyChecked</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_WALLET_SCRIPTPUBKEYMAN_H</comment>
+</unit>

@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/rest.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;core_io.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;httpserver.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;index/txindex.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/block.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/blockchain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/protocol.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/server.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;txmempool.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;version.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string.hpp&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;univalue.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>MAX_GETUTXOS_OUTPOINTS</name> <init>= <expr><literal type="number">15</literal></expr></init></decl>;</decl_stmt> <comment type="line">//allow a max of 15 outpoints to be queried at once</comment>
+
+<enum type="class">enum class <name>RetFormat</name> <block>{
+    <decl><name>UNDEF</name></decl>,
+    <decl><name>BINARY</name></decl>,
+    <decl><name>HEX</name></decl>,
+    <decl><name>JSON</name></decl>,
+}</block>;</enum>
+
+<struct><specifier>static</specifier> <specifier>const</specifier> struct <block>{<public type="default">
+    <decl_stmt><decl><type><name>RetFormat</name></type> <name>rf</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>name</name></decl>;</decl_stmt>
+</public>}</block> <decl><name><name>rf_names</name><index>[]</index></name> <init>= <expr><block>{
+      <expr><block>{<expr><name><name>RetFormat</name><operator>::</operator><name>UNDEF</name></name></expr>, <expr><literal type="string">""</literal></expr>}</block></expr>,
+      <expr><block>{<expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>, <expr><literal type="string">"bin"</literal></expr>}</block></expr>,
+      <expr><block>{<expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>, <expr><literal type="string">"hex"</literal></expr>}</block></expr>,
+      <expr><block>{<expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>, <expr><literal type="string">"json"</literal></expr>}</block></expr>,
+}</block></expr></init></decl>;</struct>
+
+<struct>struct <name>CCoin</name> <block>{<public type="default">
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nHeight</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>out</name></decl>;</decl_stmt>
+
+    <macro><name>ADD_SERIALIZE_METHODS</name></macro><empty_stmt>;</empty_stmt>
+
+    <constructor><name>CCoin</name><parameter_list>()</parameter_list> <member_init_list>: <call><name>nHeight</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+    <constructor><specifier>explicit</specifier> <name>CCoin</name><parameter_list>(<parameter><decl><type><name>Coin</name><modifier>&amp;&amp;</modifier></type> <name>in</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>nHeight</name><argument_list>(<argument><expr><name><name>in</name><operator>.</operator><name>nHeight</name></name></expr></argument>)</argument_list></call>, <call><name>out</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name><name>in</name><operator>.</operator><name>out</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+
+    <function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>, <parameter><type><name>typename</name></type> <name>Operation</name></parameter>&gt;</parameter_list></template>
+    <type><specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>nTxVerDummy</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nTxVerDummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</struct>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>RESTERR</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><name><name>enum</name> <name>HTTPStatusCode</name></name></type> <name>status</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>message</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"text/plain"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>status</name></expr></argument>, <argument><expr><name>message</name> <operator>+</operator> <literal type="string">"\r\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>RetFormat</name></type> <name>ParseDataFormat</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>param</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strReq</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>size_type</name></name></type> <name>pos</name> <init>= <expr><call><name><name>strReq</name><operator>.</operator><name>rfind</name></name><argument_list>(<argument><expr><literal type="char">'.'</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>param</name> <operator>=</operator> <name>strReq</name></expr>;</expr_stmt>
+        <return>return <expr><name><name>rf_names</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>rf</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>param</name> <operator>=</operator> <call><name><name>strReq</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>suff</name><argument_list>(<argument><expr><name>strReq</name></expr></argument>, <argument><expr><name>pos</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name>ARRAYLEN</name><argument_list>(<argument><expr><name>rf_names</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <if_stmt><if>if <condition>(<expr><name>suff</name> <operator>==</operator> <name><name>rf_names</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>name</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name><name>rf_names</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>rf</name></expr>;</return></block_content></block></if></if_stmt></block_content></block></for>
+
+    <comment type="block">/* If no suffix is found, return original string.  */</comment>
+    <expr_stmt><expr><name>param</name> <operator>=</operator> <name>strReq</name></expr>;</expr_stmt>
+    <return>return <expr><name><name>rf_names</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>rf</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>AvailableDataFormatsString</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>formats</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name>ARRAYLEN</name><argument_list>(<argument><expr><name>rf_names</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <if_stmt><if>if <condition>(<expr><call><name>strlen</name><argument_list>(<argument><expr><name><name>rf_names</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>name</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>formats</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">"."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>formats</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name><name>rf_names</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>name</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>formats</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">", "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt></block_content></block></for>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>formats</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>formats</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>formats</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><name>formats</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>CheckWarmup</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>statusmessage</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>RPCIsInWarmup</name><argument_list>(<argument><expr><operator>&amp;</operator><name>statusmessage</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+         <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_SERVICE_UNAVAILABLE</name></expr></argument>, <argument><expr><literal type="string">"Service temporarily unavailable: "</literal> <operator>+</operator> <name>statusmessage</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_headers</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>,
+                         <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>param</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>param</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>path</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>, <argument><expr><name>param</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">"/"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>path</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"No header count specified. Use /rest/headers/&lt;count&gt;/&lt;hash&gt;.&lt;ext&gt;."</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>long</name></type> <name>count</name> <init>= <expr><call><name>strtol</name><argument_list>(<argument><expr><name><name>path</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>c_str</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>count</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal> <operator>||</operator> <name>count</name></expr></argument> &gt;</argument_list></name> <literal type="number">2000</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Header count out of range: "</literal> <operator>+</operator> <name><name>path</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>hashStr</name> <init>= <expr><name><name>path</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseHashStr</name><argument_list>(<argument><expr><name>hashStr</name></expr></argument>, <argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Invalid hash: "</literal> <operator>+</operator> <name>hashStr</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>tip</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>headers</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>headers</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>count</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>tip</name> <operator>=</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindex</name> <init>= <expr><call><name>LookupBlockIndex</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>pindex</name> <operator>!=</operator> <literal type="null">nullptr</literal> <operator>&amp;&amp;</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Contains</name><argument_list>(<argument><expr><name>pindex</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>headers</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>pindex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>headers</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <operator>(</operator><name>unsigned</name> <name>long</name><operator>)</operator><name>count</name></expr>)</condition><block type="pseudo"><block_content>
+                <break>break;</break></block_content></block></if></if_stmt>
+            <expr_stmt><expr><name>pindex</name> <operator>=</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Next</name><argument_list>(<argument><expr><name>pindex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssHeader</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindex</name> <range>: <expr><name>headers</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>ssHeader</name> <operator>&lt;&lt;</operator> <call><name><name>pindex</name><operator>-&gt;</operator><name>GetBlockHeader</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>binaryHeader</name> <init>= <expr><call><name><name>ssHeader</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/octet-stream"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>binaryHeader</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssHeader</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindex</name> <range>: <expr><name>headers</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>ssHeader</name> <operator>&lt;&lt;</operator> <call><name><name>pindex</name><operator>-&gt;</operator><name>GetBlockHeader</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHex</name> <init>= <expr><call><name>HexStr</name><argument_list>(<argument><expr><call><name><name>ssHeader</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ssHeader</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"text/plain"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>jsonHeaders</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VARR</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindex</name> <range>: <expr><name>headers</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>jsonHeaders</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>blockheaderToJSON</name><argument_list>(<argument><expr><name>tip</name></expr></argument>, <argument><expr><name>pindex</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>jsonHeaders</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: .bin, .hex)"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_block</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>,
+                       <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>,
+                       <parameter><decl><type><name>bool</name></type> <name>showTxDetails</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>hashStr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>hashStr</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseHashStr</name><argument_list>(<argument><expr><name>hashStr</name></expr></argument>, <argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Invalid hash: "</literal> <operator>+</operator> <name>hashStr</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CBlock</name></type> <name>block</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>pblockindex</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>tip</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>tip</name> <operator>=</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>pblockindex</name> <operator>=</operator> <call><name>LookupBlockIndex</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>pblockindex</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><name>hashStr</name> <operator>+</operator> <literal type="string">" not found"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>IsBlockPruned</name><argument_list>(<argument><expr><name>pblockindex</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><name>hashStr</name> <operator>+</operator> <literal type="string">" not available (pruned data)"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ReadBlockFromDisk</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>pblockindex</name></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetConsensus</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><name>hashStr</name> <operator>+</operator> <literal type="string">" not found"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssBlock</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <call><name>RPCSerializationFlags</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssBlock</name> <operator>&lt;&lt;</operator> <name>block</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>binaryBlock</name> <init>= <expr><call><name><name>ssBlock</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/octet-stream"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>binaryBlock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssBlock</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <call><name>RPCSerializationFlags</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssBlock</name> <operator>&lt;&lt;</operator> <name>block</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHex</name> <init>= <expr><call><name>HexStr</name><argument_list>(<argument><expr><call><name><name>ssBlock</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ssBlock</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"text/plain"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>objBlock</name> <init>= <expr><call><name>blockToJSON</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>tip</name></expr></argument>, <argument><expr><name>pblockindex</name></expr></argument>, <argument><expr><name>showTxDetails</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>objBlock</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: "</literal> <operator>+</operator> <call><name>AvailableDataFormatsString</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">")"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_block_extended</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>rest_block</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_block_notxdetails</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>rest_block</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// A bit of a hack - dependency on a function defined in rpc/blockchain.cpp</comment>
+<function_decl><type><name>UniValue</name></type> <name>getblockchaininfo</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>JSONRPCRequest</name><modifier>&amp;</modifier></type> <name>request</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_chaininfo</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>param</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>param</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>JSONRPCRequest</name></type> <name>jsonRequest</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>jsonRequest</name><operator>.</operator><name>params</name></name> <operator>=</operator> <call><name>UniValue</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VARR</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>chainInfoObject</name> <init>= <expr><call><name>getblockchaininfo</name><argument_list>(<argument><expr><name>jsonRequest</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>chainInfoObject</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: json)"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_mempool_info</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>param</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>param</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>mempoolInfoObject</name> <init>= <expr><call><name>MempoolInfoToJSON</name><argument_list>(<argument><expr><name><operator>::</operator><name>mempool</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>mempoolInfoObject</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: json)"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_mempool_contents</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>param</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>param</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>mempoolObject</name> <init>= <expr><call><name>MempoolToJSON</name><argument_list>(<argument><expr><name><operator>::</operator><name>mempool</name></name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>mempoolObject</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: json)"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_tx</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>hashStr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>hashStr</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseHashStr</name><argument_list>(<argument><expr><name>hashStr</name></expr></argument>, <argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Invalid hash: "</literal> <operator>+</operator> <name>hashStr</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>g_txindex</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>g_txindex</name><operator>-&gt;</operator><name>BlockUntilSyncedToCurrentChain</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>tx</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hashBlock</name> <init>= <expr><call><name>uint256</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>GetTransaction</name><argument_list>(<argument><expr><name>hash</name></expr></argument>, <argument><expr><name>tx</name></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetConsensus</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>hashBlock</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><name>hashStr</name> <operator>+</operator> <literal type="string">" not found"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssTx</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <call><name>RPCSerializationFlags</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssTx</name> <operator>&lt;&lt;</operator> <name>tx</name></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>binaryTx</name> <init>= <expr><call><name><name>ssTx</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/octet-stream"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>binaryTx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssTx</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <call><name>RPCSerializationFlags</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssTx</name> <operator>&lt;&lt;</operator> <name>tx</name></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHex</name> <init>= <expr><call><name>HexStr</name><argument_list>(<argument><expr><call><name><name>ssTx</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ssTx</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"text/plain"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>objTx</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>TxToUniv</name><argument_list>(<argument><expr><operator>*</operator><name>tx</name></expr></argument>, <argument><expr><name>hashBlock</name></expr></argument>, <argument><expr><name>objTx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>objTx</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: "</literal> <operator>+</operator> <call><name>AvailableDataFormatsString</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">")"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_getutxos</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strURIPart</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>param</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>param</name></expr></argument>, <argument><expr><name>strURIPart</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>uriParts</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>param</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strUriParams</name> <init>= <expr><call><name><name>param</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>uriParts</name></expr></argument>, <argument><expr><name>strUriParams</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">"/"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// throw exception in case of an empty request</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strRequestMutable</name> <init>= <expr><call><name><name>req</name><operator>-&gt;</operator><name>ReadBody</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>strRequestMutable</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name><name>uriParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Error: empty request"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>fInputParsed</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fCheckMemPool</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>COutPoint</name></expr></argument>&gt;</argument_list></name></type> <name>vOutPoints</name></decl>;</decl_stmt>
+
+    <comment type="line">// parse/deserialize input</comment>
+    <comment type="line">// input-format = output-format, rest/getutxos/bin requires binary input, gives binary output, ...</comment>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>uriParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition>
+    <block>{<block_content>
+        <comment type="line">//inputs is sent over URI scheme (/rest/getutxos/checkmempool/txid1-n/txid2-n/...)</comment>
+        <if_stmt><if>if <condition>(<expr><name><name>uriParts</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="string">"checkmempool"</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>fCheckMemPool</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><ternary><condition><expr><operator>(</operator><name>fCheckMemPool</name><operator>)</operator></expr> ?</condition><then> <expr><literal type="number">1</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>uriParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>uint256</name></type> <name>txid</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int32_t</name></type> <name>nOutput</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strTxid</name> <init>= <expr><name><name>uriParts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>substr</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name><name>uriParts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>find</name><argument_list>(<argument><expr><literal type="char">'-'</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strOutput</name> <init>= <expr><name><name>uriParts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>substr</name><argument_list>(<argument><expr><name><name>uriParts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>find</name><argument_list>(<argument><expr><literal type="char">'-'</literal></expr></argument>)</argument_list></call><operator>+</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt32</name><argument_list>(<argument><expr><name>strOutput</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>nOutput</name></expr></argument>)</argument_list></call> <operator>||</operator> <operator>!</operator><call><name>IsHex</name><argument_list>(<argument><expr><name>strTxid</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Parse error"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+            <expr_stmt><expr><call><name><name>txid</name><operator>.</operator><name>SetHex</name></name><argument_list>(<argument><expr><name>strTxid</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>vOutPoints</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>COutPoint</name><argument_list>(<argument><expr><name>txid</name></expr></argument>, <argument><expr><operator>(</operator><name>uint32_t</name><operator>)</operator><name>nOutput</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>vOutPoints</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>fInputParsed</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Error: empty request"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>:</case> <block>{<block_content>
+        <comment type="line">// convert hex to bin, continue then with bin part</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>strRequestV</name> <init>= <expr><call><name>ParseHex</name><argument_list>(<argument><expr><name>strRequestMutable</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>strRequestMutable</name><operator>.</operator><name>assign</name></name><argument_list>(<argument><expr><call><name><name>strRequestV</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>strRequestV</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>:</case> <block>{<block_content>
+        <try>try <block>{<block_content>
+            <comment type="line">//deserialize only if user sent a request</comment>
+            <if_stmt><if>if <condition>(<expr><call><name><name>strRequestMutable</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name>fInputParsed</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">//don't allow sending input over URI and HTTP RAW DATA</comment>
+                    <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Combination of URI scheme inputs and raw post data is not allowed"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+                <decl_stmt><decl><type><name>CDataStream</name></type> <name>oss</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <expr_stmt><expr><name>oss</name> <operator>&lt;&lt;</operator> <name>strRequestMutable</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>oss</name> <operator>&gt;&gt;</operator> <name>fCheckMemPool</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>oss</name> <operator>&gt;&gt;</operator> <name>vOutPoints</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><name>failure</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+            <comment type="line">// abort in case of unreadable binary data</comment>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Parse error"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></catch></try>
+        <break>break;</break>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fInputParsed</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Error: empty request"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+        <break>break;</break>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: "</literal> <operator>+</operator> <call><name>AvailableDataFormatsString</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">")"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+
+    <comment type="line">// limit max outpoints</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vOutPoints</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_GETUTXOS_OUTPOINTS</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"Error: max outpoints exceeded (max: %d, tried: %d)"</literal></expr></argument>, <argument><expr><name>MAX_GETUTXOS_OUTPOINTS</name></expr></argument>, <argument><expr><call><name><name>vOutPoints</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// check spentness and form a bitmap (as well as a JSON capable human-readable string representation)</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>bitmap</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CCoin</name></expr></argument>&gt;</argument_list></name></type> <name>outs</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>bitmapStringRepresentation</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>hits</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>bitmap</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><operator>(</operator><call><name><name>vOutPoints</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">7</literal><operator>)</operator> <operator>/</operator> <literal type="number">8</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>process_utxos</name> <init>= <expr><lambda><capture>[<argument><modifier>&amp;</modifier><name>vOutPoints</name></argument>, <argument><modifier>&amp;</modifier><name>outs</name></argument>, <argument><modifier>&amp;</modifier><name>hits</name></argument>]</capture><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CCoinsView</name><modifier>&amp;</modifier></type> <name>view</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTxMemPool</name><modifier>&amp;</modifier></type> <name>mempool</name></decl></parameter>)</parameter_list> <block>{<block_content>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <name>COutPoint</name><modifier>&amp;</modifier></type> <name>vOutPoint</name> <range>: <expr><name>vOutPoints</name></expr></range></decl></init>)</control> <block>{<block_content>
+                <decl_stmt><decl><type><name>Coin</name></type> <name>coin</name></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>bool</name></type> <name>hit</name> <init>= <expr><operator>!</operator><call><name><name>mempool</name><operator>.</operator><name>isSpent</name></name><argument_list>(<argument><expr><name>vOutPoint</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>view</name><operator>.</operator><name>GetCoin</name></name><argument_list>(<argument><expr><name>vOutPoint</name></expr></argument>, <argument><expr><name>coin</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>hits</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>hit</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><name>hit</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name><name>outs</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>coin</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+            </block_content>}</block></for>
+        </block_content>}</block></lambda></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>fCheckMemPool</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// use db+mempool as cache backend in case user likes to query mempool</comment>
+            <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>mempool</name><operator>.</operator><name>cs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>viewChain</name> <init>= <expr><call><name><operator>::</operator><name>ChainstateActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>CoinsTip</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>CCoinsViewMemPool</name></type> <name>viewMempool</name><argument_list>(<argument><expr><operator>&amp;</operator><name>viewChain</name></expr></argument>, <argument><expr><name>mempool</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>process_utxos</name><argument_list>(<argument><expr><name>viewMempool</name></expr></argument>, <argument><expr><name>mempool</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>  <comment type="line">// no need to lock mempool!</comment>
+            <expr_stmt><expr><call><name>process_utxos</name><argument_list>(<argument><expr><call><name><operator>::</operator><name>ChainstateActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>CoinsTip</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>CTxMemPool</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+
+        <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>hits</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>bool</name></type> <name>hit</name> <init>= <expr><name><name>hits</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>bitmapStringRepresentation</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><ternary><condition><expr><name>hit</name></expr> ?</condition><then> <expr><literal type="string">"1"</literal></expr> </then><else>: <expr><literal type="string">"0"</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// form a binary string representation (human-readable for json output)</comment>
+            <expr_stmt><expr><name><name>bitmap</name><index>[<expr><name>i</name> <operator>/</operator> <literal type="number">8</literal></expr>]</index></name> <operator>|=</operator> <operator>(</operator><operator>(</operator><name>uint8_t</name><operator>)</operator><name>hit</name><operator>)</operator> <operator>&lt;&lt;</operator> <operator>(</operator><name>i</name> <operator>%</operator> <literal type="number">8</literal><operator>)</operator></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block>
+
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>:</case> <block>{<block_content>
+        <comment type="line">// serialize data</comment>
+        <comment type="line">// use exact same output as mentioned in Bip64</comment>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssGetUTXOResponse</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssGetUTXOResponse</name> <operator>&lt;&lt;</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Height</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>GetBlockHash</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>bitmap</name> <operator>&lt;&lt;</operator> <name>outs</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>ssGetUTXOResponseString</name> <init>= <expr><call><name><name>ssGetUTXOResponse</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/octet-stream"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>ssGetUTXOResponseString</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssGetUTXOResponse</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ssGetUTXOResponse</name> <operator>&lt;&lt;</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Height</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>GetBlockHash</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>bitmap</name> <operator>&lt;&lt;</operator> <name>outs</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHex</name> <init>= <expr><call><name>HexStr</name><argument_list>(<argument><expr><call><name><name>ssGetUTXOResponse</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ssGetUTXOResponse</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"text/plain"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>objGetUTXOResponse</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+        <comment type="line">// pack in some essentials</comment>
+        <comment type="line">// use more or less the same output as mentioned in Bip64</comment>
+        <expr_stmt><expr><call><name><name>objGetUTXOResponse</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"chainHeight"</literal></expr></argument>, <argument><expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Height</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>objGetUTXOResponse</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"chaintipHash"</literal></expr></argument>, <argument><expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>GetBlockHash</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHex</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>objGetUTXOResponse</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"bitmap"</literal></expr></argument>, <argument><expr><name>bitmapStringRepresentation</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>utxos</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VARR</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CCoin</name><modifier>&amp;</modifier></type> <name>coin</name> <range>: <expr><name>outs</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>utxo</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>utxo</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"height"</literal></expr></argument>, <argument><expr><operator>(</operator><name>int32_t</name><operator>)</operator><name><name>coin</name><operator>.</operator><name>nHeight</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>utxo</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"value"</literal></expr></argument>, <argument><expr><call><name>ValueFromAmount</name><argument_list>(<argument><expr><name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>nValue</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <comment type="line">// include the script in a json output</comment>
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>o</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>ScriptPubKeyToUniv</name><argument_list>(<argument><expr><name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>o</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>utxo</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"scriptPubKey"</literal></expr></argument>, <argument><expr><name>o</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>utxos</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>utxo</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><call><name><name>objGetUTXOResponse</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"utxos"</literal></expr></argument>, <argument><expr><name>utxos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// return json string</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strJSON</name> <init>= <expr><call><name><name>objGetUTXOResponse</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><name>strJSON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: "</literal> <operator>+</operator> <call><name>AvailableDataFormatsString</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">")"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>rest_blockhash_by_height</name><parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>,
+                       <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>str_uri_part</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckWarmup</name><argument_list>(<argument><expr><name>req</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>height_str</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>RetFormat</name></type> <name>rf</name> <init>= <expr><call><name>ParseDataFormat</name><argument_list>(<argument><expr><name>height_str</name></expr></argument>, <argument><expr><name>str_uri_part</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int32_t</name></type> <name>blockheight</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt32</name><argument_list>(<argument><expr><name>height_str</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>blockheight</name></expr></argument>)</argument_list></call> <operator>||</operator> <name>blockheight</name> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_BAD_REQUEST</name></expr></argument>, <argument><expr><literal type="string">"Invalid height: "</literal> <operator>+</operator> <call><name>SanitizeString</name><argument_list>(<argument><expr><name>height_str</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>pblockindex</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>blockheight</name> <operator>&gt;</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Height</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"Block height out of range"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>pblockindex</name> <operator>=</operator> <call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><index>[<expr><name>blockheight</name></expr>]</index></expr>;</expr_stmt>
+    </block_content>}</block>
+    <switch>switch <condition>(<expr><name>rf</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>BINARY</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>CDataStream</name></type> <name>ss_blockhash</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ss_blockhash</name> <operator>&lt;&lt;</operator> <call><name><name>pblockindex</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/octet-stream"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><call><name><name>ss_blockhash</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>HEX</name></name></expr>:</case> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"text/plain"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><call><name><name>pblockindex</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHex</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <case>case <expr><name><name>RetFormat</name><operator>::</operator><name>JSON</name></name></expr>:</case> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteHeader</name></name><argument_list>(<argument><expr><literal type="string">"Content-Type"</literal></expr></argument>, <argument><expr><literal type="string">"application/json"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>resp</name> <init>= <expr><call><name>UniValue</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>resp</name><operator>.</operator><name>pushKV</name></name><argument_list>(<argument><expr><literal type="string">"blockhash"</literal></expr></argument>, <argument><expr><call><name><name>pblockindex</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHex</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>req</name><operator>-&gt;</operator><name>WriteReply</name></name><argument_list>(<argument><expr><name>HTTP_OK</name></expr></argument>, <argument><expr><call><name><name>resp</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block>
+    <default>default:</default> <block>{<block_content>
+        <return>return <expr><call><name>RESTERR</name><argument_list>(<argument><expr><name>req</name></expr></argument>, <argument><expr><name>HTTP_NOT_FOUND</name></expr></argument>, <argument><expr><literal type="string">"output format not found (available: "</literal> <operator>+</operator> <call><name>AvailableDataFormatsString</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">")"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<struct><specifier>static</specifier> <specifier>const</specifier> struct <block>{<public type="default">
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>prefix</name></decl>;</decl_stmt>
+    <function_decl><type><name>bool</name></type> (<modifier>*</modifier><name>handler</name>)<parameter_list>(<parameter><decl><type><name>HTTPRequest</name><modifier>*</modifier></type> <name>req</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strReq</name></decl></parameter>)</parameter_list>;</function_decl>
+</public>}</block> <decl><name><name>uri_prefixes</name><index>[]</index></name> <init>= <expr><block>{
+      <expr><block>{<expr><literal type="string">"/rest/tx/"</literal></expr>, <expr><name>rest_tx</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/block/notxdetails/"</literal></expr>, <expr><name>rest_block_notxdetails</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/block/"</literal></expr>, <expr><name>rest_block_extended</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/chaininfo"</literal></expr>, <expr><name>rest_chaininfo</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/mempool/info"</literal></expr>, <expr><name>rest_mempool_info</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/mempool/contents"</literal></expr>, <expr><name>rest_mempool_contents</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/headers/"</literal></expr>, <expr><name>rest_headers</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/getutxos"</literal></expr>, <expr><name>rest_getutxos</name></expr>}</block></expr>,
+      <expr><block>{<expr><literal type="string">"/rest/blockhashbyheight/"</literal></expr>, <expr><name>rest_blockhash_by_height</name></expr>}</block></expr>,
+}</block></expr></init></decl>;</struct>
+
+<function><type><name>void</name></type> <name>StartREST</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name>ARRAYLEN</name><argument_list>(<argument><expr><name>uri_prefixes</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>RegisterHTTPHandler</name><argument_list>(<argument><expr><name><name>uri_prefixes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prefix</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><name><name>uri_prefixes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>handler</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>InterruptREST</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StopREST</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name>ARRAYLEN</name><argument_list>(<argument><expr><name>uri_prefixes</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>UnregisterHTTPHandler</name><argument_list>(<argument><expr><name><name>uri_prefixes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prefix</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,1019 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/serialize.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_SERIALIZE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_SERIALIZE_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;compat/endian.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ios&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;limits&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;set&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;prevector.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;span.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>MAX_SIZE</name> <init>= <expr><literal type="number">0x02000000</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Dummy data type to identify deserializing constructors.
+ *
+ * By convention, a constructor of a type T with signature
+ *
+ *   template &lt;typename Stream&gt; T::T(deserialize_type, Stream&amp; s)
+ *
+ * is a deserializing constructor, which builds the type by
+ * deserializing it from s. If T contains const fields, this
+ * is likely the only way to do so.
+ */</comment>
+<struct>struct <name>deserialize_type</name> <block>{}</block>;</struct>
+<decl_stmt><decl><type><name>constexpr</name> <name>deserialize_type</name></type> <name>deserialize</name> <block>{<block_content/>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Used to bypass the rule against non-const reference to temporary
+ * where it makes sense with wrappers.
+ */</comment>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>REF</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>val</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>const_cast</name><argument_list type="generic">&lt;<argument><expr><name>T</name><operator>&amp;</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Used to acquire a non-const pointer "this" to generate bodies
+ * of const serialization operations from a template
+ */</comment>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>T</name><modifier>*</modifier></type> <name>NCONST_PTR</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>*</modifier></type> <name>val</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>const_cast</name><argument_list type="generic">&lt;<argument><expr><name>T</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line" format="doxygen">//! Safely convert odd char pointer types to standard ones.</comment>
+<function><type><specifier>inline</specifier> <name>char</name><modifier>*</modifier></type> <name>CharCast</name><parameter_list>(<parameter><decl><type><name>char</name><modifier>*</modifier></type> <name>c</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>c</name></expr>;</return> </block_content>}</block></function>
+<function><type><specifier>inline</specifier> <name>char</name><modifier>*</modifier></type> <name>CharCast</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>c</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><name>c</name></expr>;</return> </block_content>}</block></function>
+<function><type><specifier>inline</specifier> <specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>CharCast</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>c</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>c</name></expr>;</return> </block_content>}</block></function>
+<function><type><specifier>inline</specifier> <specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>CharCast</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>c</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><operator>(</operator><specifier>const</specifier> <name>char</name><operator>*</operator><operator>)</operator><name>c</name></expr>;</return> </block_content>}</block></function>
+
+<comment type="block">/*
+ * Lowest-level serialization and conversion.
+ * @note Sizes of these types are verified in the tests
+ */</comment>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>ser_writedata8</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>obj</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>ser_writedata16</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>obj</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>obj</name> <operator>=</operator> <call><name>htole16</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>ser_writedata16be</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>obj</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>obj</name> <operator>=</operator> <call><name>htobe16</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>ser_writedata32</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>obj</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>obj</name> <operator>=</operator> <call><name>htole32</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>ser_writedata32be</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>obj</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>obj</name> <operator>=</operator> <call><name>htobe32</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>ser_writedata64</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>obj</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>obj</name> <operator>=</operator> <call><name>htole64</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>uint8_t</name></type> <name>ser_readdata8</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>obj</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>obj</name></expr>;</return>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>uint16_t</name></type> <name>ser_readdata16</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>obj</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>le16toh</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>uint16_t</name></type> <name>ser_readdata16be</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>obj</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>be16toh</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>uint32_t</name></type> <name>ser_readdata32</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>obj</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>le32toh</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>uint32_t</name></type> <name>ser_readdata32be</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>obj</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>be32toh</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>uint64_t</name></type> <name>ser_readdata64</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>obj</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>obj</name></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>le64toh</name><argument_list>(<argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<function><type><specifier>inline</specifier> <name>uint64_t</name></type> <name>ser_double_to_uint64</name><parameter_list>(<parameter><decl><type><name>double</name></type> <name>x</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <union>union <block>{ <decl_stmt><decl><type><name>double</name></type> <name>x</name></decl>;</decl_stmt> <decl_stmt><decl><type><name>uint64_t</name></type> <name>y</name></decl>;</decl_stmt> }</block> <decl><name>tmp</name></decl>;</union>
+    <expr_stmt><expr><name><name>tmp</name><operator>.</operator><name>x</name></name> <operator>=</operator> <name>x</name></expr>;</expr_stmt>
+    <return>return <expr><name><name>tmp</name><operator>.</operator><name>y</name></name></expr>;</return>
+</block_content>}</block></function>
+<function><type><specifier>inline</specifier> <name>uint32_t</name></type> <name>ser_float_to_uint32</name><parameter_list>(<parameter><decl><type><name>float</name></type> <name>x</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <union>union <block>{ <decl_stmt><decl><type><name>float</name></type> <name>x</name></decl>;</decl_stmt> <decl_stmt><decl><type><name>uint32_t</name></type> <name>y</name></decl>;</decl_stmt> }</block> <decl><name>tmp</name></decl>;</union>
+    <expr_stmt><expr><name><name>tmp</name><operator>.</operator><name>x</name></name> <operator>=</operator> <name>x</name></expr>;</expr_stmt>
+    <return>return <expr><name><name>tmp</name><operator>.</operator><name>y</name></name></expr>;</return>
+</block_content>}</block></function>
+<function><type><specifier>inline</specifier> <name>double</name></type> <name>ser_uint64_to_double</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>y</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <union>union <block>{ <decl_stmt><decl><type><name>double</name></type> <name>x</name></decl>;</decl_stmt> <decl_stmt><decl><type><name>uint64_t</name></type> <name>y</name></decl>;</decl_stmt> }</block> <decl><name>tmp</name></decl>;</union>
+    <expr_stmt><expr><name><name>tmp</name><operator>.</operator><name>y</name></name> <operator>=</operator> <name>y</name></expr>;</expr_stmt>
+    <return>return <expr><name><name>tmp</name><operator>.</operator><name>x</name></name></expr>;</return>
+</block_content>}</block></function>
+<function><type><specifier>inline</specifier> <name>float</name></type> <name>ser_uint32_to_float</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>y</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <union>union <block>{ <decl_stmt><decl><type><name>float</name></type> <name>x</name></decl>;</decl_stmt> <decl_stmt><decl><type><name>uint32_t</name></type> <name>y</name></decl>;</decl_stmt> }</block> <decl><name>tmp</name></decl>;</union>
+    <expr_stmt><expr><name><name>tmp</name><operator>.</operator><name>y</name></name> <operator>=</operator> <name>y</name></expr>;</expr_stmt>
+    <return>return <expr><name><name>tmp</name><operator>.</operator><name>x</name></name></expr>;</return>
+</block_content>}</block></function>
+
+
+<comment type="line" format="doxygen">/////////////////////////////////////////////////////////////////</comment>
+<comment type="line">//</comment>
+<comment type="line">// Templates for serializing to anything that looks like a stream,</comment>
+<comment type="line">// i.e. anything that supports .read(char*, size_t) and .write(char*, size_t)</comment>
+<comment type="line">//</comment>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CSizeComputer</name></decl>;</decl_stmt>
+
+<enum>enum
+<block>{
+    <comment type="line">// primary actions</comment>
+    <decl><name>SER_NETWORK</name>         <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr></init></decl>,
+    <decl><name>SER_DISK</name>            <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>,
+    <decl><name>SER_GETHASH</name>         <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>,
+}</block>;</enum>
+
+<comment type="line" format="doxygen">//! Convert the reference base type to X, without changing constness or reference type.</comment>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>X</name></expr></argument>&gt;</argument_list></name> <name>X</name><modifier>&amp;</modifier></type> <name>ReadWriteAsHelper</name><parameter_list>(<parameter><decl><type><name>X</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>x</name></expr>;</return> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>X</name></expr></argument>&gt;</argument_list></name> <specifier>const</specifier> <name>X</name><modifier>&amp;</modifier></type> <name>ReadWriteAsHelper</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>X</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name>x</name></expr>;</return> </block_content>}</block></function>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>READWRITE</name><parameter_list>(<parameter><type><modifier>...</modifier></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(::SerReadWriteMany(s, ser_action, __VA_ARGS__))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>READWRITEAS</name><parameter_list>(<parameter><type><name>type</name></type></parameter>, <parameter><type><name>obj</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(::SerReadWriteMany(s, ser_action, ReadWriteAsHelper&lt;type&gt;(obj)))</cpp:value></cpp:define>
+
+<comment type="block" format="doxygen">/**
+ * Implement three methods for serializable objects. These are actually wrappers over
+ * "SerializationOp" template, which implements the body of each class' serialization
+ * code. Adding "ADD_SERIALIZE_METHODS" in the body of the class causes these wrappers to be
+ * added as members.
+ */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ADD_SERIALIZE_METHODS</name></cpp:macro>                                         \
+    <cpp:value>template&lt;typename Stream&gt;                                         \
+    void Serialize(Stream&amp; s) const {                                 \
+        NCONST_PTR(this)-&gt;SerializationOp(s, CSerActionSerialize());  \
+    }                                                                 \
+    template&lt;typename Stream&gt;                                         \
+    void Unserialize(Stream&amp; s) {                                     \
+        SerializationOp(s, CSerActionUnserialize());                  \
+    }</cpp:value></cpp:define>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>CHAR_EQUALS_INT8</name></cpp:ifndef>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>char</name></type> <name>a</name></decl></parameter>    )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function> <comment type="line">// TODO Get rid of bare char</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int8_t</name></type> <name>a</name></decl></parameter>  )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int16_t</name></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata16</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata16</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int32_t</name></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata32</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata32</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata64</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata64</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>float</name></type> <name>a</name></decl></parameter>   )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata32</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>ser_float_to_uint32</name><argument_list>(<argument><expr><name>a</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>a</name></decl></parameter>  )</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>ser_writedata64</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>ser_double_to_uint64</name><argument_list>(<argument><expr><name>a</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>int</name> <name>N</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>, <argument><expr><specifier>const</specifier> <call><name>char</name> <argument_list>(<argument><expr><operator>&amp;</operator><name>a</name></expr></argument>)</argument_list></call><index>[<expr><name>N</name></expr>]</index></expr></argument>)</argument_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><name>a</name></expr></argument>, <argument><expr><name>N</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></decl></decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>int</name> <name>N</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <call><name>char</name> <argument_list>(<argument><expr><operator>&amp;</operator><name>a</name></expr></argument>)</argument_list></call><index>[<expr><name>N</name></expr>]</index></expr></argument>)</argument_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><call><name>CharCast</name><argument_list>(<argument><expr><name>a</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>N</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></decl></decl_stmt>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Span</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>span</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><call><name>CharCast</name><argument_list>(<argument><expr><call><name><name>span</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>span</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Span</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>span</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><call><name>CharCast</name><argument_list>(<argument><expr><call><name><name>span</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>span</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>CHAR_EQUALS_INT8</name></cpp:ifndef>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>char</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>    )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function> <comment type="line">// TODO Get rid of bare char</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int8_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>  )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int16_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata16</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint16_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata16</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int32_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata32</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata32</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int64_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter> )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata64</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_readdata64</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>float</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>   )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_uint32_to_float</name><argument_list>(<argument><expr><call><name>ser_readdata32</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>double</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>  )</parameter_list> <block>{<block_content> <expr_stmt><expr><name>a</name> <operator>=</operator> <call><name>ser_uint64_to_double</name><argument_list>(<argument><expr><call><name>ser_readdata64</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>int</name> <name>N</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>, <argument><expr><call><name>char</name> <argument_list>(<argument><expr><operator>&amp;</operator><name>a</name></expr></argument>)</argument_list></call><index>[<expr><name>N</name></expr>]</index></expr></argument>)</argument_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><name>a</name></expr></argument>, <argument><expr><name>N</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></decl></decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>int</name> <name>N</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>, <argument><expr><name>unsigned</name> <call><name>char</name> <argument_list>(<argument><expr><operator>&amp;</operator><name>a</name></expr></argument>)</argument_list></call><index>[<expr><name>N</name></expr>]</index></expr></argument>)</argument_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><call><name>CharCast</name><argument_list>(<argument><expr><name>a</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>N</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></decl></decl_stmt>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name><name>Span</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>span</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><call><name>CharCast</name><argument_list>(<argument><expr><call><name><name>span</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>span</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>a</name></decl></parameter>)</parameter_list>    <block>{<block_content> <decl_stmt><decl><type><name>char</name></type> <name>f</name><init>=<expr><name>a</name></expr></init></decl>;</decl_stmt> <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>bool</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>)</parameter_list> <block>{<block_content> <decl_stmt><decl><type><name>char</name></type> <name>f</name><init>=<expr><call><name>ser_readdata8</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt> <expr_stmt><expr><name>a</name><operator>=</operator><name>f</name></expr>;</expr_stmt> </block_content>}</block></function>
+
+
+
+
+
+
+<comment type="block" format="doxygen">/**
+ * Compact Size
+ * size &lt;  253        -- 1 byte
+ * size &lt;= USHRT_MAX  -- 3 bytes  (253 + 2 bytes)
+ * size &lt;= UINT_MAX   -- 5 bytes  (254 + 4 bytes)
+ * size &gt;  UINT_MAX   -- 9 bytes  (255 + 8 bytes)
+ */</comment>
+<function><type><specifier>inline</specifier> <name>unsigned</name> <name>int</name></type> <name>GetSizeOfCompactSize</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>nSize</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>nSize</name> <operator>&lt;</operator> <literal type="number">253</literal></expr>)</condition><block type="pseudo"><block_content>             <return>return <expr>sizeof<operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator></expr>;</return></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>nSize</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>short</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr>sizeof<operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator> <operator>+</operator> sizeof<operator>(</operator><name>unsigned</name> <name>short</name><operator>)</operator></expr>;</return></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>nSize</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>  <return>return <expr>sizeof<operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator> <operator>+</operator> sizeof<operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator></expr>;</return></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>                         <return>return <expr>sizeof<operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator> <operator>+</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint64_t</name></expr></argument>)</argument_list></sizeof></expr>;</return></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function_decl><type><specifier>inline</specifier> <name>void</name></type> <name>WriteCompactSize</name><parameter_list>(<parameter><decl><type><name>CSizeComputer</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>nSize</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>WriteCompactSize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>nSize</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>nSize</name> <operator>&lt;</operator> <literal type="number">253</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <if type="elseif">else if <condition>(<expr><name>nSize</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>short</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><literal type="number">253</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>ser_writedata16</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <if type="elseif">else if <condition>(<expr><name>nSize</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><literal type="number">254</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>ser_writedata32</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <else>else
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><literal type="number">255</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>ser_writedata64</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <return>return;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+<name>uint64_t</name></type> <name>ReadCompactSize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>chSize</name> <init>= <expr><call><name>ser_readdata8</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>nSizeRet</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>chSize</name> <operator>&lt;</operator> <literal type="number">253</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nSizeRet</name> <operator>=</operator> <name>chSize</name></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <if type="elseif">else if <condition>(<expr><name>chSize</name> <operator>==</operator> <literal type="number">253</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nSizeRet</name> <operator>=</operator> <call><name>ser_readdata16</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nSizeRet</name> <operator>&lt;</operator> <literal type="number">253</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"non-canonical ReadCompactSize()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></if>
+    <if type="elseif">else if <condition>(<expr><name>chSize</name> <operator>==</operator> <literal type="number">254</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nSizeRet</name> <operator>=</operator> <call><name>ser_readdata32</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nSizeRet</name> <operator>&lt;</operator> <literal type="number">0x10000u</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"non-canonical ReadCompactSize()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></if>
+    <else>else
+    <block>{<block_content>
+        <expr_stmt><expr><name>nSizeRet</name> <operator>=</operator> <call><name>ser_readdata64</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nSizeRet</name> <operator>&lt;</operator> <literal type="number">0x100000000ULL</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"non-canonical ReadCompactSize()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></else></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nSizeRet</name> <operator>&gt;</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>MAX_SIZE</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"ReadCompactSize(): size too large"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <return>return <expr><name>nSizeRet</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Variable-length integers: bytes are a MSB base-128 encoding of the number.
+ * The high bit in each byte signifies whether another digit follows. To make
+ * sure the encoding is one-to-one, one is subtracted from all but the last digit.
+ * Thus, the byte sequence a[] with length len, where all but the last byte
+ * has bit 128 set, encodes the number:
+ *
+ *  (a[len-1] &amp; 0x7F) + sum(i=1..len-1, 128^i*((a[len-i-1] &amp; 0x7F)+1))
+ *
+ * Properties:
+ * * Very small (0-127: 1 byte, 128-16511: 2 bytes, 16512-2113663: 3 bytes)
+ * * Every integer has exactly one encoding
+ * * Encoding does not depend on size of original integer type
+ * * No redundancy: every (infinite) byte sequence corresponds to a list
+ *   of encoded integers.
+ *
+ * 0:         [0x00]  256:        [0x81 0x00]
+ * 1:         [0x01]  16383:      [0xFE 0x7F]
+ * 127:       [0x7F]  16384:      [0xFF 0x00]
+ * 128:  [0x80 0x00]  16511:      [0xFF 0x7F]
+ * 255:  [0x80 0x7F]  65535: [0x82 0xFE 0x7F]
+ * 2^32:           [0x8E 0xFE 0xFE 0xFF 0x00]
+ */</comment>
+
+<comment type="block" format="doxygen">/**
+ * Mode for encoding VarInts.
+ *
+ * Currently there is no support for signed encodings. The default mode will not
+ * compile with signed values, and the legacy "nonnegative signed" mode will
+ * accept signed values, but improperly encode and decode them if they are
+ * negative. In the future, the DEFAULT mode could be extended to support
+ * negative numbers in a backwards compatible way, and additional modes could be
+ * added to support different varint formats (e.g. zigzag encoding).
+ */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>VarIntMode</name> <block>{<block_content> <expr_stmt><expr><name>DEFAULT</name></expr><operator>,</operator> <expr><name>NONNEGATIVE_SIGNED</name></expr></expr_stmt> </block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>VarIntMode</name> <name>Mode</name></expr><operator>,</operator> <expr><name>typename</name> <name>I</name><operator>&gt;</operator>
+struct <name>CheckVarIntMode</name> <block>{
+    <expr><name>constexpr</name> <macro><name>CheckVarIntMode</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><call><name>static_assert</name><argument_list>(<argument><expr><name>Mode</name> <operator>!=</operator> <name>VarIntMode</name><operator>::</operator><name>DEFAULT</name> <operator>||</operator> <name>std</name><operator>::</operator><name><name>is_unsigned</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>, <argument><expr><literal type="string">"Unsigned type required with mode DEFAULT."</literal></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name>static_assert</name><argument_list>(<argument><expr><name>Mode</name> <operator>!=</operator> <name>VarIntMode</name><operator>::</operator><name>NONNEGATIVE_SIGNED</name> <operator>||</operator> <name>std</name><operator>::</operator><name><name>is_signed</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>, <argument><expr><literal type="string">"Signed type required with mode NONNEGATIVE_SIGNED."</literal></expr></argument>)</argument_list></call></expr>;
+    }</block></expr>
+}</block></expr>;</expr_stmt>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>VarIntMode</name> <name>Mode</name></expr></argument>, <argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>unsigned</name> <name>int</name></type> <name>GetSizeOfVarInt</name><parameter_list>(<parameter><decl><type><name>I</name></type> <name>n</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>CheckVarIntMode</name><argument_list type="generic">&lt;<argument><expr><name>Mode</name></expr></argument>, <argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nRet</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while<condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>nRet</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&lt;=</operator> <literal type="number">0x7F</literal></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>n</name> <operator>=</operator> <operator>(</operator><name>n</name> <operator>&gt;&gt;</operator> <literal type="number">7</literal><operator>)</operator> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <return>return <expr><name>nRet</name></expr>;</return>
+</block_content>}</block></function>
+
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>WriteVarInt</name><parameter_list>(<parameter><decl><type><name>CSizeComputer</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><name>I</name></type> <name>n</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>VarIntMode</name> <name>Mode</name></expr></argument>, <argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>WriteVarInt</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><name>I</name></type> <name>n</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>CheckVarIntMode</name><argument_list type="generic">&lt;<argument><expr><name>Mode</name></expr></argument>, <argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>tmp</name><index>[<expr><operator>(</operator><sizeof>sizeof<argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></sizeof><operator>*</operator><literal type="number">8</literal><operator>+</operator><literal type="number">6</literal><operator>)</operator><operator>/</operator><literal type="number">7</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>len</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while<condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>tmp</name><index>[<expr><name>len</name></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>n</name> <operator>&amp;</operator> <literal type="number">0x7F</literal><operator>)</operator> <operator>|</operator> <operator>(</operator><ternary><condition><expr><name>len</name></expr> ?</condition><then> <expr><literal type="number">0x80</literal></expr> </then><else>: <expr><literal type="number">0x00</literal></expr></else></ternary><operator>)</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&lt;=</operator> <literal type="number">0x7F</literal></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>n</name> <operator>=</operator> <operator>(</operator><name>n</name> <operator>&gt;&gt;</operator> <literal type="number">7</literal><operator>)</operator> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>len</name><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <do>do <block>{<block_content>
+        <expr_stmt><expr><call><name>ser_writedata8</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name><name>tmp</name><index>[<expr><name>len</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> while<condition>(<expr><name>len</name><operator>--</operator></expr>)</condition>;</do>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>VarIntMode</name> <name>Mode</name></expr></argument>, <argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<name>I</name></type> <name>ReadVarInt</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>CheckVarIntMode</name><argument_list type="generic">&lt;<argument><expr><name>Mode</name></expr></argument>, <argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>I</name></type> <name>n</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while<condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>chData</name> <init>= <expr><call><name>ser_readdata8</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&gt;</operator> <operator>(</operator><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call> <operator>&gt;&gt;</operator> <literal type="number">7</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+           <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"ReadVarInt(): size too large"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>n</name> <operator>=</operator> <operator>(</operator><name>n</name> <operator>&lt;&lt;</operator> <literal type="number">7</literal><operator>)</operator> <operator>|</operator> <operator>(</operator><name>chData</name> <operator>&amp;</operator> <literal type="number">0x7F</literal><operator>)</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>chData</name> <operator>&amp;</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>n</name> <operator>==</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"ReadVarInt(): size too large"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name>n</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <return>return <expr><name>n</name></expr>;</return>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>VARINT</name><parameter_list>(<parameter><type><name>obj</name></type></parameter>, <parameter><type><modifier>...</modifier></type></parameter>)</parameter_list></cpp:macro> <cpp:value>WrapVarInt&lt;__VA_ARGS__&gt;(REF(obj))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>COMPACTSIZE</name><parameter_list>(<parameter><type><name>obj</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>CCompactSize(REF(obj))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LIMITED_STRING</name><parameter_list>(<parameter><type><name>obj</name></type></parameter>,<parameter><type><name>n</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>LimitedString&lt; n &gt;(REF(obj))</cpp:value></cpp:define>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>VarIntMode</name> <name>Mode</name></expr></argument>, <argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>CVarInt</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <decl_stmt><decl><type><name>I</name> <modifier>&amp;</modifier></type><name>n</name></decl>;</decl_stmt>
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>CVarInt</name><argument_list>(<argument><expr><name>I</name><operator>&amp;</operator> <name>nIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>n</name><argument_list>(<argument>nIn</argument>)</argument_list></macro> <block>{ }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Serialize</name><argument_list>(<argument>Stream &amp;s</argument>)</argument_list></macro> <specifier>const</specifier> <block>{
+        <expr><call><name><name>WriteVarInt</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>,<argument><expr><name>Mode</name></expr></argument>,<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Unserialize</name><argument_list>(<argument>Stream&amp; s</argument>)</argument_list></macro> <block>{
+        <expr><name>n</name> <operator>=</operator> <call><name><name>ReadVarInt</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>,<argument><expr><name>Mode</name></expr></argument>,<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** Serialization wrapper class for big-endian integers.
+ *
+ * Use this wrapper around integer types that are stored in memory in native
+ * byte order, but serialized in big endian notation. This is only intended
+ * to implement serializers that are compatible with existing formats, and
+ * its use is not recommended for new data structures.
+ *
+ * Only 16-bit types are supported for now.
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>BigEndian</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <decl_stmt><decl><type><name>I</name><modifier>&amp;</modifier></type> <name>m_val</name></decl>;</decl_stmt>
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>BigEndian</name><argument_list>(<argument><expr><name>I</name><operator>&amp;</operator> <name>val</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>m_val</name><argument_list>(<argument>val</argument>)</argument_list></macro>
+    <block>{
+        <expr><call><name>static_assert</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>is_unsigned</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>, <argument><expr><literal type="string">"BigEndian type must be unsigned integer"</literal></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name>static_assert</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>I</name></expr></argument>)</argument_list></sizeof> <operator>==</operator> <literal type="number">2</literal> <operator>&amp;&amp;</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call> <operator>==</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">"Unsupported BigEndian size"</literal></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Serialize</name><argument_list>(<argument>Stream&amp; s</argument>)</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <expr><call><name>ser_writedata16be</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>m_val</name></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Unserialize</name><argument_list>(<argument>Stream&amp; s</argument>)</argument_list></macro>
+    <block>{
+        <expr><name>m_val</name> <operator>=</operator> <call><name>ser_readdata16be</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CCompactSize</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <decl_stmt><decl><type><name>uint64_t</name> <modifier>&amp;</modifier></type><name>n</name></decl>;</decl_stmt>
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>CCompactSize</name><argument_list>(<argument><expr><name>uint64_t</name><operator>&amp;</operator> <name>nIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>n</name><argument_list>(<argument>nIn</argument>)</argument_list></macro> <block>{ }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Serialize</name><argument_list>(<argument>Stream &amp;s</argument>)</argument_list></macro> <specifier>const</specifier> <block>{
+        <expr><call><name><name>WriteCompactSize</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Unserialize</name><argument_list>(<argument>Stream&amp; s</argument>)</argument_list></macro> <block>{
+        <expr><name>n</name> <operator>=</operator> <call><name><name>ReadCompactSize</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name> <name>Limit</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>LimitedString</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>string</name></expr>;</expr_stmt>
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>LimitedString</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>_string</name></expr></argument>)</argument_list> <range>: <macro><name>string</name><argument_list>(<argument>_string</argument>)</argument_list></macro> <expr><block>{}</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Unserialize</name><argument_list>(<argument>Stream&amp; s</argument>)</argument_list></macro>
+    <block>{
+        <expr><name>size_t</name> <name>size</name> <operator>=</operator> <call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;
+        <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <name>Limit</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><call><name>failure</name><argument_list>(<argument><expr><literal type="string">"String length limit exceeded"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt/>}</block_content>
+        string.resize(size</block></if></if_stmt>)</block></expr></range></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>size</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><call><name><name>string</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name><name>string</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>string</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><call><name><name>string</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>string</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></decl></decl_stmt>
+};
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>VarIntMode</name> <name>Mode</name><operator>=</operator><name>VarIntMode</name><operator>::</operator><name>DEFAULT</name></expr></argument>, <argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<name><name>CVarInt</name><argument_list type="generic">&lt;<argument><expr><name>Mode</name></expr></argument>, <argument><expr><name>I</name></expr></argument>&gt;</argument_list></name></type> <name>WrapVarInt</name><parameter_list>(<parameter><decl><type><name>I</name><modifier>&amp;</modifier></type> <name>n</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><name><name>CVarInt</name><argument_list type="generic">&lt;<argument><expr><name>Mode</name></expr></argument>, <argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><block>{<expr><name>n</name></expr>}</block></expr>;</return> </block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<name><name>BigEndian</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name></type> <name>WrapBigEndian</name><parameter_list>(<parameter><decl><type><name>I</name><modifier>&amp;</modifier></type> <name>n</name></decl></parameter>)</parameter_list> <block>{<block_content> <return>return <expr><call><name><name>BigEndian</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</return> </block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Forward declarations
+ */</comment>
+
+<comment type="block" format="doxygen">/**
+ *  string
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>C</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>basic_string</name><argument_list type="generic">&lt;<argument><expr><name>C</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>str</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>C</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>basic_string</name><argument_list type="generic">&lt;<argument><expr><name>C</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>str</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * prevector
+ * prevectors of unsigned char are a special case and are intended to be serialized as a single opaque blob.
+ */</comment>
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>V</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>, <parameter><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>, <parameter><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>V</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>, <parameter><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * vector
+ * vectors of unsigned char are a special case and are intended to be serialized as a single opaque blob.
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>bool</name><operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>V</name><operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>V</name><operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * pair
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>item</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>item</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * map
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * set
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * shared_ptr
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * unique_ptr
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * If none of the specialized versions above matched, default to calling member function.
+ */</comment>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>a</name><operator>.</operator><name>Serialize</name></name><argument_list>(<argument><expr><name>os</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>T</name><operator>&amp;&amp;</operator> <name>a</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>a</name><operator>.</operator><name>Unserialize</name></name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+
+
+<comment type="block" format="doxygen">/**
+ * string
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>C</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>basic_string</name><argument_list type="generic">&lt;<argument><expr><name>C</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>str</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>str</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>str</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>os</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><call><name><name>str</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>str</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>C</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>C</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>basic_string</name><argument_list type="generic">&lt;<argument><expr><name>C</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>str</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nSize</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>is</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><call><name><name>str</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>nSize</name> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>C</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * prevector
+ */</comment>
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>v</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>os</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><call><name><name>v</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>V</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>typename</name> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>const_iterator</name> <name>vi</name> <operator>=</operator> <call><name><name>v</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</init> <condition><expr><name>vi</name> <operator>!=</operator> <call><name><name>v</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>vi</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><operator>(</operator><operator>*</operator><name>vi</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>os</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Serialize_impl</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>v</name></expr></argument>, <argument><expr><call><name>T</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>, <parameter><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Limit size per read so bogus size value won't cause out of memory</comment>
+    <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>i</name> <operator>&lt;</operator> <name>nSize</name></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>blk</name> <init>= <expr><name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>nSize</name> <operator>-</operator> <name>i</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><operator>(</operator><literal type="number">1</literal> <operator>+</operator> <literal type="number">4999999</literal> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>resize_uninitialized</name></name><argument_list>(<argument><expr><name>i</name> <operator>+</operator> <name>blk</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>is</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name><name>v</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><name>blk</name> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>i</name> <operator>+=</operator> <name>blk</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize_impl</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>, <parameter><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>V</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nMid</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>nMid</name> <operator>&lt;</operator> <name>nSize</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nMid</name> <operator>+=</operator> <literal type="number">5000000</literal> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nMid</name> <operator>&gt;</operator> <name>nSize</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>nMid</name> <operator>=</operator> <name>nSize</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>resize_uninitialized</name></name><argument_list>(<argument><expr><name>nMid</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nMid</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name><name>v</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>N</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>is</name></decl></parameter>, <parameter><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>N</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Unserialize_impl</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name>v</name></expr></argument>, <argument><expr><call><name>T</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+
+
+<comment type="block" format="doxygen">/**
+ * vector
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>&amp;</operator></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>v</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>os</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><call><name><name>v</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>bool</name><operator>&amp;</operator></expr></argument>)</argument_list>
+<block>{<block_content>
+    <comment type="line">// A special case for std::vector&lt;bool&gt;, as dereferencing</comment>
+    <comment type="line">// std::vector&lt;bool&gt;::const_iterator does not result in a const bool&amp;</comment>
+    <comment type="line">// due to std::vector's special casing for bool arguments.</comment>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>bool</name></type> <name>elem</name> <range>: <expr><name>v</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>elem</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>V</name><operator>&amp;</operator></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>v</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>const_iterator</name> <name>vi</name> <operator>=</operator> <call><name><name>v</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</init> <condition><expr><name>vi</name> <operator>!=</operator> <call><name><name>v</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>vi</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><operator>(</operator><operator>*</operator><name>vi</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Serialize_impl</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>v</name></expr></argument>, <argument><expr><call><name>T</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>&amp;</operator></expr></argument>)</argument_list>
+<block>{<block_content>
+    <comment type="line">// Limit size per read so bogus size value won't cause out of memory</comment>
+    <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>i</name> <operator>&lt;</operator> <name>nSize</name></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>blk</name> <init>= <expr><name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>nSize</name> <operator>-</operator> <name>i</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><operator>(</operator><literal type="number">1</literal> <operator>+</operator> <literal type="number">4999999</literal> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>i</name> <operator>+</operator> <name>blk</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>is</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name><name>v</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><name>blk</name> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>i</name> <operator>+=</operator> <name>blk</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>, <argument><expr><name>typename</name> <name>V</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize_impl</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>V</name><operator>&amp;</operator></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nMid</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>nMid</name> <operator>&lt;</operator> <name>nSize</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nMid</name> <operator>+=</operator> <literal type="number">5000000</literal> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>T</name></expr></argument>)</argument_list></sizeof></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nMid</name> <operator>&gt;</operator> <name>nSize</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>nMid</name> <operator>=</operator> <name>nSize</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>v</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>nMid</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nMid</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name><name>v</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block></while>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>v</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Unserialize_impl</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name>v</name></expr></argument>, <argument><expr><call><name>T</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * pair
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>item</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name><name>item</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name><name>item</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>item</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name><name>item</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name><name>item</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * map
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>m</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>entry</name> <range>: <expr><name>m</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>m</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>iterator</name> <name>mi</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nSize</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <name>item</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name>item</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>mi</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>mi</name></expr></argument>, <argument><expr><name>item</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * set
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><call><name><name>m</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>const_iterator</name> <name>it</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</init> <condition><expr><name>it</name> <operator>!=</operator> <call><name><name>m</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>it</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><operator>(</operator><operator>*</operator><name>it</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>Pred</name></expr></argument>, <argument><expr><name>typename</name> <name>A</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>m</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>m</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>is</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>K</name></expr></argument>, <argument><expr><name>Pred</name></expr></argument>, <argument><expr><name>A</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>iterator</name> <name>it</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nSize</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>K</name></type> <name>key</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>Unserialize</name><argument_list>(<argument><expr><name>is</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>it</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * unique_ptr
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type>
+<name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><operator>*</operator><name>p</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <macro><name>p</name></macro><expr_stmt><expr><operator>.</operator><macro><name>reset</name><argument_list>(<argument>new T(deserialize, is)</argument>)</argument_list></macro></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * shared_ptr
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name> <name>void</name></type>
+<name>Serialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>os</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Serialize</name><argument_list>(<argument><expr><name>os</name></expr></argument>, <argument><expr><operator>*</operator><name>p</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Unserialize</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>is</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>p</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>p</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name><name>make_shared</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>deserialize</name></expr></argument>, <argument><expr><name>is</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+
+
+<comment type="block" format="doxygen">/**
+ * Support for ADD_SERIALIZE_METHODS and READWRITE macro
+ */</comment>
+<struct>struct <name>CSerActionSerialize</name>
+<block>{
+    <expr_stmt><expr><name>constexpr</name> <name>bool</name> <macro><name>ForRead</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>false</name></expr>;</return> }</block></expr></expr_stmt>
+}</block>;</struct>
+<struct>struct <name>CSerActionUnserialize</name>
+<block>{
+    <expr_stmt><expr><name>constexpr</name> <name>bool</name> <macro><name>ForRead</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>true</name></expr>;</return> }</block></expr></expr_stmt>
+}</block>;</struct>
+
+
+
+
+
+
+
+
+<comment type="block">/* ::GetSerializeSize implementations
+ *
+ * Computing the serialized size of objects is done through a special stream
+ * object of type CSizeComputer, which only records the number of bytes written
+ * to it.
+ *
+ * If your Serialize or SerializationOp method has non-trivial overhead for
+ * serialization, it may be worthwhile to implement a specialized version for
+ * CSizeComputer, which uses the s.seek() method to record bytes that would
+ * be written instead.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CSizeComputer</name>
+<block>{<block_content>
+<label><name>protected</name>:</label>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>nSize</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>nVersion</name></decl>;</decl_stmt>
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <macro><name>CSizeComputer</name><argument_list>(<argument>int nVersionIn</argument>)</argument_list></macro> : <expr_stmt><expr><call><name>nSize</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>nVersion</name><argument_list>(<argument>nVersionIn</argument>)</argument_list></macro> <expr><block>{}</block>
+
+    <name>void</name> <macro><name>write</name><argument_list>(<argument>const char *psz</argument>, <argument>size_t _nSize</argument>)</argument_list></macro>
+    <block>{
+        <expr><name><name>this</name><operator>-&gt;</operator><name>nSize</name></name> <operator>+=</operator> <name>_nSize</name></expr>;
+    }</block>
+
+    <comment type="block" format="doxygen">/** Pretend _nSize bytes are written, without specifying them. */</comment>
+    <name>void</name> <macro><name>seek</name><argument_list>(<argument>size_t _nSize</argument>)</argument_list></macro>
+    <block>{
+        <expr><name><name>this</name><operator>-&gt;</operator><name>nSize</name></name> <operator>+=</operator> <name>_nSize</name></expr>;
+    }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+    <name>CSizeComputer</name><operator>&amp;</operator> <name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><specifier>const</specifier> <name>T</name><operator>&amp;</operator> <name>obj</name><operator>)</operator>
+    <block>{
+        <expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>, <argument><expr><name>obj</name></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><operator>(</operator><operator>*</operator><name>this</name><operator>)</operator></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>size_t</name> <macro><name>size</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+        <return>return <expr><name>nSize</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>int</name> <macro><name>GetVersion</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nVersion</name></expr>;</return> }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>SerializeMany</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Arg</name></expr></argument>, <argument><expr><name>typename</name><modifier>...</modifier> <name>Args</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>SerializeMany</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Arg</name><modifier>&amp;</modifier></type> <name>arg</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Args</name><modifier>&amp;</modifier><modifier>...</modifier></type> <name>args</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>arg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>::</operator><call><name>SerializeMany</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>args</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>UnserializeMany</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Arg</name></expr></argument>, <argument><expr><name>typename</name><modifier>...</modifier> <name>Args</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>UnserializeMany</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>, <argument><expr><name>Arg</name><operator>&amp;&amp;</operator> <name>arg</name></expr></argument>, <argument><expr><name>Args</name><operator>&amp;&amp;</operator><operator>...</operator> <name>args</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>::</operator><call><name>Unserialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>arg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>::</operator><call><name>UnserializeMany</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>args</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name><modifier>...</modifier> <name>Args</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>SerReadWriteMany</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>CSerActionSerialize</name></type> <name>ser_action</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Args</name><modifier>&amp;</modifier><modifier>...</modifier></type> <name>args</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>::</operator><call><name>SerializeMany</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>args</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name><modifier>...</modifier> <name>Args</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>SerReadWriteMany</name><argument_list>(<argument><expr><name>Stream</name><operator>&amp;</operator> <name>s</name></expr></argument>, <argument><expr><name>CSerActionUnserialize</name> <name>ser_action</name></expr></argument>, <argument><expr><name>Args</name><operator>&amp;&amp;</operator><operator>...</operator> <name>args</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>::</operator><call><name>UnserializeMany</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>args</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>I</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name></type> <name>WriteVarInt</name><parameter_list>(<parameter><decl><type><name>CSizeComputer</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>I</name></type> <name>n</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>seek</name></name><argument_list>(<argument><expr><call><name><name>GetSizeOfVarInt</name><argument_list type="generic">&lt;<argument><expr><name>I</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>inline</specifier> <name>void</name></type> <name>WriteCompactSize</name><parameter_list>(<parameter><decl><type><name>CSizeComputer</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>nSize</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>seek</name></name><argument_list>(<argument><expr><call><name>GetSizeOfCompactSize</name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>size_t</name></type> <name>GetSerializeSize</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>t</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nVersion</name> <init>= <expr><literal type="number">0</literal></expr></init></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>(</operator><call><name>CSizeComputer</name><argument_list>(<argument><expr><name>nVersion</name></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <name>t</name><operator>)</operator><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name><modifier>...</modifier> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>size_t</name></type> <name>GetSerializeSizeMany</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>nVersion</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier><modifier>...</modifier></type> <name>t</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CSizeComputer</name></type> <name>sc</name><argument_list>(<argument><expr><name>nVersion</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SerializeMany</name><argument_list>(<argument><expr><name>sc</name></expr></argument>, <argument><expr><name>t</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>sc</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_SERIALIZE_H</comment>
+</unit>

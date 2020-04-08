@@ -1,0 +1,720 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/random.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;compat/cpuid.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/sha256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/sha512.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;support/cleanse.h&gt;</cpp:file></cpp:include>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;compat.h&gt;</cpp:file></cpp:include> <comment type="line">// for Windows API</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wincrypt.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;logging.h&gt;</cpp:file></cpp:include>  <comment type="line">// for LogPrintf()</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>     <comment type="line">// for Mutex</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/time.h&gt;</cpp:file></cpp:include> <comment type="line">// for GetTime()</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdlib.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;thread&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;randomenv.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;support/allocators/secure.h&gt;</cpp:file></cpp:include>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>WIN32</name></cpp:ifndef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;fcntl.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/time.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_SYS_GETRANDOM</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/syscall.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;linux/random.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_GETENTROPY</name></expr></argument>)</argument_list></call> <operator>||</operator> <operator>(</operator><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_GETENTROPY_RAND</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>defined</name><argument_list>(<argument><expr><name>MAC_OSX</name></expr></argument>)</argument_list></call><operator>)</operator></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unistd.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_GETENTROPY_RAND</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>defined</name><argument_list>(<argument><expr><name>MAC_OSX</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/random.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_SYSCTL_ARND</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include> <comment type="line">// for ARRAYLEN</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/sysctl.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><attribute>[[<expr><name>noreturn</name></expr>]]</attribute> <type><specifier>static</specifier> <name>void</name></type> <name>RandFailure</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Failed to read randomness, aborting\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>abort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>int64_t</name></type> <name>GetPerformanceCounter</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// Read the hardware time stamp counter when available.</comment>
+    <comment type="line">// See https://en.wikipedia.org/wiki/Time_Stamp_Counter for more information.</comment>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>_MSC_VER</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <operator>(</operator><call><name>defined</name><argument_list>(<argument><expr><name>_M_IX86</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>_M_X64</name></expr></argument>)</argument_list></call><operator>)</operator></expr></cpp:if>
+    <return>return <expr><call><name>__rdtsc</name><argument_list>()</argument_list></call></expr>;</return>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><operator>!</operator><call><name>defined</name><argument_list>(<argument><expr><name>_MSC_VER</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__i386__</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>r</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <asm>__asm__ <specifier>volatile</specifier> ("rdtsc" : "=A"(r));</asm> <comment type="line">// Constrain the r variable to the eax:edx pair.</comment>
+    <return>return <expr><name>r</name></expr>;</return>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><operator>!</operator><call><name>defined</name><argument_list>(<argument><expr><name>_MSC_VER</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <operator>(</operator><call><name>defined</name><argument_list>(<argument><expr><name>__x86_64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__amd64__</name></expr></argument>)</argument_list></call><operator>)</operator></expr></cpp:elif>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>r1</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>, <decl><type ref="prev"/><name>r2</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <asm>__asm__ <specifier>volatile</specifier> ("rdtsc" : "=a"(r1), "=d"(r2));</asm> <comment type="line">// Constrain r1 to rax and r2 to rdx.</comment>
+    <return>return <expr><operator>(</operator><name>r2</name> <operator>&lt;&lt;</operator> <literal type="number">32</literal><operator>)</operator> <operator>|</operator> <name>r1</name></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <comment type="line">// Fall back to using C++11 clock (usually microsecond or nanosecond precision)</comment>
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>high_resolution_clock</name><operator>::</operator><name>now</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>time_since_epoch</name><argument_list>()</argument_list></call><operator>.</operator><call><name>count</name><argument_list>()</argument_list></call></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_GETCPUID</name></cpp:ifdef>
+<decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>g_rdrand_supported</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>g_rdseed_supported</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>uint32_t</name></type> <name>CPUID_F1_ECX_RDRAND</name> <init>= <expr><literal type="number">0x40000000</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>uint32_t</name></type> <name>CPUID_F7_EBX_RDSEED</name> <init>= <expr><literal type="number">0x00040000</literal></expr></init></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>bit_RDRND</name></cpp:ifdef>
+<assert type="static">static_assert<argument_list>(<argument><expr><name>CPUID_F1_ECX_RDRAND</name> <operator>==</operator> <name>bit_RDRND</name></expr></argument>, <argument><expr><literal type="string">"Unexpected value for bit_RDRND"</literal></expr></argument>)</argument_list>;</assert>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>bit_RDSEED</name></cpp:ifdef>
+<assert type="static">static_assert<argument_list>(<argument><expr><name>CPUID_F7_EBX_RDSEED</name> <operator>==</operator> <name>bit_RDSEED</name></expr></argument>, <argument><expr><literal type="string">"Unexpected value for bit_RDSEED"</literal></expr></argument>)</argument_list>;</assert>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>InitHardwareRand</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>eax</name></decl>, <decl><type ref="prev"/><name>ebx</name></decl>, <decl><type ref="prev"/><name>ecx</name></decl>, <decl><type ref="prev"/><name>edx</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>GetCPUID</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>eax</name></expr></argument>, <argument><expr><name>ebx</name></expr></argument>, <argument><expr><name>ecx</name></expr></argument>, <argument><expr><name>edx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ecx</name> <operator>&amp;</operator> <name>CPUID_F1_ECX_RDRAND</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>g_rdrand_supported</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>GetCPUID</name><argument_list>(<argument><expr><literal type="number">7</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>eax</name></expr></argument>, <argument><expr><name>ebx</name></expr></argument>, <argument><expr><name>ecx</name></expr></argument>, <argument><expr><name>edx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ebx</name> <operator>&amp;</operator> <name>CPUID_F7_EBX_RDSEED</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>g_rdseed_supported</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>ReportHardwareRand</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// This must be done in a separate function, as InitHardwareRand() may be indirectly called</comment>
+    <comment type="line">// from global constructors, before logging is initialized.</comment>
+    <if_stmt><if>if <condition>(<expr><name>g_rdseed_supported</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using RdSeed as additional entropy source\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>g_rdrand_supported</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using RdRand as an additional entropy source\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Read 64 bits of entropy using rdrand.
+ *
+ * Must only be called when RdRand is supported.
+ */</comment>
+<function><type><specifier>static</specifier> <name>uint64_t</name></type> <name>GetRdRand</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// RdRand may very rarely fail. Invoke it up to 10 times in a loop to reduce this risk.</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>__i386__</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>ok</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>r1</name></decl>, <decl><type ref="prev"/><name>r2</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <asm>__asm__ <specifier>volatile</specifier> (".byte 0x0f, 0xc7, 0xf0; setc %1" : "=a"(r1), "=q"(ok) :: "cc");</asm> <comment type="line">// rdrand %eax</comment>
+        <if_stmt><if>if <condition>(<expr><name>ok</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <asm>__asm__ <specifier>volatile</specifier> (".byte 0x0f, 0xc7, 0xf0; setc %1" : "=a"(r2), "=q"(ok) :: "cc");</asm> <comment type="line">// rdrand %eax</comment>
+        <if_stmt><if>if <condition>(<expr><name>ok</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name>r2</name><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">32</literal><operator>)</operator> <operator>|</operator> <name>r1</name></expr>;</return>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>__x86_64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__amd64__</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>ok</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>r1</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <asm>__asm__ <specifier>volatile</specifier> (".byte 0x48, 0x0f, 0xc7, 0xf0; setc %1" : "=a"(r1), "=q"(ok) :: "cc");</asm> <comment type="line">// rdrand %rax</comment>
+        <if_stmt><if>if <condition>(<expr><name>ok</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><name>r1</name></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:error>#<cpp:directive>error</cpp:directive> <cpp:literal>"RdRand is only supported on x86 and x86_64"</cpp:literal></cpp:error>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Read 64 bits of entropy using rdseed.
+ *
+ * Must only be called when RdSeed is supported.
+ */</comment>
+<function><type><specifier>static</specifier> <name>uint64_t</name></type> <name>GetRdSeed</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// RdSeed may fail when the HW RNG is overloaded. Loop indefinitely until enough entropy is gathered,</comment>
+    <comment type="line">// but pause after every failure.</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>__i386__</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>ok</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>r1</name></decl>, <decl><type ref="prev"/><name>r2</name></decl>;</decl_stmt>
+    <do>do <block>{<block_content>
+        <asm>__asm__ <specifier>volatile</specifier> (".byte 0x0f, 0xc7, 0xf8; setc %1" : "=a"(r1), "=q"(ok) :: "cc");</asm> <comment type="line">// rdseed %eax</comment>
+        <if_stmt><if>if <condition>(<expr><name>ok</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+        <asm>__asm__ <specifier>volatile</specifier> ("pause");</asm>
+    </block_content>}</block> while<condition>(<expr><literal type="boolean">true</literal></expr>)</condition>;</do>
+    <do>do <block>{<block_content>
+        <asm>__asm__ <specifier>volatile</specifier> (".byte 0x0f, 0xc7, 0xf8; setc %1" : "=a"(r2), "=q"(ok) :: "cc");</asm> <comment type="line">// rdseed %eax</comment>
+        <if_stmt><if>if <condition>(<expr><name>ok</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+        <asm>__asm__ <specifier>volatile</specifier> ("pause");</asm>
+    </block_content>}</block> while<condition>(<expr><literal type="boolean">true</literal></expr>)</condition>;</do>
+    <return>return <expr><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name>r2</name><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">32</literal><operator>)</operator> <operator>|</operator> <name>r1</name></expr>;</return>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>__x86_64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__amd64__</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>ok</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>r1</name></decl>;</decl_stmt>
+    <do>do <block>{<block_content>
+        <asm>__asm__ <specifier>volatile</specifier> (".byte 0x48, 0x0f, 0xc7, 0xf8; setc %1" : "=a"(r1), "=q"(ok) :: "cc");</asm> <comment type="line">// rdseed %rax</comment>
+        <if_stmt><if>if <condition>(<expr><name>ok</name></expr>)</condition><block type="pseudo"><block_content> <break>break;</break></block_content></block></if></if_stmt>
+        <asm>__asm__ <specifier>volatile</specifier> ("pause");</asm>
+    </block_content>}</block> while<condition>(<expr><literal type="boolean">true</literal></expr>)</condition>;</do>
+    <return>return <expr><name>r1</name></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:error>#<cpp:directive>error</cpp:directive> <cpp:literal>"RdSeed is only supported on x86 and x86_64"</cpp:literal></cpp:error>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<comment type="block">/* Access to other hardware random number generators could be added here later,
+ * assuming it is sufficiently fast (in the order of a few hundred CPU cycles).
+ * Slower sources should probably be invoked separately, and/or only from
+ * RandAddPeriodic (which is called once a minute).
+ */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>InitHardwareRand</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></function>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>ReportHardwareRand</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="block" format="doxygen">/** Add 64 bits of entropy gathered from hardware to hasher. Do nothing if not supported. */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedHardwareFast</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept> <block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>__x86_64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__amd64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__i386__</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <if_stmt><if>if <condition>(<expr><name>g_rdrand_supported</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>out</name> <init>= <expr><call><name>GetRdRand</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>out</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Add 256 bits of entropy gathered from hardware to hasher. Do nothing if not supported. */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedHardwareSlow</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept> <block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>__x86_64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__amd64__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__i386__</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <comment type="line">// When we want 256 bits of entropy, prefer RdSeed over RdRand, as it's</comment>
+    <comment type="line">// guaranteed to produce independent randomness on every call.</comment>
+    <if_stmt><if>if <condition>(<expr><name>g_rdseed_supported</name></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">4</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>out</name> <init>= <expr><call><name>GetRdSeed</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>out</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// When falling back to RdRand, XOR the result of 1024 results.</comment>
+    <comment type="line">// This guarantees a reseeding occurs between each.</comment>
+    <if_stmt><if>if <condition>(<expr><name>g_rdrand_supported</name></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">4</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>out</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>int</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <literal type="number">1024</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control><block type="pseudo"><block_content> <expr_stmt><expr><name>out</name> <operator>^=</operator> <call><name>GetRdRand</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>out</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Use repeated SHA512 to strengthen the randomness in seed32, and feed into hasher. */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>void</name></type> <name>Strengthen</name><argument_list>(<argument><expr><specifier>const</specifier> <name>unsigned</name> <call><name>char</name> <argument_list>(<argument><expr><operator>&amp;</operator><name>seed</name></expr></argument>)</argument_list></call><index>[<expr><literal type="number">32</literal></expr>]</index></expr></argument>, <argument><expr><name>int</name> <name>microseconds</name></expr></argument>, <argument><expr><name>CSHA512</name><operator>&amp;</operator> <name>hasher</name></expr></argument>)</argument_list> noexcept
+<argument_list>{
+    <argument><expr><name>CSHA512</name> <name>inner_hasher</name></expr></argument>;
+    <argument><expr><call><name><name>inner_hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>seed</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>seed</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr></argument>;
+
+    <comment type="line">// Hash loop</comment>
+    <argument><expr><name>unsigned</name> <name>char</name> <name><name>buffer</name><index>[<expr><literal type="number">64</literal></expr>]</index></name></expr></argument>;
+    <argument><expr><name>int64_t</name> <name>stop</name> <operator>=</operator> <call><name>GetTimeMicros</name><argument_list>()</argument_list></call> <operator>+</operator> <name>microseconds</name></expr></argument>;
+    do <argument><expr><block>{
+        <for>for <control>(<init><decl><type><name>int</name> <name>i</name> = 0</type></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">1000</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <expr_stmt><expr><block>{
+            <expr><call><name><name>inner_hasher</name><operator>.</operator><name>Finalize</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></call></expr>;
+            <expr><call><name><name>inner_hasher</name><operator>.</operator><name>Reset</name></name><argument_list>()</argument_list></call></expr>;
+            <expr><call><name><name>inner_hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;
+        }</block>
+        <comment type="line">// Benchmark operation and feed it into outer hasher.</comment>
+        <name>int64_t</name> <name>perf</name> <operator>=</operator> <call><name>GetPerformanceCounter</name><argument_list>()</argument_list></call></expr>;</expr_stmt></for>
+        <call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>perf</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>perf</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></block></expr></argument>;
+    }</argument_list> while <argument_list>(<argument><expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name>stop</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// Produce output from inner state and feed it to outer hasher.</comment>
+    <expr_stmt><expr><call><name><name>inner_hasher</name><operator>.</operator><name>Finalize</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Try to clean up.</comment>
+    <expr_stmt><expr><call><name><name>inner_hasher</name><operator>.</operator><name>Reset</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memory_cleanse</name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+}
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>WIN32</name></cpp:ifndef>
+<comment type="block" format="doxygen">/** Fallback: get 32 bytes of system entropy from /dev/urandom. The most
+ * compatible way to get cryptographic randomness on UNIX-ish platforms.
+ */</comment>
+static <function><type><name>void</name></type> <name>GetDevURandom</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>ent32</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>f</name> <init>= <expr><call><name>open</name><argument_list>(<argument><expr><literal type="string">"/dev/urandom"</literal></expr></argument>, <argument><expr><name>O_RDONLY</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>f</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>have</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <do>do <block>{<block_content>
+        <decl_stmt><decl><type><name>ssize_t</name></type> <name>n</name> <init>= <expr><call><name>read</name><argument_list>(<argument><expr><name>f</name></expr></argument>, <argument><expr><name>ent32</name> <operator>+</operator> <name>have</name></expr></argument>, <argument><expr><name>NUM_OS_RANDOM_BYTES</name> <operator>-</operator> <name>have</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>n</name> <operator>&lt;=</operator> <literal type="number">0</literal> <operator>||</operator> <name>n</name> <operator>+</operator> <name>have</name> <operator>&gt;</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>close</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>have</name> <operator>+=</operator> <name>n</name></expr>;</expr_stmt>
+    </block_content>}</block> while <condition>(<expr><name>have</name> <operator>&lt;</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>)</condition>;</do>
+    <expr_stmt><expr><call><name>close</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="block" format="doxygen">/** Get 32 bytes of system entropy. */</comment>
+<function><type><name>void</name></type> <name>GetOSRand</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>ent32</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>WIN32</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <decl_stmt><decl><type><name>HCRYPTPROV</name></type> <name>hProvider</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name>CryptAcquireContextW</name><argument_list>(<argument><expr><operator>&amp;</operator><name>hProvider</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>PROV_RSA_FULL</name></expr></argument>, <argument><expr><name>CRYPT_VERIFYCONTEXT</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>ret</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>CryptGenRandom</name><argument_list>(<argument><expr><name>hProvider</name></expr></argument>, <argument><expr><name>NUM_OS_RANDOM_BYTES</name></expr></argument>, <argument><expr><name>ent32</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>ret</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>CryptReleaseContext</name><argument_list>(<argument><expr><name>hProvider</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_SYS_GETRANDOM</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <comment type="block">/* Linux. From the getrandom(2) man page:
+     * "If the urandom source has been initialized, reads of up to 256 bytes
+     * will always return as many bytes as requested and will not be
+     * interrupted by signals."
+     */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>rv</name> <init>= <expr><call><name>syscall</name><argument_list>(<argument><expr><name>SYS_getrandom</name></expr></argument>, <argument><expr><name>ent32</name></expr></argument>, <argument><expr><name>NUM_OS_RANDOM_BYTES</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>rv</name> <operator>!=</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>rv</name> <operator>&lt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>errno</name> <operator>==</operator> <name>ENOSYS</name></expr>)</condition> <block>{<block_content>
+            <comment type="block">/* Fallback for kernel &lt;3.17: the return value will be -1 and errno
+             * ENOSYS if the syscall is not available, in that case fall back
+             * to /dev/urandom.
+             */</comment>
+            <expr_stmt><expr><call><name>GetDevURandom</name><argument_list>(<argument><expr><name>ent32</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_GETENTROPY</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__OpenBSD__</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <comment type="block">/* On OpenBSD this can return up to 256 bytes of entropy, will return an
+     * error if more are requested.
+     * The call cannot return less than the requested number of bytes.
+       getentropy is explicitly limited to openbsd here, as a similar (but not
+       the same) function may exist on other platforms via glibc.
+     */</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>getentropy</name><argument_list>(<argument><expr><name>ent32</name></expr></argument>, <argument><expr><name>NUM_OS_RANDOM_BYTES</name></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_GETENTROPY_RAND</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>defined</name><argument_list>(<argument><expr><name>MAC_OSX</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <comment type="line">// We need a fallback for OSX &lt; 10.12</comment>
+    <if_stmt><if>if <condition>(<expr><operator>&amp;</operator><name>getentropy</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name>getentropy</name><argument_list>(<argument><expr><name>ent32</name></expr></argument>, <argument><expr><name>NUM_OS_RANDOM_BYTES</name></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>GetDevURandom</name><argument_list>(<argument><expr><name>ent32</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_SYSCTL_ARND</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <comment type="block">/* FreeBSD and similar. It is possible for the call to return less
+     * bytes than requested, so need to read in a loop.
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name><name>name</name><index>[<expr><literal type="number">2</literal></expr>]</index></name> <init>= <expr><block>{<expr><name>CTL_KERN</name></expr>, <expr><name>KERN_ARND</name></expr>}</block></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>have</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <do>do <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>len</name> <init>= <expr><name>NUM_OS_RANDOM_BYTES</name> <operator>-</operator> <name>have</name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>sysctl</name><argument_list>(<argument><expr><name>name</name></expr></argument>, <argument><expr><call><name>ARRAYLEN</name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>ent32</name> <operator>+</operator> <name>have</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>len</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>RandFailure</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>have</name> <operator>+=</operator> <name>len</name></expr>;</expr_stmt>
+    </block_content>}</block> while <condition>(<expr><name>have</name> <operator>&lt;</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>)</condition>;</do>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <comment type="block">/* Fall back to /dev/urandom if there is no specific method implemented to
+     * get system entropy for this OS.
+     */</comment>
+    <expr_stmt><expr><call><name>GetDevURandom</name><argument_list>(<argument><expr><name>ent32</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<namespace>namespace <block>{
+
+<class>class <name>RNGState</name> <block>{<private type="default">
+    <decl_stmt><decl><type><name>Mutex</name></type> <name>m_mutex</name></decl>;</decl_stmt>
+    <comment type="block">/* The RNG state consists of 256 bits of entropy, taken from the output of
+     * one operation's SHA512 output, and fed as input to the next one.
+     * Carrying 256 bits of entropy should be sufficient to guarantee
+     * unpredictability as long as any entropy source was ever unpredictable
+     * to an attacker. To protect against situations where an attacker might
+     * observe the RNG's state, fresh entropy is always mixed when
+     * GetStrongRandBytes is called.
+     */</comment>
+    <function_decl><type><name>unsigned</name> <name>char</name> <name><name>m_state</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_mutex</name></type></decl></parameter>)</parameter_list> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init>;</function_decl>
+    <function_decl><type><name>uint64_t</name> <name>m_counter</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_mutex</name></type></decl></parameter>)</parameter_list> = <literal type="number">0</literal>;</function_decl>
+    <function_decl><type><name>bool</name> <name>m_strongly_seeded</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_mutex</name></type></decl></parameter>)</parameter_list> <init>= <expr><literal type="boolean">false</literal></expr></init>;</function_decl>
+
+    <decl_stmt><decl><type><name>Mutex</name></type> <name>m_events_mutex</name></decl>;</decl_stmt>
+    <function_decl><type><name>CSHA256</name> <name>m_events_hasher</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_events_mutex</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+</private><public>public:
+    <constructor><name>RNGState</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>InitHardwareRand</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+
+    <destructor><name>~RNGState</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+    </block_content>}</block></destructor>
+
+    <function><type><name>void</name></type> <name>AddEvent</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>event_info</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_events_mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>m_events_hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name> <operator>*</operator><operator>)</operator><operator>&amp;</operator><name>event_info</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>event_info</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Get the low four bytes of the performance counter. This translates to roughly the</comment>
+        <comment type="line">// subsecond part.</comment>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>perfcounter</name> <init>= <expr><operator>(</operator><call><name>GetPerformanceCounter</name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0xffffffff</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>m_events_hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>perfcounter</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>perfcounter</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/**
+     * Feed (the hash of) all events added through AddEvent() to hasher.
+     */</comment>
+    <function><type><name>void</name></type> <name>SeedEvents</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+    <block>{<block_content>
+        <comment type="line">// We use only SHA256 for the events hashing to get the ASM speedups we have for SHA256,</comment>
+        <comment type="line">// since we want it to be fast as network peers may be able to trigger it repeatedly.</comment>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_events_mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>events_hash</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>m_events_hasher</name><operator>.</operator><name>Finalize</name></name><argument_list>(<argument><expr><name>events_hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>events_hash</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Re-initialize the hasher with the finalized state to use later.</comment>
+        <expr_stmt><expr><call><name><name>m_events_hasher</name><operator>.</operator><name>Reset</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>m_events_hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>events_hash</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Extract up to 32 bytes of entropy from the RNG state, mixing in new entropy from hasher.
+     *
+     * If this function has never been called with strong_seed = true, false is returned.
+     */</comment>
+    <function><type><name>bool</name></type> <name>MixExtract</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>out</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>num</name></decl></parameter>, <parameter><decl><type><name>CSHA512</name><modifier>&amp;&amp;</modifier></type> <name>hasher</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>strong_seed</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>num</name> <operator>&lt;=</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>buf</name><index>[<expr><literal type="number">64</literal></expr>]</index></name></decl>;</decl_stmt>
+        <assert type="static">static_assert<argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></sizeof> <operator>==</operator> <name><name>CSHA512</name><operator>::</operator><name>OUTPUT_SIZE</name></name></expr></argument>, <argument><expr><literal type="string">"Buffer needs to have hasher's output size"</literal></expr></argument>)</argument_list>;</assert>
+        <decl_stmt><decl><type><name>bool</name></type> <name>ret</name></decl>;</decl_stmt>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>ret</name> <operator>=</operator> <operator>(</operator><name>m_strongly_seeded</name> <operator>|=</operator> <name>strong_seed</name><operator>)</operator></expr>;</expr_stmt>
+            <comment type="line">// Write the current state of the RNG into the hasher</comment>
+            <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>m_state</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <comment type="line">// Write a new counter number into the state</comment>
+            <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>m_counter</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>m_counter</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><operator>++</operator><name>m_counter</name></expr>;</expr_stmt>
+            <comment type="line">// Finalize the hasher</comment>
+            <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Finalize</name></name><argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <comment type="line">// Store the last 32 bytes of the hash output as new RNG state.</comment>
+            <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>m_state</name></expr></argument>, <argument><expr><name>buf</name> <operator>+</operator> <literal type="number">32</literal></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block>
+        <comment type="line">// If desired, copy (up to) the first 32 bytes of the hash output as output.</comment>
+        <if_stmt><if>if <condition>(<expr><name>num</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>out</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>out</name></expr></argument>, <argument><expr><name>buf</name></expr></argument>, <argument><expr><name>num</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Best effort cleanup of internal state</comment>
+        <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Reset</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>memory_cleanse</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><literal type="number">64</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>ret</name></expr>;</return>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<function><type><name>RNGState</name><modifier>&amp;</modifier></type> <name>GetRNGState</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// This C++11 idiom relies on the guarantee that static variable are initialized</comment>
+    <comment type="line">// on first call, even when multiple parallel calls are permitted.</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>RNGState</name></expr></argument>, <argument><expr><name><name>secure_allocator</name><argument_list type="generic">&lt;<argument><expr><name>RNGState</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>g_rng</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><name><name>g_rng</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr>;</return>
+</block_content>}</block></function>
+}</block></namespace>
+
+<comment type="block">/* A note on the use of noexcept in the seeding functions below:
+ *
+ * None of the RNG code should ever throw any exception.
+ */</comment>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedTimestamp</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>perfcounter</name> <init>= <expr><call><name>GetPerformanceCounter</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>perfcounter</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>perfcounter</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedFast</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>buffer</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+
+    <comment type="line">// Stack pointer to indirectly commit to thread/callstack</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>ptr</name> <init>= <expr><name>buffer</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>ptr</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>ptr</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Hardware randomness is very fast when available; use it always.</comment>
+    <expr_stmt><expr><call><name>SeedHardwareFast</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// High-precision timestamp</comment>
+    <expr_stmt><expr><call><name>SeedTimestamp</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedSlow</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>, <parameter><decl><type><name>RNGState</name><modifier>&amp;</modifier></type> <name>rng</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>buffer</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+
+    <comment type="line">// Everything that the 'fast' seeder includes</comment>
+    <expr_stmt><expr><call><name>SeedFast</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// OS randomness</comment>
+    <expr_stmt><expr><call><name>GetOSRand</name><argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Add the events hasher into the mix</comment>
+    <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>SeedEvents</name></name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// High-precision timestamp.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// Note that we also commit to a timestamp in the Fast seeder, so we indirectly commit to a</comment>
+    <comment type="line">// benchmark of all the entropy gathering sources in this function).</comment>
+    <expr_stmt><expr><call><name>SeedTimestamp</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Extract entropy from rng, strengthen it, and feed it into hasher. */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedStrengthen</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>, <parameter><decl><type><name>RNGState</name><modifier>&amp;</modifier></type> <name>rng</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>microseconds</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// Generate 32 bytes of entropy from the RNG, and a copy of the entropy already in hasher.</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>strengthen_seed</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>MixExtract</name></name><argument_list>(<argument><expr><name>strengthen_seed</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>strengthen_seed</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><call><name>CSHA512</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Strengthen the seed, and feed it into hasher.</comment>
+    <expr_stmt><expr><call><name>Strengthen</name><argument_list>(<argument><expr><name>strengthen_seed</name></expr></argument>, <argument><expr><name>microseconds</name></expr></argument>, <argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedPeriodic</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>, <parameter><decl><type><name>RNGState</name><modifier>&amp;</modifier></type> <name>rng</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// Everything that the 'fast' seeder includes</comment>
+    <expr_stmt><expr><call><name>SeedFast</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// High-precision timestamp</comment>
+    <expr_stmt><expr><call><name>SeedTimestamp</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Add the events hasher into the mix</comment>
+    <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>SeedEvents</name></name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Dynamic environment data (performance monitoring, ...)</comment>
+    <decl_stmt><decl><type><name>auto</name></type> <name>old_size</name> <init>= <expr><call><name><name>hasher</name><operator>.</operator><name>Size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>RandAddDynamicEnv</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RAND</name></name></expr></argument>, <argument><expr><literal type="string">"Feeding %i bytes of dynamic environment data into RNG\n"</literal></expr></argument>, <argument><expr><call><name><name>hasher</name><operator>.</operator><name>Size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <name>old_size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Strengthen for 10 ms</comment>
+    <expr_stmt><expr><call><name>SeedStrengthen</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>, <argument><expr><name>rng</name></expr></argument>, <argument><expr><literal type="number">10000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SeedStartup</name><parameter_list>(<parameter><decl><type><name>CSHA512</name><modifier>&amp;</modifier></type> <name>hasher</name></decl></parameter>, <parameter><decl><type><name>RNGState</name><modifier>&amp;</modifier></type> <name>rng</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// Gather 256 bits of hardware randomness, if available</comment>
+    <expr_stmt><expr><call><name>SeedHardwareSlow</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Everything that the 'slow' seeder includes.</comment>
+    <expr_stmt><expr><call><name>SeedSlow</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>, <argument><expr><name>rng</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Dynamic environment data (performance monitoring, ...)</comment>
+    <decl_stmt><decl><type><name>auto</name></type> <name>old_size</name> <init>= <expr><call><name><name>hasher</name><operator>.</operator><name>Size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>RandAddDynamicEnv</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Static environment data</comment>
+    <expr_stmt><expr><call><name>RandAddStaticEnv</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>RAND</name></name></expr></argument>, <argument><expr><literal type="string">"Feeding %i bytes of environment data into RNG\n"</literal></expr></argument>, <argument><expr><call><name><name>hasher</name><operator>.</operator><name>Size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <name>old_size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Strengthen for 100 ms</comment>
+    <expr_stmt><expr><call><name>SeedStrengthen</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>, <argument><expr><name>rng</name></expr></argument>, <argument><expr><literal type="number">100000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<enum type="class">enum class <name>RNGLevel</name> <block>{
+    <decl><name>FAST</name></decl>, <comment type="line" format="doxygen">//!&lt; Automatically called by GetRandBytes</comment>
+    <decl><name>SLOW</name></decl>, <comment type="line" format="doxygen">//!&lt; Automatically called by GetStrongRandBytes</comment>
+    <decl><name>PERIODIC</name></decl>, <comment type="line" format="doxygen">//!&lt; Called by RandAddPeriodic()</comment>
+}</block>;</enum>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>ProcRand</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>out</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>num</name></decl></parameter>, <parameter><decl><type><name>RNGLevel</name></type> <name>level</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <comment type="line">// Make sure the RNG is initialized first (as all Seed* function possibly need hwrand to be available).</comment>
+    <decl_stmt><decl><type><name>RNGState</name><modifier>&amp;</modifier></type> <name>rng</name> <init>= <expr><call><name>GetRNGState</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>num</name> <operator>&lt;=</operator> <literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>CSHA512</name></type> <name>hasher</name></decl>;</decl_stmt>
+    <switch>switch <condition>(<expr><name>level</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>RNGLevel</name><operator>::</operator><name>FAST</name></name></expr>:</case>
+        <expr_stmt><expr><call><name>SeedFast</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>RNGLevel</name><operator>::</operator><name>SLOW</name></name></expr>:</case>
+        <expr_stmt><expr><call><name>SeedSlow</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>, <argument><expr><name>rng</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>RNGLevel</name><operator>::</operator><name>PERIODIC</name></name></expr>:</case>
+        <expr_stmt><expr><call><name>SeedPeriodic</name><argument_list>(<argument><expr><name>hasher</name></expr></argument>, <argument><expr><name>rng</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    </block_content>}</block></switch>
+
+    <comment type="line">// Combine with and update state</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>rng</name><operator>.</operator><name>MixExtract</name></name><argument_list>(<argument><expr><name>out</name></expr></argument>, <argument><expr><name>num</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>hasher</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// On the first invocation, also seed with SeedStartup().</comment>
+        <decl_stmt><decl><type><name>CSHA512</name></type> <name>startup_hasher</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>SeedStartup</name><argument_list>(<argument><expr><name>startup_hasher</name></expr></argument>, <argument><expr><name>rng</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>MixExtract</name></name><argument_list>(<argument><expr><name>out</name></expr></argument>, <argument><expr><name>num</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>startup_hasher</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>GetRandBytes</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>buf</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>num</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept> <block>{<block_content> <expr_stmt><expr><call><name>ProcRand</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>num</name></expr></argument>, <argument><expr><name><name>RNGLevel</name><operator>::</operator><name>FAST</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name>void</name></type> <name>GetStrongRandBytes</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name><modifier>*</modifier></type> <name>buf</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>num</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept> <block>{<block_content> <expr_stmt><expr><call><name>ProcRand</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>num</name></expr></argument>, <argument><expr><name><name>RNGLevel</name><operator>::</operator><name>SLOW</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name>void</name></type> <name>RandAddPeriodic</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept> <block>{<block_content> <expr_stmt><expr><call><name>ProcRand</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name><name>RNGLevel</name><operator>::</operator><name>PERIODIC</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name>void</name></type> <name>RandAddEvent</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>event_info</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept> <block>{<block_content> <expr_stmt><expr><call><name>GetRNGState</name><argument_list>()</argument_list></call><operator>.</operator><call><name>AddEvent</name><argument_list>(<argument><expr><name>event_info</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>g_mock_deterministic_tests</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+
+<function><type><name>uint64_t</name></type> <name>GetRand</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>nMax</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <return>return <expr><call><name>FastRandomContext</name><argument_list>(<argument><expr><name>g_mock_deterministic_tests</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>randrange</name><argument_list>(<argument><expr><name>nMax</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name></type> <name>GetRandMicros</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name></type> <name>duration_max</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name><argument_list>{<argument><expr><macro><name>GetRand</name><argument_list>(<argument>duration_max.count()</argument>)</argument_list></macro></expr></argument>}</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name>GetRandInt</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>nMax</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <return>return <expr><call><name>GetRand</name><argument_list>(<argument><expr><name>nMax</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>uint256</name></type> <name>GetRandHash</name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>GetRandBytes</name><argument_list>(<argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>hash</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>hash</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>FastRandomContext</name><operator>::</operator><name>RandomSeed</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>seed</name> <init>= <expr><call><name>GetRandHash</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>SetKey</name></name><argument_list>(<argument><expr><call><name><name>seed</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>requires_seed</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>uint256</name></type> <name><name>FastRandomContext</name><operator>::</operator><name>rand256</name></name><parameter_list>()</parameter_list> <noexcept>noexcept</noexcept>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>bytebuf_size</name> <operator>&lt;</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>FillByteBuffer</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>ret</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><call><name><name>ret</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>bytebuf</name> <operator>+</operator> <literal type="number">64</literal> <operator>-</operator> <name>bytebuf_size</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>bytebuf_size</name> <operator>-=</operator> <literal type="number">32</literal></expr>;</expr_stmt>
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name><name>FastRandomContext</name><operator>::</operator><name>randbytes</name></name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>len</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>requires_seed</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>RandomSeed</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>ret</name><argument_list>(<argument><expr><name>len</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>len</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>Keystream</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>ret</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><name>len</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>FastRandomContext</name><operator>::</operator><name>FastRandomContext</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>seed</name></decl></parameter>)</parameter_list> <noexcept>noexcept</noexcept> : <name>requires_seed</name>(false</constructor>)<operator>,</operator> <expr_stmt><expr><call><name>bytebuf_size</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>bitbuf_size</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro>
+<expr><block>{
+    <expr><call><name><name>rng</name><operator>.</operator><name>SetKey</name></name><argument_list>(<argument><expr><call><name><name>seed</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;
+}</block>
+
+<name>bool</name> <macro><name>Random_SanityCheck</name><argument_list>()</argument_list></macro>
+<block>{
+    <expr><name>uint64_t</name> <name>start</name> <operator>=</operator> <call><name>GetPerformanceCounter</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="block">/* This does not measure the quality of randomness, but it does test that
+     * GetOSRand() overwrites all 32 bytes of the output given a maximum
+     * number of tries.
+     */</comment>
+    <expr><specifier>static</specifier> <specifier>const</specifier> <name>ssize_t</name> <name>MAX_TRIES</name> <operator>=</operator> <literal type="number">1024</literal></expr>;
+    <expr><name>uint8_t</name> <name><name>data</name><index>[<expr><name>NUM_OS_RANDOM_BYTES</name></expr>]</index></name></expr>;
+    <expr><name>bool</name> <name><name>overwritten</name><index>[<expr><name>NUM_OS_RANDOM_BYTES</name></expr>]</index></name> <operator>=</operator> <block>{}</block></expr>; <comment type="block">/* Tracks which bytes have been overwritten at least once */</comment>
+    <expr><name>int</name> <name>num_overwritten</name></expr>;
+    <expr><name>int</name> <name>tries</name> <operator>=</operator> <literal type="number">0</literal></expr>;
+    <comment type="block">/* Loop until all bytes have been overwritten at least once, or max number tries reached */</comment>
+    <do>do <block>{<block_content>
+        <expr_stmt><expr><call><name>memset</name><argument_list>(<argument><expr><name>data</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>NUM_OS_RANDOM_BYTES</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>GetOSRand</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>int</name></type> <name>x</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><name><name>overwritten</name><index>[<expr><name>x</name></expr>]</index></name> <operator>|=</operator> <operator>(</operator><name><name>data</name><index>[<expr><name>x</name></expr>]</index></name> <operator>!=</operator> <literal type="number">0</literal><operator>)</operator></expr>;</expr_stmt>
+        <expr_stmt/></block_content></block></for></block_content></block></do>}</block>
+
+        <name>num_overwritten</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>int</name></type> <name>x</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>overwritten</name><index>[<expr><name>x</name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>num_overwritten</name> <operator>+=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><name>tries</name> <operator>+=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    } while <expr_stmt><expr><operator>(</operator><name>num_overwritten</name> <operator>&lt;</operator> <name>NUM_OS_RANDOM_BYTES</name> <operator>&amp;&amp;</operator> <name>tries</name> <operator>&lt;</operator> <name>MAX_TRIES</name><operator>)</operator></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>num_overwritten</name> <operator>!=</operator> <name>NUM_OS_RANDOM_BYTES</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt> <comment type="block">/* If this failed, bailed out after too many tries */</comment>
+
+    <comment type="line">// Check that GetPerformanceCounter increases at least during a GetOSRand() call + 1ms sleep.</comment>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>sleep_for</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>milliseconds</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>stop</name> <init>= <expr><call><name>GetPerformanceCounter</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>stop</name> <operator>==</operator> <name>start</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// We called GetPerformanceCounter. Use it as entropy.</comment>
+    <decl_stmt><decl><type><name>CSHA512</name></type> <name>to_add</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>to_add</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>start</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>start</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>to_add</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>stop</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>stop</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>GetRNGState</name><argument_list>()</argument_list></call><operator>.</operator><call><name>MixExtract</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>to_add</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+}
+
+FastRandomContext<expr_stmt><expr><name><operator>::</operator><name>FastRandomContext</name></name><operator>(</operator><name>bool</name> <name>fDeterministic</name><operator>)</operator> <noexcept>noexcept</noexcept> <operator>:</operator> <call><name>requires_seed</name><argument_list>(<argument><expr><operator>!</operator><name>fDeterministic</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>bytebuf_size</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>bitbuf_size</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro>
+<expr><block>{
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fDeterministic</name></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    <expr_stmt/></block_content></block></if></if_stmt>}</block>
+    <name>uint256</name> <name>seed</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>SetKey</name></name><argument_list>(<argument><expr><call><name><name>seed</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+}
+
+FastRandomContext<expr_stmt><expr><operator>&amp;</operator> <call><name><name>FastRandomContext</name><operator>::</operator><name>operator<name>=</name></name></name><argument_list>(<argument><expr><name>FastRandomContext</name><operator>&amp;&amp;</operator> <name>from</name></expr></argument>)</argument_list></call> <noexcept>noexcept</noexcept>
+<block>{
+    <expr><name>requires_seed</name> <operator>=</operator> <name><name>from</name><operator>.</operator><name>requires_seed</name></name></expr>;
+    <expr><name>rng</name> <operator>=</operator> <name><name>from</name><operator>.</operator><name>rng</name></name></expr>;
+    <expr><call><name><name>std</name><operator>::</operator><name>copy</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>begin</name></name><argument_list>(<argument><expr><name><name>from</name><operator>.</operator><name>bytebuf</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>end</name></name><argument_list>(<argument><expr><name><name>from</name><operator>.</operator><name>bytebuf</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>begin</name></name><argument_list>(<argument><expr><name>bytebuf</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bytebuf_size</name> <operator>=</operator> <name><name>from</name><operator>.</operator><name>bytebuf_size</name></name></expr>;
+    <expr><name>bitbuf</name> <operator>=</operator> <name><name>from</name><operator>.</operator><name>bitbuf</name></name></expr>;
+    <expr><name>bitbuf_size</name> <operator>=</operator> <name><name>from</name><operator>.</operator><name>bitbuf_size</name></name></expr>;
+    <expr><name><name>from</name><operator>.</operator><name>requires_seed</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;
+    <expr><name><name>from</name><operator>.</operator><name>bytebuf_size</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;
+    <expr><name><name>from</name><operator>.</operator><name>bitbuf_size</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;
+    <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+}</block></expr></expr_stmt>
+
+<function><type><name>void</name></type> <name>RandomInit</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Invoke RNG code to trigger initialization (if not already performed)</comment>
+    <expr_stmt><expr><call><name>ProcRand</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name><name>RNGLevel</name><operator>::</operator><name>FAST</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>ReportHardwareRand</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

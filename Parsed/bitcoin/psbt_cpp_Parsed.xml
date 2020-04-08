@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/psbt.cpp"><comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;psbt.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+
+
+<constructor><name><name>PartiallySignedTransaction</name><operator>::</operator><name>PartiallySignedTransaction</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>tx</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><call><name><name>inputs</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>outputs</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>PartiallySignedTransaction</name><operator>::</operator><name>IsNull</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><operator>!</operator><name>tx</name> <operator>&amp;&amp;</operator> <call><name><name>inputs</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>outputs</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>unknown</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PartiallySignedTransaction</name><operator>::</operator><name>Merge</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Prohibited to merge two PSBTs over different transactions</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <call><name><name>psbt</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>inputs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>inputs</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>Merge</name><argument_list>(<argument><expr><name><name>psbt</name><operator>.</operator><name>inputs</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>outputs</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>outputs</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>Merge</name><argument_list>(<argument><expr><name><name>psbt</name><operator>.</operator><name>outputs</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>unknown</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>psbt</name><operator>.</operator><name>unknown</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>psbt</name><operator>.</operator><name>unknown</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PartiallySignedTransaction</name><operator>::</operator><name>IsSane</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>PSBTInput</name></type> <name>input</name> <range>: <expr><name>inputs</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>IsSane</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PartiallySignedTransaction</name><operator>::</operator><name>AddInput</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name></decl></parameter>, <parameter><decl><type><name>PSBTInput</name><modifier>&amp;</modifier></type> <name>psbtin</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>std</name><operator>::</operator><name>find</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>txin</name></expr></argument>)</argument_list></call> <operator>!=</operator> <call><name><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txin</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>psbtin</name><operator>.</operator><name>partial_sigs</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>psbtin</name><operator>.</operator><name>final_script_sig</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>psbtin</name><operator>.</operator><name>final_script_witness</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>inputs</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>psbtin</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PartiallySignedTransaction</name><operator>::</operator><name>AddOutput</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>PSBTOutput</name><modifier>&amp;</modifier></type> <name>psbtout</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>tx</name><operator>-&gt;</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>outputs</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>psbtout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PartiallySignedTransaction</name><operator>::</operator><name>GetInputUTXO</name></name><parameter_list>(<parameter><decl><type><name>CTxOut</name><modifier>&amp;</modifier></type> <name>utxo</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>input_index</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>PSBTInput</name></type> <name>input</name> <init>= <expr><name><name>inputs</name><index>[<expr><name>input_index</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>prevout_index</name> <init>= <expr><name><name>tx</name><operator>-&gt;</operator><name>vin</name><index>[<expr><name>input_index</name></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>n</name></name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>utxo</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>non_witness_utxo</name><operator>-&gt;</operator><name>vout</name><index>[<expr><name>prevout_index</name></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>utxo</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>witness_utxo</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PSBTInput</name><operator>::</operator><name>IsNull</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><operator>!</operator><name>non_witness_utxo</name> <operator>&amp;&amp;</operator> <call><name><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>partial_sigs</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>unknown</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>hd_keypaths</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>PSBTInput</name><operator>::</operator><name>FillSignatureData</name></name><parameter_list>(<parameter><decl><type><name>SignatureData</name><modifier>&amp;</modifier></type> <name>sigdata</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>final_script_sig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>scriptSig</name></name> <operator>=</operator> <name>final_script_sig</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>complete</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>scriptWitness</name></name> <operator>=</operator> <name>final_script_witness</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>complete</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>sigdata</name><operator>.</operator><name>complete</name></name></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>sigdata</name><operator>.</operator><name>signatures</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>partial_sigs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>partial_sigs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>redeem_script</name></name> <operator>=</operator> <name>redeem_script</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>witness_script</name></name> <operator>=</operator> <name>witness_script</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>key_pair</name> <range>: <expr><name>hd_keypaths</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>sigdata</name><operator>.</operator><name>misc_pubkeys</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><call><name><name>key_pair</name><operator>.</operator><name>first</name><operator>.</operator><name>GetID</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>key_pair</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>PSBTInput</name><operator>::</operator><name>FromSignatureData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SignatureData</name><modifier>&amp;</modifier></type> <name>sigdata</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>sigdata</name><operator>.</operator><name>complete</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>partial_sigs</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>hd_keypaths</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>redeem_script</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>witness_script</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>sigdata</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>final_script_sig</name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>scriptSig</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>sigdata</name><operator>.</operator><name>scriptWitness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>final_script_witness</name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>scriptWitness</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>partial_sigs</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>sigdata</name><operator>.</operator><name>signatures</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>sigdata</name><operator>.</operator><name>signatures</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>sigdata</name><operator>.</operator><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>redeem_script</name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>redeem_script</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>sigdata</name><operator>.</operator><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>witness_script</name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>witness_script</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>entry</name> <range>: <expr><name><name>sigdata</name><operator>.</operator><name>misc_pubkeys</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>hd_keypaths</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name><name>entry</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>PSBTInput</name><operator>::</operator><name>Merge</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>non_witness_utxo</name> <operator>&amp;&amp;</operator> <name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>non_witness_utxo</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>witness_utxo</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>witness_utxo</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>non_witness_utxo</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt> <comment type="line">// Clear out any non-witness utxo when we set a witness one.</comment>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>partial_sigs</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>input</name><operator>.</operator><name>partial_sigs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>input</name><operator>.</operator><name>partial_sigs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>hd_keypaths</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>input</name><operator>.</operator><name>hd_keypaths</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>input</name><operator>.</operator><name>hd_keypaths</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>unknown</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>input</name><operator>.</operator><name>unknown</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>input</name><operator>.</operator><name>unknown</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>redeem_script</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>redeem_script</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>witness_script</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>witness_script</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>final_script_sig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>final_script_sig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>final_script_sig</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>final_script_sig</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>final_script_witness</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>final_script_witness</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PSBTInput</name><operator>::</operator><name>IsSane</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// Cannot have both witness and non-witness utxos</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name>non_witness_utxo</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// If we have a witness_script or a scriptWitness, we must also have a witness utxo</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>PSBTOutput</name><operator>::</operator><name>FillSignatureData</name></name><parameter_list>(<parameter><decl><type><name>SignatureData</name><modifier>&amp;</modifier></type> <name>sigdata</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>redeem_script</name></name> <operator>=</operator> <name>redeem_script</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>witness_script</name></name> <operator>=</operator> <name>witness_script</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>key_pair</name> <range>: <expr><name>hd_keypaths</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>sigdata</name><operator>.</operator><name>misc_pubkeys</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><call><name><name>key_pair</name><operator>.</operator><name>first</name><operator>.</operator><name>GetID</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>key_pair</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>PSBTOutput</name><operator>::</operator><name>FromSignatureData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SignatureData</name><modifier>&amp;</modifier></type> <name>sigdata</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>sigdata</name><operator>.</operator><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>redeem_script</name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>redeem_script</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>sigdata</name><operator>.</operator><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>witness_script</name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>witness_script</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>entry</name> <range>: <expr><name><name>sigdata</name><operator>.</operator><name>misc_pubkeys</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>hd_keypaths</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name><name>entry</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PSBTOutput</name><operator>::</operator><name>IsNull</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>hd_keypaths</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>unknown</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>PSBTOutput</name><operator>::</operator><name>Merge</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PSBTOutput</name><modifier>&amp;</modifier></type> <name>output</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>hd_keypaths</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>output</name><operator>.</operator><name>hd_keypaths</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>output</name><operator>.</operator><name>hd_keypaths</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>unknown</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>output</name><operator>.</operator><name>unknown</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>output</name><operator>.</operator><name>unknown</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>output</name><operator>.</operator><name>redeem_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>redeem_script</name> <operator>=</operator> <name><name>output</name><operator>.</operator><name>redeem_script</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>output</name><operator>.</operator><name>witness_script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>witness_script</name> <operator>=</operator> <name><name>output</name><operator>.</operator><name>witness_script</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+<function><type><name>bool</name></type> <name>PSBTInputSigned</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>final_script_sig</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><call><name><name>input</name><operator>.</operator><name>final_script_witness</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>UpdatePSBTOutput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SigningProvider</name><modifier>&amp;</modifier></type> <name>provider</name></decl></parameter>, <parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>index</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>out</name> <init>= <expr><call><name><name>psbt</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>vout</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>index</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>PSBTOutput</name><modifier>&amp;</modifier></type> <name>psbt_out</name> <init>= <expr><call><name><name>psbt</name><operator>.</operator><name>outputs</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>index</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Fill a SignatureData with output info</comment>
+    <decl_stmt><decl><type><name>SignatureData</name></type> <name>sigdata</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>psbt_out</name><operator>.</operator><name>FillSignatureData</name></name><argument_list>(<argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Construct a would-be spend of this output, to update sigdata with.</comment>
+    <comment type="line">// Note that ProduceSignature is used to fill in metadata (not actual signatures),</comment>
+    <comment type="line">// so provider does not need to provide any private keys (it can be a HidingSigningProvider).</comment>
+    <decl_stmt><decl><type><name>MutableTransactionSignatureCreator</name></type> <name>creator</name><argument_list>(<argument><expr><call><name><name>psbt</name><operator>.</operator><name>tx</name><operator>.</operator><name>get_ptr</name></name><argument_list>()</argument_list></call></expr></argument>, <comment type="block">/* index */</comment> <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name><name>out</name><operator>.</operator><name>nValue</name></name></expr></argument>, <argument><expr><name>SIGHASH_ALL</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>ProduceSignature</name><argument_list>(<argument><expr><name>provider</name></expr></argument>, <argument><expr><name>creator</name></expr></argument>, <argument><expr><name><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Put redeem_script, witness_script, key paths, into PSBTOutput.</comment>
+    <expr_stmt><expr><call><name><name>psbt_out</name><operator>.</operator><name>FromSignatureData</name></name><argument_list>(<argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>SignPSBTInput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SigningProvider</name><modifier>&amp;</modifier></type> <name>provider</name></decl></parameter>, <parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>index</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>sighash</name></decl></parameter>, <parameter><decl><type><name>SignatureData</name><modifier>*</modifier></type> <name>out_sigdata</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>use_dummy</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>PSBTInput</name><modifier>&amp;</modifier></type> <name>input</name> <init>= <expr><call><name><name>psbt</name><operator>.</operator><name>inputs</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>index</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name> <init>= <expr><operator>*</operator><name><name>psbt</name><operator>.</operator><name>tx</name></name></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name>PSBTInputSigned</name><argument_list>(<argument><expr><name>input</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Fill SignatureData with input info</comment>
+    <decl_stmt><decl><type><name>SignatureData</name></type> <name>sigdata</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>input</name><operator>.</operator><name>FillSignatureData</name></name><argument_list>(<argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Get UTXO</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>require_witness_sig</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>utxo</name></decl>;</decl_stmt>
+
+    <comment type="line">// Verify input sanity, which checks that at most one of witness or non-witness utxos is provided.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>IsSane</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// If we're taking our information from a non-witness UTXO, verify that it matches the prevout.</comment>
+        <decl_stmt><decl><type><name>COutPoint</name></type> <name>prevout</name> <init>= <expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>index</name></expr>]</index></name><operator>.</operator><name>prevout</name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>input</name><operator>.</operator><name>non_witness_utxo</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name><name>prevout</name><operator>.</operator><name>hash</name></name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>utxo</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>non_witness_utxo</name><operator>-&gt;</operator><name>vout</name><index>[<expr><name><name>prevout</name><operator>.</operator><name>n</name></name></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name><name>input</name><operator>.</operator><name>witness_utxo</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>utxo</name> <operator>=</operator> <name><name>input</name><operator>.</operator><name>witness_utxo</name></name></expr>;</expr_stmt>
+        <comment type="line">// When we're taking our information from a witness UTXO, we can't verify it is actually data from</comment>
+        <comment type="line">// the output being spent. This is safe in case a witness signature is produced (which includes this</comment>
+        <comment type="line">// information directly in the hash), but not for non-witness signatures. Remember that we require</comment>
+        <comment type="line">// a witness signature in this situation.</comment>
+        <expr_stmt><expr><name>require_witness_sig</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+
+    <expr_stmt><expr><name><name>sigdata</name><operator>.</operator><name>witness</name></name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>sig_complete</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>use_dummy</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>sig_complete</name> <operator>=</operator> <call><name>ProduceSignature</name><argument_list>(<argument><expr><name>provider</name></expr></argument>, <argument><expr><name>DUMMY_SIGNATURE_CREATOR</name></expr></argument>, <argument><expr><name><name>utxo</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <decl_stmt><decl><type><name>MutableTransactionSignatureCreator</name></type> <name>creator</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tx</name></expr></argument>, <argument><expr><name>index</name></expr></argument>, <argument><expr><name><name>utxo</name><operator>.</operator><name>nValue</name></name></expr></argument>, <argument><expr><name>sighash</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>sig_complete</name> <operator>=</operator> <call><name>ProduceSignature</name><argument_list>(<argument><expr><name>provider</name></expr></argument>, <argument><expr><name>creator</name></expr></argument>, <argument><expr><name><name>utxo</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <comment type="line">// Verify that a witness signature was produced in case one was required.</comment>
+    <if_stmt><if>if <condition>(<expr><name>require_witness_sig</name> <operator>&amp;&amp;</operator> <operator>!</operator><name><name>sigdata</name><operator>.</operator><name>witness</name></name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>input</name><operator>.</operator><name>FromSignatureData</name></name><argument_list>(<argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// If we have a witness signature, use the smaller witness UTXO.</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>sigdata</name><operator>.</operator><name>witness</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>input</name><operator>.</operator><name>witness_utxo</name></name> <operator>=</operator> <name>utxo</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>input</name><operator>.</operator><name>non_witness_utxo</name></name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Fill in the missing info</comment>
+    <if_stmt><if>if <condition>(<expr><name>out_sigdata</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>out_sigdata</name><operator>-&gt;</operator><name>missing_pubkeys</name></name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>missing_pubkeys</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>out_sigdata</name><operator>-&gt;</operator><name>missing_sigs</name></name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>missing_sigs</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>out_sigdata</name><operator>-&gt;</operator><name>missing_redeem_script</name></name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>missing_redeem_script</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>out_sigdata</name><operator>-&gt;</operator><name>missing_witness_script</name></name> <operator>=</operator> <name><name>sigdata</name><operator>.</operator><name>missing_witness_script</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name>sig_complete</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>FinalizePSBT</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbtx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Finalize input signatures -- in case we have partial signatures that add up to a complete</comment>
+    <comment type="line">//   signature, but have not combined them yet (e.g. because the combiner that created this</comment>
+    <comment type="line">//   PartiallySignedTransaction did not understand them), this will combine them into a final</comment>
+    <comment type="line">//   script.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>complete</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>psbtx</name><operator>.</operator><name>tx</name><operator>-&gt;</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name>complete</name> <operator>&amp;=</operator> <call><name>SignPSBTInput</name><argument_list>(<argument><expr><name>DUMMY_SIGNING_PROVIDER</name></expr></argument>, <argument><expr><name>psbtx</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name>SIGHASH_ALL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><name>complete</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>FinalizeAndExtractPSBT</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbtx</name></decl></parameter>, <parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>result</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// It's not safe to extract a PSBT that isn't finalized, and there's no easy way to check</comment>
+    <comment type="line">//   whether a PSBT is finalized without finalizing it, so we just do this.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>FinalizePSBT</name><argument_list>(<argument><expr><name>psbtx</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>result</name> <operator>=</operator> <operator>*</operator><name><name>psbtx</name><operator>.</operator><name>tx</name></name></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>result</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>result</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <name><name>psbtx</name><operator>.</operator><name>inputs</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>final_script_sig</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>result</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptWitness</name> <operator>=</operator> <name><name>psbtx</name><operator>.</operator><name>inputs</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>final_script_witness</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>TransactionError</name></type> <name>CombinePSBTs</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>out</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>PartiallySignedTransaction</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>psbtxs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>out</name> <operator>=</operator> <name><name>psbtxs</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr>;</expr_stmt> <comment type="line">// Copy the first one</comment>
+
+    <comment type="line">// Merge</comment>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>next</name></name><argument_list>(<argument><expr><call><name><name>psbtxs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</init> <condition><expr><name>it</name> <operator>!=</operator> <call><name><name>psbtxs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>it</name></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>out</name><operator>.</operator><name>Merge</name></name><argument_list>(<argument><expr><operator>*</operator><name>it</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><name><name>TransactionError</name><operator>::</operator><name>PSBT_MISMATCH</name></name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>out</name><operator>.</operator><name>IsSane</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name><name>TransactionError</name><operator>::</operator><name>INVALID_PSBT</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name><name>TransactionError</name><operator>::</operator><name>OK</name></name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>PSBTRoleName</name><parameter_list>(<parameter><decl><type><name>PSBTRole</name></type> <name>role</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <switch>switch <condition>(<expr><name>role</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>PSBTRole</name><operator>::</operator><name>UPDATER</name></name></expr>:</case> <return>return <expr><literal type="string">"updater"</literal></expr>;</return>
+    <case>case <expr><name><name>PSBTRole</name><operator>::</operator><name>SIGNER</name></name></expr>:</case> <return>return <expr><literal type="string">"signer"</literal></expr>;</return>
+    <case>case <expr><name><name>PSBTRole</name><operator>::</operator><name>FINALIZER</name></name></expr>:</case> <return>return <expr><literal type="string">"finalizer"</literal></expr>;</return>
+    <case>case <expr><name><name>PSBTRole</name><operator>::</operator><name>EXTRACTOR</name></name></expr>:</case> <return>return <expr><literal type="string">"extractor"</literal></expr>;</return>
+        <comment type="line">// no default case, so the compiler can warn about missing cases</comment>
+    </block_content>}</block></switch>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>DecodeBase64PSBT</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>base64_tx</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>error</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>invalid</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>tx_data</name> <init>= <expr><call><name>DecodeBase64</name><argument_list>(<argument><expr><name>base64_tx</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>invalid</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>invalid</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>error</name> <operator>=</operator> <literal type="string">"invalid base64"</literal></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>DecodeRawPSBT</name><argument_list>(<argument><expr><name>psbt</name></expr></argument>, <argument><expr><name>tx_data</name></expr></argument>, <argument><expr><name>error</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>DecodeRawPSBT</name><parameter_list>(<parameter><decl><type><name>PartiallySignedTransaction</name><modifier>&amp;</modifier></type> <name>psbt</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>tx_data</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>error</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ss_data</name><argument_list>(<argument><expr><call><name><name>tx_data</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>tx_data</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>tx_data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><name>ss_data</name> <operator>&gt;&gt;</operator> <name>psbt</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>ss_data</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>error</name> <operator>=</operator> <literal type="string">"extra data after PSBT"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>error</name> <operator>=</operator> <call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></catch></try>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/raii_event_tests.cpp"><comment type="line">// Copyright (c) 2016-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/event.h&gt;</cpp:file></cpp:include>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>EVENT_SET_MEM_FUNCTIONS_IMPLEMENTED</name></cpp:ifdef>
+<comment type="line">// It would probably be ideal to define dummy test(s) that report skipped, but boost::test doesn't seem to make that practical (at least not in versions available with common distros)</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdlib.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;support/events.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>short</name></expr></argument>&gt;</argument_list></name></type> <name>tags</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list></name></type> <name>orders</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>uint16_t</name></type> <name>tagSequence</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name><modifier>*</modifier></type> <name>tag_malloc</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>sz</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>void</name><modifier>*</modifier></type> <name>mem</name> <init>= <expr><call><name>malloc</name><argument_list>(<argument><expr><name>sz</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>mem</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>mem</name></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name><name>tags</name><index>[<expr><name>mem</name></expr>]</index></name><operator>++</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>orders</name><index>[<expr><name>mem</name></expr>]</index></name> <operator>=</operator> <name>tagSequence</name><operator>++</operator></expr>;</expr_stmt>
+    <return>return <expr><name>mem</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>tag_free</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>mem</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>tags</name><index>[<expr><name>mem</name></expr>]</index></name><operator>--</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>orders</name><index>[<expr><name>mem</name></expr>]</index></name> <operator>=</operator> <name>tagSequence</name><operator>++</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>free</name><argument_list>(<argument><expr><name>mem</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<macro><name>BOOST_FIXTURE_TEST_SUITE</name><argument_list>(<argument>raii_event_tests</argument>, <argument>BasicTestingSetup</argument>)</argument_list></macro>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>raii_event_creation</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>event_set_mem_functions</name><argument_list>(<argument><expr><name>tag_malloc</name></expr></argument>, <argument><expr><name>realloc</name></expr></argument>, <argument><expr><name>tag_free</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>void</name><modifier>*</modifier></type> <name>base_ptr</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>base</name> <init>= <expr><call><name>obtain_event_base</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>base_ptr</name> <operator>=</operator> <operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><call><name><name>base</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>tags</name><index>[<expr><name>base_ptr</name></expr>]</index></name> <operator>==</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>tags</name><index>[<expr><name>base_ptr</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>void</name><modifier>*</modifier></type> <name>event_ptr</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>base</name> <init>= <expr><call><name>obtain_event_base</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>auto</name></type> <name>event</name> <init>= <expr><call><name>obtain_event</name><argument_list>(<argument><expr><call><name><name>base</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><name>base_ptr</name> <operator>=</operator> <operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><call><name><name>base</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>event_ptr</name> <operator>=</operator> <operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><call><name><name>event</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>tags</name><index>[<expr><name>base_ptr</name></expr>]</index></name> <operator>==</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>tags</name><index>[<expr><name>event_ptr</name></expr>]</index></name> <operator>==</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>tags</name><index>[<expr><name>base_ptr</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>tags</name><index>[<expr><name>event_ptr</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>event_set_mem_functions</name><argument_list>(<argument><expr><name>malloc</name></expr></argument>, <argument><expr><name>realloc</name></expr></argument>, <argument><expr><name>free</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>raii_event_order</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>event_set_mem_functions</name><argument_list>(<argument><expr><name>tag_malloc</name></expr></argument>, <argument><expr><name>realloc</name></expr></argument>, <argument><expr><name>tag_free</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>void</name><modifier>*</modifier></type> <name>base_ptr</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>void</name><modifier>*</modifier></type> <name>event_ptr</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>base</name> <init>= <expr><call><name>obtain_event_base</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>auto</name></type> <name>event</name> <init>= <expr><call><name>obtain_event</name><argument_list>(<argument><expr><call><name><name>base</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><name>base_ptr</name> <operator>=</operator> <operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><call><name><name>base</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>event_ptr</name> <operator>=</operator> <operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><call><name><name>event</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// base should have allocated before event</comment>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>orders</name><index>[<expr><name>base_ptr</name></expr>]</index></name> <operator>&lt;</operator> <name><name>orders</name><index>[<expr><name>event_ptr</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <comment type="line">// base should be freed after event</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>orders</name><index>[<expr><name>base_ptr</name></expr>]</index></name> <operator>&gt;</operator> <name><name>orders</name><index>[<expr><name>event_ptr</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>event_set_mem_functions</name><argument_list>(<argument><expr><name>malloc</name></expr></argument>, <argument><expr><name>realloc</name></expr></argument>, <argument><expr><name>free</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// EVENT_SET_MEM_FUNCTIONS_IMPLEMENTED</comment>
+</unit>

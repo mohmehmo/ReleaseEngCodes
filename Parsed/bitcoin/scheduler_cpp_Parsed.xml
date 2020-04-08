@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/scheduler.cpp"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;scheduler.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;reverselock.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;assert.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+
+<constructor><name><name>CScheduler</name><operator>::</operator><name>CScheduler</name></name><parameter_list>()</parameter_list> <member_init_list>: <call><name>nThreadsServicingQueue</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>stopRequested</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>, <call><name>stopWhenEmpty</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<destructor><name><name>CScheduler</name><operator>::</operator><name>~CScheduler</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>nThreadsServicingQueue</name> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>BOOST_VERSION</name> <operator>&lt;</operator> <literal type="number">105000</literal></expr></cpp:if>
+<function><type><specifier>static</specifier> <name><name>boost</name><operator>::</operator><name>system_time</name></name></type> <name>toPosixTime</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name></name><modifier>&amp;</modifier></type> <name>t</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Creating the posix_time using from_time_t loses sub-second precision. So rather than exporting the time_point to time_t,</comment>
+    <comment type="line">// start with a posix_time at the epoch (0) and add the milliseconds that have passed since then.</comment>
+    <return>return <expr><call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>from_time_t</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>milliseconds</name></name><argument_list>(<argument><expr><call><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>duration_cast</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>milliseconds</name></name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>t</name><operator>.</operator><name>time_since_epoch</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>count</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><name>void</name></type> <name><name>CScheduler</name><operator>::</operator><name>serviceQueue</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name>newTaskMutex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><operator>++</operator><name>nThreadsServicingQueue</name></expr>;</expr_stmt>
+
+    <comment type="line">// newTaskMutex is locked throughout this loop EXCEPT</comment>
+    <comment type="line">// when the thread is waiting or when the user's function</comment>
+    <comment type="line">// is called.</comment>
+    <while>while <condition>(<expr><operator>!</operator><call><name>shouldStop</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <try>try <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>shouldStop</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name><name>reverse_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>rlock</name><argument_list>(<argument><expr><name>lock</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            </block_content>}</block></if></if_stmt>
+            <while>while <condition>(<expr><operator>!</operator><call><name>shouldStop</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Wait until there is something to do.</comment>
+                <expr_stmt><expr><call><name><name>newTaskScheduled</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>lock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></while>
+
+            <comment type="line">// Wait until either there is a new task, or until</comment>
+            <comment type="line">// the time of the first item on the queue:</comment>
+
+<comment type="line">// wait_until needs boost 1.50 or later; older versions have timed_wait:</comment>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><name>BOOST_VERSION</name> <operator>&lt;</operator> <literal type="number">105000</literal></expr></cpp:if>
+            <while>while <condition>(<expr><operator>!</operator><call><name>shouldStop</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator>
+                   <call><name><name>newTaskScheduled</name><operator>.</operator><name>timed_wait</name></name><argument_list>(<argument><expr><name>lock</name></expr></argument>, <argument><expr><call><name>toPosixTime</name><argument_list>(<argument><expr><call><name><name>taskQueue</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>first</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Keep waiting until timeout</comment>
+            </block_content>}</block></while>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+            <comment type="line">// Some boost versions have a conflicting overload of wait_until that returns void.</comment>
+            <comment type="line">// Explicitly use a template here to avoid hitting that overload.</comment>
+            <while>while <condition>(<expr><operator>!</operator><call><name>shouldStop</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name></name></type> <name>timeToWaitFor</name> <init>= <expr><call><name><name>taskQueue</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>first</name></expr></init></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><call><name><name>newTaskScheduled</name><operator>.</operator><name>wait_until</name><argument_list type="generic">&lt;&gt;</argument_list></name><argument_list>(<argument><expr><name>lock</name></expr></argument>, <argument><expr><name>timeToWaitFor</name></expr></argument>)</argument_list></call> <operator>==</operator> <name><name>boost</name><operator>::</operator><name>cv_status</name><operator>::</operator><name>timeout</name></name></expr>)</condition><block type="pseudo"><block_content>
+                    <break>break;</break></block_content></block></if></if_stmt> <comment type="line">// Exit loop after timeout, it means we reached the time of the event</comment>
+            </block_content>}</block></while>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+            <comment type="line">// If there are multiple threads, the queue can empty while we're waiting (another</comment>
+            <comment type="line">// thread may service the task we were waiting on).</comment>
+            <if_stmt><if>if <condition>(<expr><call><name>shouldStop</name><argument_list>()</argument_list></call> <operator>||</operator> <call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <continue>continue;</continue></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>Function</name></type> <name>f</name> <init>= <expr><call><name><name>taskQueue</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>second</name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>taskQueue</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><call><name><name>taskQueue</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <block>{<block_content>
+                <comment type="line">// Unlock before calling f, so it can reschedule itself or another task</comment>
+                <comment type="line">// without deadlocking:</comment>
+                <decl_stmt><decl><type><name><name>reverse_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>rlock</name><argument_list>(<argument><expr><name>lock</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name>f</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+            <expr_stmt><expr><operator>--</operator><name>nThreadsServicingQueue</name></expr>;</expr_stmt>
+            <throw>throw;</throw>
+        </block_content>}</block></catch></try>
+    </block_content>}</block></while>
+    <expr_stmt><expr><operator>--</operator><name>nThreadsServicingQueue</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>newTaskScheduled</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CScheduler</name><operator>::</operator><name>stop</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>drain</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name>newTaskMutex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>drain</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>stopWhenEmpty</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><name>stopRequested</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name><name>newTaskScheduled</name><operator>.</operator><name>notify_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CScheduler</name><operator>::</operator><name>schedule</name></name><parameter_list>(<parameter><decl><type><name><name>CScheduler</name><operator>::</operator><name>Function</name></name></type> <name>f</name></decl></parameter>, <parameter><decl><type><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name></name></type> <name>t</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name>newTaskMutex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>taskQueue</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>t</name></expr></argument>, <argument><expr><name>f</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name><name>newTaskScheduled</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CScheduler</name><operator>::</operator><name>scheduleFromNow</name></name><parameter_list>(<parameter><decl><type><name><name>CScheduler</name><operator>::</operator><name>Function</name></name></type> <name>f</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>deltaMilliSeconds</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>schedule</name><argument_list>(<argument><expr><name>f</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>now</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>milliseconds</name></name><argument_list>(<argument><expr><name>deltaMilliSeconds</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>Repeat</name><parameter_list>(<parameter><decl><type><name>CScheduler</name><modifier>*</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name><name>CScheduler</name><operator>::</operator><name>Function</name></name></type> <name>f</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>deltaMilliSeconds</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>f</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>s</name><operator>-&gt;</operator><name>scheduleFromNow</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>Repeat</name></expr></argument>, <argument><expr><name>s</name></expr></argument>, <argument><expr><name>f</name></expr></argument>, <argument><expr><name>deltaMilliSeconds</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>deltaMilliSeconds</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CScheduler</name><operator>::</operator><name>scheduleEvery</name></name><parameter_list>(<parameter><decl><type><name><name>CScheduler</name><operator>::</operator><name>Function</name></name></type> <name>f</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>deltaMilliSeconds</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>scheduleFromNow</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>Repeat</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name>f</name></expr></argument>, <argument><expr><name>deltaMilliSeconds</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>deltaMilliSeconds</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>size_t</name></type> <name><name>CScheduler</name><operator>::</operator><name>getQueueInfo</name></name><parameter_list>(<parameter><decl><type><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name></name> <modifier>&amp;</modifier></type><name>first</name></decl></parameter>,
+                             <parameter><decl><type><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name></name> <modifier>&amp;</modifier></type><name>last</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name>newTaskMutex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>result</name> <init>= <expr><call><name><name>taskQueue</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>first</name> <operator>=</operator> <call><name><name>taskQueue</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>first</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>last</name> <operator>=</operator> <call><name><name>taskQueue</name><operator>.</operator><name>rbegin</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>first</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CScheduler</name><operator>::</operator><name>AreThreadsServicingQueue</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name>newTaskMutex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><name>nThreadsServicingQueue</name></expr>;</return>
+</block_content>}</block></function>
+
+
+<function><type><name>void</name></type> <name><name>SingleThreadedSchedulerClient</name><operator>::</operator><name>MaybeScheduleProcessQueue</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_callbacks_pending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Try to avoid scheduling too many copies here, but if we</comment>
+        <comment type="line">// accidentally have two ProcessQueue's scheduled at once its</comment>
+        <comment type="line">// not a big deal.</comment>
+        <if_stmt><if>if <condition>(<expr><name>m_are_callbacks_running</name></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_callbacks_pending</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name><name>m_pscheduler</name><operator>-&gt;</operator><name>schedule</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>SingleThreadedSchedulerClient</name><operator>::</operator><name>ProcessQueue</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>SingleThreadedSchedulerClient</name><operator>::</operator><name>ProcessQueue</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>callback</name></decl>;</decl_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_callbacks_pending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>m_are_callbacks_running</name></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_callbacks_pending</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>m_are_callbacks_running</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name>callback</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><call><name><name>m_callbacks_pending</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>m_callbacks_pending</name><operator>.</operator><name>pop_front</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <comment type="line">// RAII the setting of fCallbacksRunning and calling MaybeScheduleProcessQueue</comment>
+    <comment type="line">// to ensure both happen safely even if callback() throws.</comment>
+    <struct>struct <name>RAIICallbacksRunning</name> <block>{<public type="default">
+        <decl_stmt><decl><type><name>SingleThreadedSchedulerClient</name><modifier>*</modifier></type> <name>instance</name></decl>;</decl_stmt>
+        <constructor><specifier>explicit</specifier> <name>RAIICallbacksRunning</name><parameter_list>(<parameter><decl><type><name>SingleThreadedSchedulerClient</name><modifier>*</modifier></type> <name>_instance</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>instance</name><argument_list>(<argument><expr><name>_instance</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+        <destructor><name>~RAIICallbacksRunning</name><parameter_list>()</parameter_list> <block>{<block_content>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>instance</name><operator>-&gt;</operator><name>m_cs_callbacks_pending</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>instance</name><operator>-&gt;</operator><name>m_are_callbacks_running</name></name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+            </block_content>}</block>
+            <expr_stmt><expr><call><name><name>instance</name><operator>-&gt;</operator><name>MaybeScheduleProcessQueue</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></destructor>
+    </public>}</block> <decl><name>raiicallbacksrunning</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></decl>;</struct>
+
+    <expr_stmt><expr><call><name>callback</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>SingleThreadedSchedulerClient</name><operator>::</operator><name>AddToProcessQueue</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>func</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>m_pscheduler</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_callbacks_pending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>m_callbacks_pending</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>func</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>MaybeScheduleProcessQueue</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>SingleThreadedSchedulerClient</name><operator>::</operator><name>EmptyQueue</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>m_pscheduler</name><operator>-&gt;</operator><name>AreThreadsServicingQueue</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>should_continue</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>should_continue</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>ProcessQueue</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_callbacks_pending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>should_continue</name> <operator>=</operator> <operator>!</operator><call><name><name>m_callbacks_pending</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<function><type><name>size_t</name></type> <name><name>SingleThreadedSchedulerClient</name><operator>::</operator><name>CallbacksPending</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>m_cs_callbacks_pending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>m_callbacks_pending</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,310 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/pubkey.cpp"><comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Copyright (c) 2017 The Zcash developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pubkey.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;secp256k1.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;secp256k1_recovery.h&gt;</cpp:file></cpp:include>
+
+<namespace>namespace
+<block>{
+<comment type="block">/* Global secp256k1_context object used for verification. */</comment>
+<decl_stmt><decl><type><name>secp256k1_context</name><modifier>*</modifier></type> <name>secp256k1_context_verify</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+}</block></namespace> <comment type="line">// namespace</comment>
+
+<comment type="block" format="doxygen">/** This function is taken from the libsecp256k1 distribution and implements
+ *  DER parsing for ECDSA signatures, while supporting an arbitrary subset of
+ *  format violations.
+ *
+ *  Supported violations include negative integers, excessive padding, garbage
+ *  at the end, and overly long length descriptors. This is safe to use in
+ *  Bitcoin because since the activation of BIP66, signatures are verified to be
+ *  strict DER before being passed to this module, and we know it supports all
+ *  violations present in the blockchain before that point.
+ */</comment>
+<function><type><specifier>static</specifier> <name>int</name></type> <name>ecdsa_signature_parse_der_lax</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>secp256k1_context</name><modifier>*</modifier></type> <name>ctx</name></decl></parameter>, <parameter><decl><type><name>secp256k1_ecdsa_signature</name><modifier>*</modifier></type> <name>sig</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>input</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>inputlen</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>rpos</name></decl>, <decl><type ref="prev"/><name>rlen</name></decl>, <decl><type ref="prev"/><name>spos</name></decl>, <decl><type ref="prev"/><name>slen</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>pos</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>lenbyte</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>tmpsig</name><index>[<expr><literal type="number">64</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>overflow</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block">/* Hack to initialize sig with a correctly-parsed but invalid signature. */</comment>
+    <expr_stmt><expr><call><name>secp256k1_ecdsa_signature_parse_compact</name><argument_list>(<argument><expr><name>ctx</name></expr></argument>, <argument><expr><name>sig</name></expr></argument>, <argument><expr><name>tmpsig</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block">/* Sequence tag byte */</comment>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name>inputlen</name> <operator>||</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name> <operator>!=</operator> <literal type="number">0x30</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+
+    <comment type="block">/* Sequence length bytes */</comment>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name>inputlen</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>lenbyte</name> <operator>=</operator> <name><name>input</name><index>[<expr><name>pos</name><operator>++</operator></expr>]</index></name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&amp;</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>lenbyte</name> <operator>-=</operator> <literal type="number">0x80</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <name>inputlen</name> <operator>-</operator> <name>pos</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>pos</name> <operator>+=</operator> <name>lenbyte</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="block">/* Integer tag byte for R */</comment>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name>inputlen</name> <operator>||</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name> <operator>!=</operator> <literal type="number">0x02</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+
+    <comment type="block">/* Integer length for R */</comment>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name>inputlen</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>lenbyte</name> <operator>=</operator> <name><name>input</name><index>[<expr><name>pos</name><operator>++</operator></expr>]</index></name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&amp;</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>lenbyte</name> <operator>-=</operator> <literal type="number">0x80</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <name>inputlen</name> <operator>-</operator> <name>pos</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <while>while <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><name>lenbyte</name><operator>--</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <assert type="static">static_assert<argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>size_t</name></expr></argument>)</argument_list></sizeof> <operator>&gt;=</operator> <literal type="number">4</literal></expr></argument>, <argument><expr><literal type="string">"size_t too small"</literal></expr></argument>)</argument_list>;</assert>
+        <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&gt;=</operator> <literal type="number">4</literal></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>rlen</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <while>while <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>rlen</name> <operator>=</operator> <operator>(</operator><name>rlen</name> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>+</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><name>lenbyte</name><operator>--</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name>rlen</name> <operator>=</operator> <name>lenbyte</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>rlen</name> <operator>&gt;</operator> <name>inputlen</name> <operator>-</operator> <name>pos</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>rpos</name> <operator>=</operator> <name>pos</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>pos</name> <operator>+=</operator> <name>rlen</name></expr>;</expr_stmt>
+
+    <comment type="block">/* Integer tag byte for S */</comment>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name>inputlen</name> <operator>||</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name> <operator>!=</operator> <literal type="number">0x02</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+
+    <comment type="block">/* Integer length for S */</comment>
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>==</operator> <name>inputlen</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>lenbyte</name> <operator>=</operator> <name><name>input</name><index>[<expr><name>pos</name><operator>++</operator></expr>]</index></name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&amp;</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>lenbyte</name> <operator>-=</operator> <literal type="number">0x80</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <name>inputlen</name> <operator>-</operator> <name>pos</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <while>while <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><name>lenbyte</name><operator>--</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <assert type="static">static_assert<argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>size_t</name></expr></argument>)</argument_list></sizeof> <operator>&gt;=</operator> <literal type="number">4</literal></expr></argument>, <argument><expr><literal type="string">"size_t too small"</literal></expr></argument>)</argument_list>;</assert>
+        <if_stmt><if>if <condition>(<expr><name>lenbyte</name> <operator>&gt;=</operator> <literal type="number">4</literal></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>slen</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <while>while <condition>(<expr><name>lenbyte</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>slen</name> <operator>=</operator> <operator>(</operator><name>slen</name> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>+</operator> <name><name>input</name><index>[<expr><name>pos</name></expr>]</index></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>pos</name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><name>lenbyte</name><operator>--</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name>slen</name> <operator>=</operator> <name>lenbyte</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>slen</name> <operator>&gt;</operator> <name>inputlen</name> <operator>-</operator> <name>pos</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>spos</name> <operator>=</operator> <name>pos</name></expr>;</expr_stmt>
+
+    <comment type="block">/* Ignore leading zeroes in R */</comment>
+    <while>while <condition>(<expr><name>rlen</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>input</name><index>[<expr><name>rpos</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>rlen</name><operator>--</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>rpos</name><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <comment type="block">/* Copy R value */</comment>
+    <if_stmt><if>if <condition>(<expr><name>rlen</name> <operator>&gt;</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>overflow</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>tmpsig</name> <operator>+</operator> <literal type="number">32</literal> <operator>-</operator> <name>rlen</name></expr></argument>, <argument><expr><name>input</name> <operator>+</operator> <name>rpos</name></expr></argument>, <argument><expr><name>rlen</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <comment type="block">/* Ignore leading zeroes in S */</comment>
+    <while>while <condition>(<expr><name>slen</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>input</name><index>[<expr><name>spos</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>slen</name><operator>--</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>spos</name><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <comment type="block">/* Copy S value */</comment>
+    <if_stmt><if>if <condition>(<expr><name>slen</name> <operator>&gt;</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>overflow</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>tmpsig</name> <operator>+</operator> <literal type="number">64</literal> <operator>-</operator> <name>slen</name></expr></argument>, <argument><expr><name>input</name> <operator>+</operator> <name>spos</name></expr></argument>, <argument><expr><name>slen</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>overflow</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>overflow</name> <operator>=</operator> <operator>!</operator><call><name>secp256k1_ecdsa_signature_parse_compact</name><argument_list>(<argument><expr><name>ctx</name></expr></argument>, <argument><expr><name>sig</name></expr></argument>, <argument><expr><name>tmpsig</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>overflow</name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Overwrite the result again with a correctly-parsed but invalid
+           signature if parsing failed. */</comment>
+        <expr_stmt><expr><call><name>memset</name><argument_list>(<argument><expr><name>tmpsig</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">64</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_ecdsa_signature_parse_compact</name><argument_list>(<argument><expr><name>ctx</name></expr></argument>, <argument><expr><name>sig</name></expr></argument>, <argument><expr><name>tmpsig</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="number">1</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CPubKey</name><operator>::</operator><name>Verify</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vchSig</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsValid</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>secp256k1_pubkey</name></type> <name>pubkey</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_ecdsa_signature</name></type> <name>sig</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>&amp;&amp;</operator> <literal type="string">"secp256k1_context_verify must be initialized to use CPubKey."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_ec_pubkey_parse</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>vch</name></expr></argument>, <argument><expr><call><name>size</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ecdsa_signature_parse_der_lax</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><call><name><name>vchSig</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="block">/* libsecp256k1's ECDSA verification requires lower-S signatures, which have
+     * not historically been enforced in Bitcoin, so normalize them first. */</comment>
+    <expr_stmt><expr><call><name>secp256k1_ecdsa_signature_normalize</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_ecdsa_verify</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CPubKey</name><operator>::</operator><name>RecoverCompact</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vchSig</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vchSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>COMPACT_SIGNATURE_SIZE</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>recid</name> <init>= <expr><operator>(</operator><name><name>vchSig</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>-</operator> <literal type="number">27</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">3</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fComp</name> <init>= <expr><operator>(</operator><operator>(</operator><name><name>vchSig</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>-</operator> <literal type="number">27</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">4</literal><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_pubkey</name></type> <name>pubkey</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_ecdsa_recoverable_signature</name></type> <name>sig</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>&amp;&amp;</operator> <literal type="string">"secp256k1_context_verify must be initialized to use CPubKey."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_ecdsa_recoverable_signature_parse_compact</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>vchSig</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>, <argument><expr><name>recid</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_ecdsa_recover</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>pub</name><index>[<expr><name>SIZE</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>publen</name> <init>= <expr><name>SIZE</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ec_pubkey_serialize</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><name>pub</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>publen</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><ternary><condition><expr><name>fComp</name></expr> ?</condition><then> <expr><name>SECP256K1_EC_COMPRESSED</name></expr> </then><else>: <expr><name>SECP256K1_EC_UNCOMPRESSED</name></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Set</name><argument_list>(<argument><expr><name>pub</name></expr></argument>, <argument><expr><name>pub</name> <operator>+</operator> <name>publen</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CPubKey</name><operator>::</operator><name>IsFullyValid</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsValid</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>secp256k1_pubkey</name></type> <name>pubkey</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>&amp;&amp;</operator> <literal type="string">"secp256k1_context_verify must be initialized to use CPubKey."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_ec_pubkey_parse</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>vch</name></expr></argument>, <argument><expr><call><name>size</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CPubKey</name><operator>::</operator><name>Decompress</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsValid</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>secp256k1_pubkey</name></type> <name>pubkey</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>&amp;&amp;</operator> <literal type="string">"secp256k1_context_verify must be initialized to use CPubKey."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_ec_pubkey_parse</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>vch</name></expr></argument>, <argument><expr><call><name>size</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>pub</name><index>[<expr><name>SIZE</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>publen</name> <init>= <expr><name>SIZE</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ec_pubkey_serialize</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><name>pub</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>publen</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>SECP256K1_EC_UNCOMPRESSED</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Set</name><argument_list>(<argument><expr><name>pub</name></expr></argument>, <argument><expr><name>pub</name> <operator>+</operator> <name>publen</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CPubKey</name><operator>::</operator><name>Derive</name></name><parameter_list>(<parameter><decl><type><name>CPubKey</name><modifier>&amp;</modifier></type> <name>pubkeyChild</name></decl></parameter>, <parameter><decl><type><name>ChainCode</name> <modifier>&amp;</modifier></type><name>ccChild</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nChild</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ChainCode</name><modifier>&amp;</modifier></type> <name>cc</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name>IsValid</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>(</operator><name>nChild</name> <operator>&gt;&gt;</operator> <literal type="number">31</literal><operator>)</operator> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name>size</name><argument_list>()</argument_list></call> <operator>==</operator> <name>COMPRESSED_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>out</name><index>[<expr><literal type="number">64</literal></expr>]</index></name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BIP32Hash</name><argument_list>(<argument><expr><name>cc</name></expr></argument>, <argument><expr><name>nChild</name></expr></argument>, <argument><expr><operator>*</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>begin</name><argument_list>()</argument_list></call><operator>+</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>out</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><call><name><name>ccChild</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>out</name><operator>+</operator><literal type="number">32</literal></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>secp256k1_pubkey</name></type> <name>pubkey</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>&amp;&amp;</operator> <literal type="string">"secp256k1_context_verify must be initialized to use CPubKey."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_ec_pubkey_parse</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>vch</name></expr></argument>, <argument><expr><call><name>size</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_ec_pubkey_tweak_add</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>out</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>pub</name><index>[<expr><name>COMPRESSED_SIZE</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>publen</name> <init>= <expr><name>COMPRESSED_SIZE</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ec_pubkey_serialize</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><name>pub</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>publen</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkey</name></expr></argument>, <argument><expr><name>SECP256K1_EC_COMPRESSED</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pubkeyChild</name><operator>.</operator><name>Set</name></name><argument_list>(<argument><expr><name>pub</name></expr></argument>, <argument><expr><name>pub</name> <operator>+</operator> <name>publen</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CExtPubKey</name><operator>::</operator><name>Encode</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name></type> <name><name>code</name><index>[<expr><name>BIP32_EXTKEY_SIZE</name></expr>]</index></name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <expr_stmt><expr><name><name>code</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name>nDepth</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>code</name><operator>+</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>vchFingerprint</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>code</name><index>[<expr><literal type="number">5</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>nChild</name> <operator>&gt;&gt;</operator> <literal type="number">24</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr>;</expr_stmt> <expr_stmt><expr><name><name>code</name><index>[<expr><literal type="number">6</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>nChild</name> <operator>&gt;&gt;</operator> <literal type="number">16</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>code</name><index>[<expr><literal type="number">7</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>nChild</name> <operator>&gt;&gt;</operator>  <literal type="number">8</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr>;</expr_stmt> <expr_stmt><expr><name><name>code</name><index>[<expr><literal type="number">8</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>nChild</name> <operator>&gt;&gt;</operator>  <literal type="number">0</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0xFF</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>code</name><operator>+</operator><literal type="number">9</literal></expr></argument>, <argument><expr><call><name><name>chaincode</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>pubkey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name><name>CPubKey</name><operator>::</operator><name>COMPRESSED_SIZE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>code</name><operator>+</operator><literal type="number">41</literal></expr></argument>, <argument><expr><call><name><name>pubkey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>CPubKey</name><operator>::</operator><name>COMPRESSED_SIZE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CExtPubKey</name><operator>::</operator><name>Decode</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name></type> <name><name>code</name><index>[<expr><name>BIP32_EXTKEY_SIZE</name></expr>]</index></name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name>nDepth</name> <operator>=</operator> <name><name>code</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>vchFingerprint</name></expr></argument>, <argument><expr><name>code</name><operator>+</operator><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nChild</name> <operator>=</operator> <operator>(</operator><name><name>code</name><index>[<expr><literal type="number">5</literal></expr>]</index></name> <operator>&lt;&lt;</operator> <literal type="number">24</literal><operator>)</operator> <operator>|</operator> <operator>(</operator><name><name>code</name><index>[<expr><literal type="number">6</literal></expr>]</index></name> <operator>&lt;&lt;</operator> <literal type="number">16</literal><operator>)</operator> <operator>|</operator> <operator>(</operator><name><name>code</name><index>[<expr><literal type="number">7</literal></expr>]</index></name> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>|</operator> <name><name>code</name><index>[<expr><literal type="number">8</literal></expr>]</index></name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><call><name><name>chaincode</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>code</name><operator>+</operator><literal type="number">9</literal></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pubkey</name><operator>.</operator><name>Set</name></name><argument_list>(<argument><expr><name>code</name><operator>+</operator><literal type="number">41</literal></expr></argument>, <argument><expr><name>code</name><operator>+</operator><name>BIP32_EXTKEY_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CExtPubKey</name><operator>::</operator><name>Derive</name></name><parameter_list>(<parameter><decl><type><name>CExtPubKey</name> <modifier>&amp;</modifier></type><name>out</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>_nChild</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <expr_stmt><expr><name><name>out</name><operator>.</operator><name>nDepth</name></name> <operator>=</operator> <name>nDepth</name> <operator>+</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CKeyID</name></type> <name>id</name> <init>= <expr><call><name><name>pubkey</name><operator>.</operator><name>GetID</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>out</name><operator>.</operator><name>vchFingerprint</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name>id</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>out</name><operator>.</operator><name>nChild</name></name> <operator>=</operator> <name>_nChild</name></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>pubkey</name><operator>.</operator><name>Derive</name></name><argument_list>(<argument><expr><name><name>out</name><operator>.</operator><name>pubkey</name></name></expr></argument>, <argument><expr><name><name>out</name><operator>.</operator><name>chaincode</name></name></expr></argument>, <argument><expr><name>_nChild</name></expr></argument>, <argument><expr><name>chaincode</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block">/* static */</comment> <function><type><name>bool</name></type> <name><name>CPubKey</name><operator>::</operator><name>CheckLowS</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vchSig</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_ecdsa_signature</name></type> <name>sig</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>&amp;&amp;</operator> <literal type="string">"secp256k1_context_verify must be initialized to use CPubKey."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ecdsa_signature_parse_der_lax</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><call><name><name>vchSig</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><operator>(</operator><operator>!</operator><call><name>secp256k1_ecdsa_signature_normalize</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>)</argument_list></call><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block">/* static */</comment> <decl_stmt><decl><type><name>int</name></type> <name><name>ECCVerifyHandle</name><operator>::</operator><name>refcount</name></name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<constructor><name><name>ECCVerifyHandle</name><operator>::</operator><name>ECCVerifyHandle</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>refcount</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>==</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>secp256k1_context_verify</name> <operator>=</operator> <call><name>secp256k1_context_create</name><argument_list>(<argument><expr><name>SECP256K1_CONTEXT_VERIFY</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>refcount</name><operator>++</operator></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>ECCVerifyHandle</name><operator>::</operator><name>~ECCVerifyHandle</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>refcount</name><operator>--</operator></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>refcount</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_context_destroy</name><argument_list>(<argument><expr><name>secp256k1_context_verify</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>secp256k1_context_verify</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></destructor>
+</unit>

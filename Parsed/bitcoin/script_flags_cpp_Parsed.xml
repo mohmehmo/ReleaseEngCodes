@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/fuzz/script_flags.cpp"><comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pubkey.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/interpreter.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/memory.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;version.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/fuzz/fuzz.h&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** Flags that are not forbidden by an assert */</comment>
+<function_decl><type><specifier>static</specifier> <name>bool</name></type> <name>IsValidFlagCombination</name><parameter_list>(<parameter><decl><type><name>unsigned</name></type> <name>flags</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><name>void</name></type> <name>initialize</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <specifier>auto</specifier></type> <name>verify_handle</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>ECCVerifyHandle</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>test_one_input</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>buffer</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ds</name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>INIT_PROTO_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nVersion</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ds</name> <operator>&gt;&gt;</operator> <name>nVersion</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>ds</name><operator>.</operator><name>SetVersion</name></name><argument_list>(<argument><expr><name>nVersion</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><name>failure</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></catch></try>
+
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTransaction</name></type> <name>tx</name><argument_list>(<argument><expr><name>deserialize</name></expr></argument>, <argument><expr><name>ds</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>PrecomputedTransactionData</name></type> <name>txdata</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>verify_flags</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ds</name> <operator>&gt;&gt;</operator> <name>verify_flags</name></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsValidFlagCombination</name><argument_list>(<argument><expr><name>verify_flags</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>fuzzed_flags</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>ds</name> <operator>&gt;&gt;</operator> <name>fuzzed_flags</name></expr>;</expr_stmt>
+
+        <for>for <control>(<init><decl><type><name>unsigned</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>CTxOut</name></type> <name>prevout</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ds</name> <operator>&gt;&gt;</operator> <name>prevout</name></expr>;</expr_stmt>
+
+            <decl_stmt><decl><type><specifier>const</specifier> <name>TransactionSignatureChecker</name></type> <name>checker</name><argument_list>{<argument><expr><operator>&amp;</operator><name>tx</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name><name>prevout</name><operator>.</operator><name>nValue</name></name></expr></argument>, <argument><expr><name>txdata</name></expr></argument>}</argument_list></decl>;</decl_stmt>
+
+            <decl_stmt><decl><type><name>ScriptError</name></type> <name>serror</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>bool</name></type> <name>ret</name> <init>= <expr><call><name>VerifyScript</name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>scriptSig</name></expr></argument>, <argument><expr><name><name>prevout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>scriptWitness</name></expr></argument>, <argument><expr><name>verify_flags</name></expr></argument>, <argument><expr><name>checker</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>serror</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>ret</name> <operator>==</operator> <operator>(</operator><name>serror</name> <operator>==</operator> <name>SCRIPT_ERR_OK</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <comment type="line">// Verify that removing flags from a passing test or adding flags to a failing test does not change the result</comment>
+            <if_stmt><if>if <condition>(<expr><name>ret</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>verify_flags</name> <operator>&amp;=</operator> <operator>~</operator><name>fuzzed_flags</name></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <expr_stmt><expr><name>verify_flags</name> <operator>|=</operator> <name>fuzzed_flags</name></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsValidFlagCombination</name><argument_list>(<argument><expr><name>verify_flags</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>ScriptError</name></type> <name>serror_fuzzed</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>bool</name></type> <name>ret_fuzzed</name> <init>= <expr><call><name>VerifyScript</name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>scriptSig</name></expr></argument>, <argument><expr><name><name>prevout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>scriptWitness</name></expr></argument>, <argument><expr><name>verify_flags</name></expr></argument>, <argument><expr><name>checker</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>serror_fuzzed</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>ret_fuzzed</name> <operator>==</operator> <operator>(</operator><name>serror_fuzzed</name> <operator>==</operator> <name>SCRIPT_ERR_OK</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>ret_fuzzed</name> <operator>==</operator> <name>ret</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><name>failure</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></catch></try>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>IsValidFlagCombination</name><parameter_list>(<parameter><decl><type><name>unsigned</name></type> <name>flags</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>SCRIPT_VERIFY_CLEANSTACK</name> <operator>&amp;&amp;</operator> <operator>~</operator><name>flags</name> <operator>&amp;</operator> <operator>(</operator><name>SCRIPT_VERIFY_P2SH</name> <operator>|</operator> <name>SCRIPT_VERIFY_WITNESS</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>SCRIPT_VERIFY_WITNESS</name> <operator>&amp;&amp;</operator> <operator>~</operator><name>flags</name> <operator>&amp;</operator> <name>SCRIPT_VERIFY_P2SH</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

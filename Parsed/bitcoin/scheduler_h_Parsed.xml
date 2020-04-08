@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/scheduler.h"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_SCHEDULER_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_SCHEDULER_H</name></cpp:macro></cpp:define>
+
+<comment type="line">//</comment>
+<comment type="line">// NOTE:</comment>
+<comment type="line">// boost::thread / boost::chrono should be ported to std::thread / std::chrono</comment>
+<comment type="line">// when we support C++11.</comment>
+<comment type="line">//</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/chrono/chrono.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+
+<comment type="line">//</comment>
+<comment type="line">// Simple class for background tasks that should be run</comment>
+<comment type="line">// periodically or once "after a while"</comment>
+<comment type="line">//</comment>
+<comment type="line">// Usage:</comment>
+<comment type="line">//</comment>
+<comment type="line">// CScheduler* s = new CScheduler();</comment>
+<comment type="line">// s-&gt;scheduleFromNow(doSomething, 11); // Assuming a: void doSomething() { }</comment>
+<comment type="line">// s-&gt;scheduleFromNow(std::bind(Class::func, this, argument), 3);</comment>
+<comment type="line">// boost::thread* t = new boost::thread(std::bind(CScheduler::serviceQueue, s));</comment>
+<comment type="line">//</comment>
+<comment type="line">// ... then at program shutdown, clean up the thread running serviceQueue:</comment>
+<comment type="line">// t-&gt;interrupt();</comment>
+<comment type="line">// t-&gt;join();</comment>
+<comment type="line">// delete t;</comment>
+<comment type="line">// delete s; // Must be done after thread is interrupted/joined.</comment>
+<comment type="line">//</comment>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CScheduler</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>CScheduler</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>~</operator><call><name>CScheduler</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>Function</name></expr>;</expr_stmt></typedef>
+
+    <comment type="line">// Call func at/after time t</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>schedule</name><argument_list>(<argument><expr><name>Function</name> <name>f</name></expr></argument>, <argument><expr><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name> <name>t</name><operator>=</operator><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><call><name>now</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// Convenience method: call f once deltaMilliSeconds from now</comment>
+    <function_decl><type><name>void</name></type> <name>scheduleFromNow</name><parameter_list>(<parameter><decl><type><name>Function</name></type> <name>f</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>deltaMilliSeconds</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// Another convenience method: call f approximately</comment>
+    <comment type="line">// every deltaMilliSeconds forever, starting deltaMilliSeconds from now.</comment>
+    <comment type="line">// To be more precise: every time f is finished, it</comment>
+    <comment type="line">// is rescheduled to run deltaMilliSeconds later. If you</comment>
+    <comment type="line">// need more accurate scheduling, don't use this method.</comment>
+    <function_decl><type><name>void</name></type> <name>scheduleEvery</name><parameter_list>(<parameter><decl><type><name>Function</name></type> <name>f</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>deltaMilliSeconds</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// To keep things as simple as possible, there is no unschedule.</comment>
+
+    <comment type="line">// Services the queue 'forever'. Should be run in a thread,</comment>
+    <comment type="line">// and interrupted using boost::interrupt_thread</comment>
+    <function_decl><type><name>void</name></type> <name>serviceQueue</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="line">// Tell any threads running serviceQueue to stop as soon as they're</comment>
+    <comment type="line">// done servicing whatever task they're currently servicing (drain=false)</comment>
+    <comment type="line">// or when there is no work left to be done (drain=true)</comment>
+    <function_decl><type><name>void</name></type> <name>stop</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>drain</name><init>=<expr><name>false</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// Returns number of tasks waiting to be serviced,</comment>
+    <comment type="line">// and first and last task times</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>getQueueInfo</name><argument_list>(<argument><expr><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name> <operator>&amp;</operator><name>first</name></expr></argument>,
+                        <argument><expr><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name> <operator>&amp;</operator><name>last</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="line">// Returns true if there are threads actively running in serviceQueue()</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>AreThreadsServicingQueue</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>multimap</name><argument_list type="generic">&lt;<argument><expr><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>system_clock</name><operator>::</operator><name>time_point</name></expr></argument>, <argument><expr><name>Function</name></expr></argument>&gt;</argument_list></name> <name>taskQueue</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>condition_variable</name> <name>newTaskScheduled</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>mutable</name> <name>boost</name><operator>::</operator><name>mutex</name> <name>newTaskMutex</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nThreadsServicingQueue</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>stopRequested</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>stopWhenEmpty</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>bool</name> <macro><name>shouldStop</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>stopRequested</name> <operator>||</operator> <operator>(</operator><name>stopWhenEmpty</name> <operator>&amp;&amp;</operator> <call><name><name>taskQueue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Class used by CScheduler clients which may schedule multiple jobs
+ * which are required to be run serially. Jobs may not be run on the
+ * same thread, but no two jobs will be executed
+ * at the same time and memory will be release-acquire consistent
+ * (the scheduler will internally do an acquire before invoking a callback
+ * as well as a release at the end). In practice this means that a callback
+ * B() will be able to observe all of the effects of callback A() which executed
+ * before it.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>SingleThreadedSchedulerClient</name> <block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>CScheduler</name> <modifier>*</modifier></type><name>m_pscheduler</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CCriticalSection</name></type> <name>m_cs_callbacks_pending</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>list</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>m_callbacks_pending</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>m_cs_callbacks_pending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <function_decl><type><name>bool</name> <name>m_are_callbacks_running</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>m_cs_callbacks_pending</name></type></decl></parameter>)</parameter_list> <init>= <expr><name>false</name></expr></init>;</function_decl>
+
+    <function_decl><type><name>void</name></type> <name>MaybeScheduleProcessQueue</name><parameter_list>()</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>ProcessQueue</name><parameter_list>()</parameter_list>;</function_decl>
+
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>SingleThreadedSchedulerClient</name><argument_list>(<argument><expr><name>CScheduler</name> <operator>*</operator><name>pschedulerIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>m_pscheduler</name><argument_list>(<argument>pschedulerIn</argument>)</argument_list></macro> <block>{}</block>
+
+    <comment type="block" format="doxygen">/**
+     * Add a callback to be executed. Callbacks are executed serially
+     * and memory is release-acquire consistent between callback executions.
+     * Practically, this means that callbacks can behave as if they are executed
+     * in order by a single thread.
+     */</comment>
+    <name>void</name> <call><name>AddToProcessQueue</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>func</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Processes all remaining queue members on the calling thread, blocking until queue is empty</comment>
+    <comment type="line">// Must be called after the CScheduler has no remaining processing threads!</comment>
+    <function_decl><type><name>void</name></type> <name>EmptyQueue</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <function_decl><type><name>size_t</name></type> <name>CallbacksPending</name><parameter_list>()</parameter_list>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</unit>

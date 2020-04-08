@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/random.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_RANDOM_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_RANDOM_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/chacha20.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chrono&gt;</cpp:file></cpp:include> <comment type="line">// For std::chrono::microseconds</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cstdint&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;limits&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/**
+ * Overall design of the RNG and entropy sources.
+ *
+ * We maintain a single global 256-bit RNG state for all high-quality randomness.
+ * The following (classes of) functions interact with that state by mixing in new
+ * entropy, and optionally extracting random output from it:
+ *
+ * - The GetRand*() class of functions, as well as construction of FastRandomContext objects,
+ *   perform 'fast' seeding, consisting of mixing in:
+ *   - A stack pointer (indirectly committing to calling thread and call stack)
+ *   - A high-precision timestamp (rdtsc when available, c++ high_resolution_clock otherwise)
+ *   - 64 bits from the hardware RNG (rdrand) when available.
+ *   These entropy sources are very fast, and only designed to protect against situations
+ *   where a VM state restore/copy results in multiple systems with the same randomness.
+ *   FastRandomContext on the other hand does not protect against this once created, but
+ *   is even faster (and acceptable to use inside tight loops).
+ *
+ * - The GetStrongRand*() class of function perform 'slow' seeding, including everything
+ *   that fast seeding includes, but additionally:
+ *   - OS entropy (/dev/urandom, getrandom(), ...). The application will terminate if
+ *     this entropy source fails.
+ *   - Another high-precision timestamp (indirectly committing to a benchmark of all the
+ *     previous sources).
+ *   These entropy sources are slower, but designed to make sure the RNG state contains
+ *   fresh data that is unpredictable to attackers.
+ *
+ * - RandAddPeriodic() seeds everything that fast seeding includes, but additionally:
+ *   - A high-precision timestamp
+ *   - Dynamic environment data (performance monitoring, ...)
+ *   - Strengthen the entropy for 10 ms using repeated SHA512.
+ *   This is run once every minute.
+ *
+ * On first use of the RNG (regardless of what function is called first), all entropy
+ * sources used in the 'slow' seeder are included, but also:
+ * - 256 bits from the hardware RNG (rdseed or rdrand) when available.
+ * - Dynamic environment data (performance monitoring, ...)
+ * - Static environment data
+ * - Strengthen the entropy for 100 ms using repeated SHA512.
+ *
+ * When mixing in new entropy, H = SHA512(entropy || old_rng_state) is computed, and
+ * (up to) the first 32 bytes of H are produced as output, while the last 32 bytes
+ * become the new RNG state.
+*/</comment>
+
+<comment type="block" format="doxygen">/**
+ * Generate random data via the internal PRNG.
+ *
+ * These functions are designed to be fast (sub microsecond), but do not necessarily
+ * meaningfully add entropy to the PRNG state.
+ *
+ * Thread-safe.
+ */</comment>
+<decl_stmt><decl><type><name>void</name></type> <name>GetRandBytes</name><argument_list>(<argument><expr><name>unsigned</name> <name>char</name><operator>*</operator> <name>buf</name></expr></argument>, <argument><expr><name>int</name> <name>num</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>uint64_t</name></type> <name>GetRand</name><argument_list>(<argument><expr><name>uint64_t</name> <name>nMax</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+<expr_stmt><expr><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name> <macro><name>GetRandMicros</name><argument_list>(<argument>std::chrono::microseconds duration_max</argument>)</argument_list></macro> <name>noexcept</name></expr>;</expr_stmt>
+<decl_stmt><decl><type><name>int</name></type> <name>GetRandInt</name><argument_list>(<argument><expr><name>int</name> <name>nMax</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+<expr_stmt><expr><name>uint256</name> <macro><name>GetRandHash</name><argument_list>()</argument_list></macro> <name>noexcept</name></expr>;</expr_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Gather entropy from various sources, feed it into the internal PRNG, and
+ * generate random data using it.
+ *
+ * This function will cause failure whenever the OS RNG fails.
+ *
+ * Thread-safe.
+ */</comment>
+<decl_stmt><decl><type><name>void</name></type> <name>GetStrongRandBytes</name><argument_list>(<argument><expr><name>unsigned</name> <name>char</name><operator>*</operator> <name>buf</name></expr></argument>, <argument><expr><name>int</name> <name>num</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Gather entropy from various expensive sources, and feed them to the PRNG state.
+ *
+ * Thread-safe.
+ */</comment>
+<expr_stmt><expr><name>void</name> <macro><name>RandAddPeriodic</name><argument_list>()</argument_list></macro> <name>noexcept</name></expr>;</expr_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Gathers entropy from the low bits of the time at which events occur. Should
+ * be called with a uint32_t describing the event at the time an event occurs.
+ *
+ * Thread-safe.
+ */</comment>
+<decl_stmt><decl><type><name>void</name></type> <name>RandAddEvent</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint32_t</name> <name>event_info</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Fast randomness source. This is seeded once with secure random data, but
+ * is completely deterministic and does not gather more entropy after that.
+ *
+ * This class is not thread-safe.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>FastRandomContext</name> <block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>bool</name></type> <name>requires_seed</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>ChaCha20</name></type> <name>rng</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>bytebuf</name><index>[<expr><literal type="number">64</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>bytebuf_size</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>bitbuf</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>bitbuf_size</name></decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>RandomSeed</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <function><type><name>void</name></type> <name>FillByteBuffer</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>requires_seed</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>RandomSeed</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>rng</name><operator>.</operator><name>Keystream</name></name><argument_list>(<argument><expr><name>bytebuf</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>bytebuf</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>bytebuf_size</name> <operator>=</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>bytebuf</name></expr></argument>)</argument_list></sizeof></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name>void</name></type> <name>FillBitBuffer</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>bitbuf</name> <operator>=</operator> <call><name>rand64</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>bitbuf_size</name> <operator>=</operator> <literal type="number">64</literal></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>FastRandomContext</name><argument_list>(<argument><expr><name>bool</name> <name>fDeterministic</name> <operator>=</operator> <name>false</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Initialize with explicit seed (only for testing) */</comment>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>FastRandomContext</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>seed</name></expr></argument>)</argument_list> <name>noexcept</name></decl>;</decl_stmt>
+
+    <comment type="line">// Do not permit copying a FastRandomContext (move it, or create a new one to get reseeded).</comment>
+    <expr_stmt><expr><call><name>FastRandomContext</name><argument_list>(<argument><expr><specifier>const</specifier> <name>FastRandomContext</name><operator>&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>FastRandomContext</name><argument_list>(<argument><expr><name>FastRandomContext</name><operator>&amp;&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>FastRandomContext</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>FastRandomContext</name><operator>&amp;</operator><operator>)</operator> <operator>=</operator> <name>delete</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Move a FastRandomContext. If the original one is used again, it will be reseeded. */</comment>
+    <decl_stmt><decl><type><name>FastRandomContext</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><name>FastRandomContext</name><operator>&amp;&amp;</operator> <name>from</name><operator>)</operator> <name>noexcept</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Generate a random 64-bit integer. */</comment>
+    <function><type><name>uint64_t</name></type> <name>rand64</name><parameter_list>()</parameter_list> noexcept
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>bytebuf_size</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>FillByteBuffer</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>ret</name> <init>= <expr><call><name>ReadLE64</name><argument_list>(<argument><expr><name>bytebuf</name> <operator>+</operator> <literal type="number">64</literal> <operator>-</operator> <name>bytebuf_size</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>bytebuf_size</name> <operator>-=</operator> <literal type="number">8</literal></expr>;</expr_stmt>
+        <return>return <expr><name>ret</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Generate a random (bits)-bit integer. */</comment>
+    <function><type><name>uint64_t</name></type> <name>randbits</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>bits</name></decl></parameter>)</parameter_list> noexcept <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>bits</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>bits</name> <operator>&gt;</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>rand64</name><argument_list>()</argument_list></call> <operator>&gt;&gt;</operator> <operator>(</operator><literal type="number">64</literal> <operator>-</operator> <name>bits</name><operator>)</operator></expr>;</return>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>bitbuf_size</name> <operator>&lt;</operator> <name>bits</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>FillBitBuffer</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>ret</name> <init>= <expr><name>bitbuf</name> <operator>&amp;</operator> <operator>(</operator><operator>~</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><literal type="number">0</literal> <operator>&gt;&gt;</operator> <operator>(</operator><literal type="number">64</literal> <operator>-</operator> <name>bits</name><operator>)</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name>bitbuf</name> <operator>&gt;&gt;=</operator> <name>bits</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>bitbuf_size</name> <operator>-=</operator> <name>bits</name></expr>;</expr_stmt>
+            <return>return <expr><name>ret</name></expr>;</return>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Generate a random integer in the range [0..range). */</comment>
+    <function><type><name>uint64_t</name></type> <name>randrange</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>range</name></decl></parameter>)</parameter_list> noexcept
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>range</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>--</operator><name>range</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>bits</name> <init>= <expr><call><name>CountBits</name><argument_list>(<argument><expr><name>range</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>ret</name> <init>= <expr><call><name>randbits</name><argument_list>(<argument><expr><name>bits</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>&lt;=</operator> <name>range</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>ret</name></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** Generate random bytes. */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <macro><name>randbytes</name><argument_list>(<argument>size_t len</argument>)</argument_list></macro></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Generate a random 32-bit integer. */</comment>
+    <function><type><name>uint32_t</name></type> <name>rand32</name><parameter_list>()</parameter_list> noexcept <block>{<block_content> <return>return <expr><call><name>randbits</name><argument_list>(<argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</return> </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** generate a random uint256. */</comment>
+    <expr_stmt><expr><name>uint256</name> <macro><name>rand256</name><argument_list>()</argument_list></macro> <name>noexcept</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Generate a random boolean. */</comment>
+    <function><type><name>bool</name></type> <name>randbool</name><parameter_list>()</parameter_list> noexcept <block>{<block_content> <return>return <expr><call><name>randbits</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</return> </block_content>}</block></function>
+
+    <comment type="line">// Compatibility with the C++11 UniformRandomBitGenerator concept</comment>
+    <typedef>typedef <type><name>uint64_t</name></type> <name>result_type</name>;</typedef>
+    <function><type><specifier>static</specifier> <name>constexpr</name> <name>uint64_t</name></type> <name>min</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><literal type="number">0</literal></expr>;</return> </block_content>}</block></function>
+    <function><type><specifier>static</specifier> <name>constexpr</name> <name>uint64_t</name></type> <name>max</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></function>
+    <expr_stmt><expr><specifier>inline</specifier> <name>uint64_t</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><operator>)</operator> <name>noexcept</name> <block>{ <return>return <expr><call><name>rand64</name><argument_list>()</argument_list></call></expr>;</return> }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** More efficient than using std::shuffle on a FastRandomContext.
+ *
+ * This is more efficient as std::shuffle will consume entropy in groups of
+ * 64 bits at the time and throw away most.
+ *
+ * This also works around a bug in libstdc++ std::shuffle that may cause
+ * type::operator=(type&amp;&amp;) to be invoked on itself, which the library's
+ * debug mode detects and panics on. This is a known issue, see
+ * https://stackoverflow.com/questions/22915325/avoiding-self-assignment-in-stdshuffle
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>I</name></expr></argument>, <argument><expr><name>typename</name> <name>R</name></expr></argument>&gt;</argument_list></name>
+<name>void</name></type> <name>Shuffle</name><argument_list>(<argument><expr><name>I</name> <name>first</name></expr></argument>, <argument><expr><name>I</name> <name>last</name></expr></argument>, <argument><expr><name>R</name><operator>&amp;&amp;</operator> <name>rng</name></expr></argument>)</argument_list>
+<block>{<block_content>
+    <while>while <condition>(<expr><name>first</name> <operator>!=</operator> <name>last</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>j</name> <init>= <expr><call><name><name>rng</name><operator>.</operator><name>randrange</name></name><argument_list>(<argument><expr><name>last</name> <operator>-</operator> <name>first</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>j</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>using</name> <name>std</name><operator>::</operator><name>swap</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>swap</name><argument_list>(<argument><expr><operator>*</operator><name>first</name></expr></argument>, <argument><expr><operator>*</operator><operator>(</operator><name>first</name> <operator>+</operator> <name>j</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><operator>++</operator><name>first</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="block">/* Number of random bytes returned by GetOSRand.
+ * When changing this constant make sure to change all call sites, and make
+ * sure that the underlying OS APIs for all platforms support the number.
+ * (many cap out at 256 bytes).
+ */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>NUM_OS_RANDOM_BYTES</name> <init>= <expr><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Get 32 bytes of system entropy. Do not use this in application code: use
+ * GetStrongRandBytes instead.
+ */</comment>
+<function_decl><type><name>void</name></type> <name>GetOSRand</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>ent32</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/** Check that OS randomness is available and returning the requested number
+ * of bytes.
+ */</comment>
+<function_decl><type><name>bool</name></type> <name>Random_SanityCheck</name><parameter_list>()</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * Initialize global RNG state and log any CPU features that are used.
+ *
+ * Calling this function is optional. RNG state will be initialized when first
+ * needed if it is not called.
+ */</comment>
+<function_decl><type><name>void</name></type> <name>RandomInit</name><parameter_list>()</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_RANDOM_H</comment>
+</unit>

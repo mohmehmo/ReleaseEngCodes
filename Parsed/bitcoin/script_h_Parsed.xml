@@ -1,0 +1,588 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/script/script.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_SCRIPT_SCRIPT_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_SCRIPT_SCRIPT_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;prevector.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;assert.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;climits&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;limits&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdexcept&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<comment type="line">// Maximum number of bytes pushable to the stack</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>MAX_SCRIPT_ELEMENT_SIZE</name> <init>= <expr><literal type="number">520</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Maximum number of non-push operations per script</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>MAX_OPS_PER_SCRIPT</name> <init>= <expr><literal type="number">201</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Maximum number of public keys per multisig</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>MAX_PUBKEYS_PER_MULTISIG</name> <init>= <expr><literal type="number">20</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Maximum script length in bytes</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>MAX_SCRIPT_SIZE</name> <init>= <expr><literal type="number">10000</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Maximum number of values on script interpreter stack</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>MAX_STACK_SIZE</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Threshold for nLockTime: below this value it is interpreted as block number,</comment>
+<comment type="line">// otherwise as UNIX timestamp.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>LOCKTIME_THRESHOLD</name> <init>= <expr><literal type="number">500000000</literal></expr></init></decl>;</decl_stmt> <comment type="line">// Tue Nov  5 00:53:20 1985 UTC</comment>
+
+<comment type="line">// Maximum nLockTime. Since a lock time indicates the last invalid timestamp, a</comment>
+<comment type="line">// transaction with this lock time will never be valid unless lock time</comment>
+<comment type="line">// checking is disabled (by setting all input sequence numbers to</comment>
+<comment type="line">// SEQUENCE_FINAL).</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>uint32_t</name></type> <name>LOCKTIME_MAX</name> <init>= <expr><literal type="number">0xFFFFFFFFU</literal></expr></init></decl>;</decl_stmt>
+
+<expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <macro><name>ToByteVector</name><argument_list>(<argument>const T&amp; in</argument>)</argument_list></macro>
+<block>{
+    <return>return <expr><name>std</name><operator>::</operator><call><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>in</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>in</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+}</block></expr></expr_stmt>
+
+<comment type="block" format="doxygen">/** Script opcodes */</comment>
+<enum>enum <name>opcodetype</name>
+<block>{
+    <comment type="line">// push value</comment>
+    <decl><name>OP_0</name> <init>= <expr><literal type="number">0x00</literal></expr></init></decl>,
+    <decl><name>OP_FALSE</name> <init>= <expr><name>OP_0</name></expr></init></decl>,
+    <decl><name>OP_PUSHDATA1</name> <init>= <expr><literal type="number">0x4c</literal></expr></init></decl>,
+    <decl><name>OP_PUSHDATA2</name> <init>= <expr><literal type="number">0x4d</literal></expr></init></decl>,
+    <decl><name>OP_PUSHDATA4</name> <init>= <expr><literal type="number">0x4e</literal></expr></init></decl>,
+    <decl><name>OP_1NEGATE</name> <init>= <expr><literal type="number">0x4f</literal></expr></init></decl>,
+    <decl><name>OP_RESERVED</name> <init>= <expr><literal type="number">0x50</literal></expr></init></decl>,
+    <decl><name>OP_1</name> <init>= <expr><literal type="number">0x51</literal></expr></init></decl>,
+    <decl><name>OP_TRUE</name><init>=<expr><name>OP_1</name></expr></init></decl>,
+    <decl><name>OP_2</name> <init>= <expr><literal type="number">0x52</literal></expr></init></decl>,
+    <decl><name>OP_3</name> <init>= <expr><literal type="number">0x53</literal></expr></init></decl>,
+    <decl><name>OP_4</name> <init>= <expr><literal type="number">0x54</literal></expr></init></decl>,
+    <decl><name>OP_5</name> <init>= <expr><literal type="number">0x55</literal></expr></init></decl>,
+    <decl><name>OP_6</name> <init>= <expr><literal type="number">0x56</literal></expr></init></decl>,
+    <decl><name>OP_7</name> <init>= <expr><literal type="number">0x57</literal></expr></init></decl>,
+    <decl><name>OP_8</name> <init>= <expr><literal type="number">0x58</literal></expr></init></decl>,
+    <decl><name>OP_9</name> <init>= <expr><literal type="number">0x59</literal></expr></init></decl>,
+    <decl><name>OP_10</name> <init>= <expr><literal type="number">0x5a</literal></expr></init></decl>,
+    <decl><name>OP_11</name> <init>= <expr><literal type="number">0x5b</literal></expr></init></decl>,
+    <decl><name>OP_12</name> <init>= <expr><literal type="number">0x5c</literal></expr></init></decl>,
+    <decl><name>OP_13</name> <init>= <expr><literal type="number">0x5d</literal></expr></init></decl>,
+    <decl><name>OP_14</name> <init>= <expr><literal type="number">0x5e</literal></expr></init></decl>,
+    <decl><name>OP_15</name> <init>= <expr><literal type="number">0x5f</literal></expr></init></decl>,
+    <decl><name>OP_16</name> <init>= <expr><literal type="number">0x60</literal></expr></init></decl>,
+
+    <comment type="line">// control</comment>
+    <decl><name>OP_NOP</name> <init>= <expr><literal type="number">0x61</literal></expr></init></decl>,
+    <decl><name>OP_VER</name> <init>= <expr><literal type="number">0x62</literal></expr></init></decl>,
+    <decl><name>OP_IF</name> <init>= <expr><literal type="number">0x63</literal></expr></init></decl>,
+    <decl><name>OP_NOTIF</name> <init>= <expr><literal type="number">0x64</literal></expr></init></decl>,
+    <decl><name>OP_VERIF</name> <init>= <expr><literal type="number">0x65</literal></expr></init></decl>,
+    <decl><name>OP_VERNOTIF</name> <init>= <expr><literal type="number">0x66</literal></expr></init></decl>,
+    <decl><name>OP_ELSE</name> <init>= <expr><literal type="number">0x67</literal></expr></init></decl>,
+    <decl><name>OP_ENDIF</name> <init>= <expr><literal type="number">0x68</literal></expr></init></decl>,
+    <decl><name>OP_VERIFY</name> <init>= <expr><literal type="number">0x69</literal></expr></init></decl>,
+    <decl><name>OP_RETURN</name> <init>= <expr><literal type="number">0x6a</literal></expr></init></decl>,
+
+    <comment type="line">// stack ops</comment>
+    <decl><name>OP_TOALTSTACK</name> <init>= <expr><literal type="number">0x6b</literal></expr></init></decl>,
+    <decl><name>OP_FROMALTSTACK</name> <init>= <expr><literal type="number">0x6c</literal></expr></init></decl>,
+    <decl><name>OP_2DROP</name> <init>= <expr><literal type="number">0x6d</literal></expr></init></decl>,
+    <decl><name>OP_2DUP</name> <init>= <expr><literal type="number">0x6e</literal></expr></init></decl>,
+    <decl><name>OP_3DUP</name> <init>= <expr><literal type="number">0x6f</literal></expr></init></decl>,
+    <decl><name>OP_2OVER</name> <init>= <expr><literal type="number">0x70</literal></expr></init></decl>,
+    <decl><name>OP_2ROT</name> <init>= <expr><literal type="number">0x71</literal></expr></init></decl>,
+    <decl><name>OP_2SWAP</name> <init>= <expr><literal type="number">0x72</literal></expr></init></decl>,
+    <decl><name>OP_IFDUP</name> <init>= <expr><literal type="number">0x73</literal></expr></init></decl>,
+    <decl><name>OP_DEPTH</name> <init>= <expr><literal type="number">0x74</literal></expr></init></decl>,
+    <decl><name>OP_DROP</name> <init>= <expr><literal type="number">0x75</literal></expr></init></decl>,
+    <decl><name>OP_DUP</name> <init>= <expr><literal type="number">0x76</literal></expr></init></decl>,
+    <decl><name>OP_NIP</name> <init>= <expr><literal type="number">0x77</literal></expr></init></decl>,
+    <decl><name>OP_OVER</name> <init>= <expr><literal type="number">0x78</literal></expr></init></decl>,
+    <decl><name>OP_PICK</name> <init>= <expr><literal type="number">0x79</literal></expr></init></decl>,
+    <decl><name>OP_ROLL</name> <init>= <expr><literal type="number">0x7a</literal></expr></init></decl>,
+    <decl><name>OP_ROT</name> <init>= <expr><literal type="number">0x7b</literal></expr></init></decl>,
+    <decl><name>OP_SWAP</name> <init>= <expr><literal type="number">0x7c</literal></expr></init></decl>,
+    <decl><name>OP_TUCK</name> <init>= <expr><literal type="number">0x7d</literal></expr></init></decl>,
+
+    <comment type="line">// splice ops</comment>
+    <decl><name>OP_CAT</name> <init>= <expr><literal type="number">0x7e</literal></expr></init></decl>,
+    <decl><name>OP_SUBSTR</name> <init>= <expr><literal type="number">0x7f</literal></expr></init></decl>,
+    <decl><name>OP_LEFT</name> <init>= <expr><literal type="number">0x80</literal></expr></init></decl>,
+    <decl><name>OP_RIGHT</name> <init>= <expr><literal type="number">0x81</literal></expr></init></decl>,
+    <decl><name>OP_SIZE</name> <init>= <expr><literal type="number">0x82</literal></expr></init></decl>,
+
+    <comment type="line">// bit logic</comment>
+    <decl><name>OP_INVERT</name> <init>= <expr><literal type="number">0x83</literal></expr></init></decl>,
+    <decl><name>OP_AND</name> <init>= <expr><literal type="number">0x84</literal></expr></init></decl>,
+    <decl><name>OP_OR</name> <init>= <expr><literal type="number">0x85</literal></expr></init></decl>,
+    <decl><name>OP_XOR</name> <init>= <expr><literal type="number">0x86</literal></expr></init></decl>,
+    <decl><name>OP_EQUAL</name> <init>= <expr><literal type="number">0x87</literal></expr></init></decl>,
+    <decl><name>OP_EQUALVERIFY</name> <init>= <expr><literal type="number">0x88</literal></expr></init></decl>,
+    <decl><name>OP_RESERVED1</name> <init>= <expr><literal type="number">0x89</literal></expr></init></decl>,
+    <decl><name>OP_RESERVED2</name> <init>= <expr><literal type="number">0x8a</literal></expr></init></decl>,
+
+    <comment type="line">// numeric</comment>
+    <decl><name>OP_1ADD</name> <init>= <expr><literal type="number">0x8b</literal></expr></init></decl>,
+    <decl><name>OP_1SUB</name> <init>= <expr><literal type="number">0x8c</literal></expr></init></decl>,
+    <decl><name>OP_2MUL</name> <init>= <expr><literal type="number">0x8d</literal></expr></init></decl>,
+    <decl><name>OP_2DIV</name> <init>= <expr><literal type="number">0x8e</literal></expr></init></decl>,
+    <decl><name>OP_NEGATE</name> <init>= <expr><literal type="number">0x8f</literal></expr></init></decl>,
+    <decl><name>OP_ABS</name> <init>= <expr><literal type="number">0x90</literal></expr></init></decl>,
+    <decl><name>OP_NOT</name> <init>= <expr><literal type="number">0x91</literal></expr></init></decl>,
+    <decl><name>OP_0NOTEQUAL</name> <init>= <expr><literal type="number">0x92</literal></expr></init></decl>,
+
+    <decl><name>OP_ADD</name> <init>= <expr><literal type="number">0x93</literal></expr></init></decl>,
+    <decl><name>OP_SUB</name> <init>= <expr><literal type="number">0x94</literal></expr></init></decl>,
+    <decl><name>OP_MUL</name> <init>= <expr><literal type="number">0x95</literal></expr></init></decl>,
+    <decl><name>OP_DIV</name> <init>= <expr><literal type="number">0x96</literal></expr></init></decl>,
+    <decl><name>OP_MOD</name> <init>= <expr><literal type="number">0x97</literal></expr></init></decl>,
+    <decl><name>OP_LSHIFT</name> <init>= <expr><literal type="number">0x98</literal></expr></init></decl>,
+    <decl><name>OP_RSHIFT</name> <init>= <expr><literal type="number">0x99</literal></expr></init></decl>,
+
+    <decl><name>OP_BOOLAND</name> <init>= <expr><literal type="number">0x9a</literal></expr></init></decl>,
+    <decl><name>OP_BOOLOR</name> <init>= <expr><literal type="number">0x9b</literal></expr></init></decl>,
+    <decl><name>OP_NUMEQUAL</name> <init>= <expr><literal type="number">0x9c</literal></expr></init></decl>,
+    <decl><name>OP_NUMEQUALVERIFY</name> <init>= <expr><literal type="number">0x9d</literal></expr></init></decl>,
+    <decl><name>OP_NUMNOTEQUAL</name> <init>= <expr><literal type="number">0x9e</literal></expr></init></decl>,
+    <decl><name>OP_LESSTHAN</name> <init>= <expr><literal type="number">0x9f</literal></expr></init></decl>,
+    <decl><name>OP_GREATERTHAN</name> <init>= <expr><literal type="number">0xa0</literal></expr></init></decl>,
+    <decl><name>OP_LESSTHANOREQUAL</name> <init>= <expr><literal type="number">0xa1</literal></expr></init></decl>,
+    <decl><name>OP_GREATERTHANOREQUAL</name> <init>= <expr><literal type="number">0xa2</literal></expr></init></decl>,
+    <decl><name>OP_MIN</name> <init>= <expr><literal type="number">0xa3</literal></expr></init></decl>,
+    <decl><name>OP_MAX</name> <init>= <expr><literal type="number">0xa4</literal></expr></init></decl>,
+
+    <decl><name>OP_WITHIN</name> <init>= <expr><literal type="number">0xa5</literal></expr></init></decl>,
+
+    <comment type="line">// crypto</comment>
+    <decl><name>OP_RIPEMD160</name> <init>= <expr><literal type="number">0xa6</literal></expr></init></decl>,
+    <decl><name>OP_SHA1</name> <init>= <expr><literal type="number">0xa7</literal></expr></init></decl>,
+    <decl><name>OP_SHA256</name> <init>= <expr><literal type="number">0xa8</literal></expr></init></decl>,
+    <decl><name>OP_HASH160</name> <init>= <expr><literal type="number">0xa9</literal></expr></init></decl>,
+    <decl><name>OP_HASH256</name> <init>= <expr><literal type="number">0xaa</literal></expr></init></decl>,
+    <decl><name>OP_CODESEPARATOR</name> <init>= <expr><literal type="number">0xab</literal></expr></init></decl>,
+    <decl><name>OP_CHECKSIG</name> <init>= <expr><literal type="number">0xac</literal></expr></init></decl>,
+    <decl><name>OP_CHECKSIGVERIFY</name> <init>= <expr><literal type="number">0xad</literal></expr></init></decl>,
+    <decl><name>OP_CHECKMULTISIG</name> <init>= <expr><literal type="number">0xae</literal></expr></init></decl>,
+    <decl><name>OP_CHECKMULTISIGVERIFY</name> <init>= <expr><literal type="number">0xaf</literal></expr></init></decl>,
+
+    <comment type="line">// expansion</comment>
+    <decl><name>OP_NOP1</name> <init>= <expr><literal type="number">0xb0</literal></expr></init></decl>,
+    <decl><name>OP_CHECKLOCKTIMEVERIFY</name> <init>= <expr><literal type="number">0xb1</literal></expr></init></decl>,
+    <decl><name>OP_NOP2</name> <init>= <expr><name>OP_CHECKLOCKTIMEVERIFY</name></expr></init></decl>,
+    <decl><name>OP_CHECKSEQUENCEVERIFY</name> <init>= <expr><literal type="number">0xb2</literal></expr></init></decl>,
+    <decl><name>OP_NOP3</name> <init>= <expr><name>OP_CHECKSEQUENCEVERIFY</name></expr></init></decl>,
+    <decl><name>OP_NOP4</name> <init>= <expr><literal type="number">0xb3</literal></expr></init></decl>,
+    <decl><name>OP_NOP5</name> <init>= <expr><literal type="number">0xb4</literal></expr></init></decl>,
+    <decl><name>OP_NOP6</name> <init>= <expr><literal type="number">0xb5</literal></expr></init></decl>,
+    <decl><name>OP_NOP7</name> <init>= <expr><literal type="number">0xb6</literal></expr></init></decl>,
+    <decl><name>OP_NOP8</name> <init>= <expr><literal type="number">0xb7</literal></expr></init></decl>,
+    <decl><name>OP_NOP9</name> <init>= <expr><literal type="number">0xb8</literal></expr></init></decl>,
+    <decl><name>OP_NOP10</name> <init>= <expr><literal type="number">0xb9</literal></expr></init></decl>,
+
+    <decl><name>OP_INVALIDOPCODE</name> <init>= <expr><literal type="number">0xff</literal></expr></init></decl>,
+}</block>;</enum>
+
+<comment type="line">// Maximum value that an opcode can be</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>MAX_OPCODE</name> <init>= <expr><name>OP_NOP10</name></expr></init></decl>;</decl_stmt>
+
+<function_decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>GetOpName</name><parameter_list>(<parameter><decl><type><name>opcodetype</name></type> <name>opcode</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<decl_stmt><decl><type><name>class</name></type> <name>scriptnum_error</name> <range>: <expr><name>public</name> <name>std</name><operator>::</operator><name>runtime_error</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <name>explicit</name> <call><name>scriptnum_error</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>str</name></expr></argument>)</argument_list></call> <operator>:</operator> <name>std</name><operator>::</operator><macro><name>runtime_error</name><argument_list>(<argument>str</argument>)</argument_list></macro> <block>{}</block></expr>
+}</block></expr></range></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CScriptNum</name>
+<block>{<block_content>
+<comment type="block" format="doxygen">/**
+ * Numeric opcodes (OP_1ADD, etc) are restricted to operating on 4-byte integers.
+ * The semantics are subtle, though: operands must be in the range [-2^31 +1...2^31 -1],
+ * but results may overflow (and are valid as long as they are not used in a subsequent
+ * numeric operation). CScriptNum enforces those semantics by storing results as
+ * an int64 and allowing out-of-range values to be returned as a vector of bytes but
+ * throwing an exception if arithmetic is done or the result is interpreted as an integer.
+ */</comment>
+<label><name>public</name>:</label>
+
+    <function><type><name>explicit</name></type> <name>CScriptNum</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>int64_t</name><modifier>&amp;</modifier></type> <name>n</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>m_value</name> <operator>=</operator> <name>n</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>nDefaultMaxNumSize</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>explicit</name></type> <name>CScriptNum</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vch</name></expr></argument>, <argument><expr><name>bool</name> <name>fRequireMinimal</name></expr></argument>,
+                        <argument><expr><specifier>const</specifier> <name>size_t</name> <name>nMaxNumSize</name> <operator>=</operator> <name>nDefaultMaxNumSize</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>nMaxNumSize</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>throw</name></type> <name>scriptnum_error</name><argument_list>(<argument><expr><literal type="string">"script number overflow"</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>fRequireMinimal</name> <operator>&amp;&amp;</operator> <call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Check that the number is encoded with the minimum possible</comment>
+            <comment type="line">// number of bytes.</comment>
+            <comment type="line">//</comment>
+            <comment type="line">// If the most-significant-byte - excluding the sign bit - is zero</comment>
+            <comment type="line">// then we're not minimal. Note how this test also rejects the</comment>
+            <comment type="line">// negative-zero encoding, 0x80.</comment>
+            <if_stmt><if>if <condition>(<expr><operator>(</operator><call><name><name>vch</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0x7f</literal><operator>)</operator> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                <comment type="line">// One exception: if there's more than one byte and the most</comment>
+                <comment type="line">// significant bit of the second-most-significant-byte is set</comment>
+                <comment type="line">// it would conflict with the sign bit. An example of this case</comment>
+                <comment type="line">// is +-255, which encode to 0xff00 and 0xff80 respectively.</comment>
+                <comment type="line">// (big-endian).</comment>
+                <if_stmt><if>if <condition>(<expr><call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">1</literal> <operator>||</operator> <operator>(</operator><name><name>vch</name><index>[<expr><call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">2</literal></expr>]</index></name> <operator>&amp;</operator> <literal type="number">0x80</literal><operator>)</operator> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                    <decl_stmt><decl><type><name>throw</name></type> <name>scriptnum_error</name><argument_list>(<argument><expr><literal type="string">"non-minimally encoded script number"</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>m_value</name> <operator>=</operator> <call><name>set_vch</name><argument_list>(<argument><expr><name>vch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>==</operator><operator>(</operator><specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier>    <block>{ <return>return <expr><name>m_value</name> <operator>==</operator> <name>rhs</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>!=</operator><operator>(</operator><specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier>    <block>{ <return>return <expr><name>m_value</name> <operator>!=</operator> <name>rhs</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&lt;=</operator><operator>(</operator><specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier>    <block>{ <return>return <expr><name>m_value</name> <operator>&lt;=</operator> <name>rhs</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&lt;</operator> <operator>(</operator><specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier>    <block>{ <return>return <expr><name>m_value</name> <operator>&lt;</operator>  <name>rhs</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&gt;=</operator><operator>(</operator><specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier>    <block>{ <return>return <expr><name>m_value</name> <operator>&gt;=</operator> <name>rhs</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&gt;</operator> <operator>(</operator><specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier>    <block>{ <return>return <expr><name>m_value</name> <operator>&gt;</operator>  <name>rhs</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>==</operator><operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>==</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>!=</operator><operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>!=</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&lt;=</operator><operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>&lt;=</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&lt;</operator> <operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>&lt;</operator> <operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&gt;=</operator><operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>&gt;=</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>bool</name> <name>operator</name><operator>&gt;</operator> <operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>&gt;</operator> <operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name><operator>+</operator><operator>(</operator>   <specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>    <specifier>const</specifier> <block>{ <return>return <expr><call><name>CScriptNum</name><argument_list>(<argument><expr><name>m_value</name> <operator>+</operator> <name>rhs</name></expr></argument>)</argument_list></call></expr>;</return>}</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name><operator>-</operator><operator>(</operator>   <specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>    <specifier>const</specifier> <block>{ <return>return <expr><call><name>CScriptNum</name><argument_list>(<argument><expr><name>m_value</name> <operator>-</operator> <name>rhs</name></expr></argument>)</argument_list></call></expr>;</return>}</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name><operator>+</operator><operator>(</operator>   <specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>+</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return>   }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name><operator>-</operator><operator>(</operator>   <specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator> <specifier>const</specifier> <block>{ <return>return <expr><name>operator</name><operator>-</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return>   }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>operator</name><operator>+=</operator><operator>(</operator> <specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>       <block>{ <return>return <expr><name>operator</name><operator>+=</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return>  }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>operator</name><operator>-=</operator><operator>(</operator> <specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>       <block>{ <return>return <expr><name>operator</name><operator>-=</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return>  }</block></expr></expr_stmt>
+
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name></type><modifier>&amp;</modifier>(   const <name>int64_t</name><modifier>&amp;</modifier> <name>rhs</name></decl>)    const <block>{<block_content> <return>return <expr><call><name>CScriptNum</name><argument_list>(<argument><expr><name>m_value</name> <operator>&amp;</operator> <name>rhs</name></expr></argument>)</argument_list></call></expr>;</return></block_content>}</block></decl_stmt>
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name></type><modifier>&amp;</modifier>(   const <name>CScriptNum</name><modifier>&amp;</modifier> <name>rhs</name></decl>) const <block>{<block_content> <return>return <expr><name>operator</name><operator>&amp;</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return>   </block_content>}</block></decl_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>operator</name><operator>&amp;=</operator><operator>(</operator> <specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>       <block>{ <return>return <expr><name>operator</name><operator>&amp;=</operator><operator>(</operator><name><name>rhs</name><operator>.</operator><name>m_value</name></name><operator>)</operator></expr>;</return>  }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name> <name>operator</name><operator>-</operator><operator>(</operator><operator>)</operator>                         <specifier>const</specifier>
+    <block>{
+        <expr><call><name>assert</name><argument_list>(<argument><expr><name>m_value</name> <operator>!=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><call><name>CScriptNum</name><argument_list>(<argument><expr><operator>-</operator><name>m_value</name></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>CScriptNum</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator> <specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>
+    <block>{
+        <expr><name>m_value</name> <operator>=</operator> <name>rhs</name></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></init></decl></decl_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>operator</name><operator>+=</operator><operator>(</operator> <specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>
+    <block>{
+        <expr><call><name>assert</name><argument_list>(<argument><expr><name>rhs</name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator> <operator>(</operator><name>rhs</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>m_value</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call> <operator>-</operator> <name>rhs</name><operator>)</operator> <operator>||</operator>
+                           <operator>(</operator><name>rhs</name> <operator>&lt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>m_value</name> <operator>&gt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call> <operator>-</operator> <name>rhs</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;
+        <expr><name>m_value</name> <operator>+=</operator> <name>rhs</name></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>operator</name><operator>-=</operator><operator>(</operator> <specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>
+    <block>{
+        <expr><call><name>assert</name><argument_list>(<argument><expr><name>rhs</name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator> <operator>(</operator><name>rhs</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>m_value</name> <operator>&gt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call> <operator>+</operator> <name>rhs</name><operator>)</operator> <operator>||</operator>
+                           <operator>(</operator><name>rhs</name> <operator>&lt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>m_value</name> <operator>&lt;=</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call> <operator>+</operator> <name>rhs</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;
+        <expr><name>m_value</name> <operator>-=</operator> <name>rhs</name></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>inline</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>operator</name><operator>&amp;=</operator><operator>(</operator> <specifier>const</specifier> <name>int64_t</name><operator>&amp;</operator> <name>rhs</name><operator>)</operator>
+    <block>{
+        <expr><name>m_value</name> <operator>&amp;=</operator> <name>rhs</name></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>int</name> <macro><name>getint</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><name>m_value</name> <operator>&gt;</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>max</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if>
+        <if type="elseif">else if <condition>(<expr><name>m_value</name> <operator>&lt;</operator> <name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>std</name><operator>::</operator><name><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>min</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt></block></expr></expr_stmt>
+        <return>return <expr><name>m_value</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <macro><name>getvch</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name>serialize</name><argument_list>(<argument><expr><name>m_value</name></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><specifier>static</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <macro><name>serialize</name><argument_list>(<argument>const int64_t&amp; value</argument>)</argument_list></macro>
+    <block>{
+        <if_stmt><if>if<condition>(<expr><name>value</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>std</name><operator>::</operator><call><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+        <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>result</name></block></expr>;</expr_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>bool</name></type> <name>neg</name> <init>= <expr><name>value</name> <operator>&lt;</operator> <literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>absvalue</name> <init>= <expr><ternary><condition><expr><name>neg</name></expr> ?</condition><then> <expr><operator>-</operator><name>value</name></expr> </then><else>: <expr><name>value</name></expr></else></ternary></expr></init></decl>;</decl_stmt>
+
+        <while>while<condition>(<expr><name>absvalue</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name><name>result</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>absvalue</name> <operator>&amp;</operator> <literal type="number">0xff</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>absvalue</name> <operator>&gt;&gt;=</operator> <literal type="number">8</literal></expr>;</expr_stmt>
+        </block_content>}</block></while>
+
+<comment type="line">//    - If the most significant byte is &gt;= 0x80 and the value is positive, push a</comment>
+<comment type="line">//    new zero-byte to make the significant byte &lt; 0x80 again.</comment>
+
+<comment type="line">//    - If the most significant byte is &gt;= 0x80 and the value is negative, push a</comment>
+<comment type="line">//    new 0x80 byte that will be popped off when converting to an integral.</comment>
+
+<comment type="line">//    - If the most significant byte is &lt; 0x80 and the value is negative, add</comment>
+<comment type="line">//    0x80 to it, since it will be subtracted and interpreted as a negative when</comment>
+<comment type="line">//    converting to an integral.</comment>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>result</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0x80</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>result</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><ternary><condition><expr><name>neg</name></expr> ?</condition><then> <expr><literal type="number">0x80</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <if type="elseif">else if <condition>(<expr><name>neg</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>result</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>|=</operator> <literal type="number">0x80</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <return>return <expr><name>result</name></expr>;</return>
+    }
+
+private:
+    <decl_stmt><decl><type><specifier>static</specifier> <name>int64_t</name></type> <name>set_vch</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vch</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><call><name><name>vch</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+          <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+
+      <decl_stmt><decl><type><name>int64_t</name></type> <name>result</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+      <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>!=</operator> <call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+          <expr_stmt><expr><name>result</name> <operator>|=</operator> <call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name><name>vch</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>*</operator><name>i</name></expr>;</expr_stmt></block_content></block></for>
+
+      <comment type="line">// If the input vector's most significant byte is 0x80, remove it from</comment>
+      <comment type="line">// the result's msb and return a negative.</comment>
+      <if_stmt><if>if <condition>(<expr><call><name><name>vch</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>&amp;</operator> <literal type="number">0x80</literal></expr>)</condition><block type="pseudo"><block_content>
+          <return>return <expr><operator>-</operator><operator>(</operator><operator>(</operator><name>int64_t</name><operator>)</operator><operator>(</operator><name>result</name> <operator>&amp;</operator> <operator>~</operator><operator>(</operator><literal type="number">0x80ULL</literal> <operator>&lt;&lt;</operator> <operator>(</operator><literal type="number">8</literal> <operator>*</operator> <operator>(</operator><call><name><name>vch</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal><operator>)</operator><operator>)</operator><operator>)</operator><operator>)</operator><operator>)</operator></expr>;</return></block_content></block></if></if_stmt>
+
+      <return>return <expr><name>result</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>m_value</name></decl>;</decl_stmt>
+};
+
+<comment type="block" format="doxygen">/**
+ * We use a prevector for the script to reduce the considerable memory overhead
+ *  of vectors in cases where they normally contain a small number of small elements.
+ * Tests in October 2015 showed use of this reduced dbcache memory usage by 23%
+ *  and made an initial sync 13% faster.
+ */</comment>
+<typedef>typedef <type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><literal type="number">28</literal></expr></argument>, <argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>CScriptBase</name>;</typedef>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>GetScriptOp</name><argument_list>(<argument><expr><name>CScriptBase</name><operator>::</operator><name>const_iterator</name><operator>&amp;</operator> <name>pc</name></expr></argument>, <argument><expr><name>CScriptBase</name><operator>::</operator><name>const_iterator</name> <name>end</name></expr></argument>, <argument><expr><name>opcodetype</name><operator>&amp;</operator> <name>opcodeRet</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>pvchRet</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Serialized script, used inside transaction inputs and outputs */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CScript</name> <range>: <expr><name>public</name> <name>CScriptBase</name>
+<block>{
+<expr><name>protected</name><operator>:</operator>
+    <name>CScript</name><operator>&amp;</operator> <macro><name>push_int64</name><argument_list>(<argument>int64_t n</argument>)</argument_list></macro>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><name>n</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal> <operator>||</operator> <operator>(</operator><name>n</name> <operator>&gt;=</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <name>n</name> <operator>&lt;=</operator> <literal type="number">16</literal><operator>)</operator></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>push_back</name><argument_list>(<argument><expr><name>n</name> <operator>+</operator> <operator>(</operator><name>OP_1</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt/>}</block_content>
+        else if (n == 0</block></if></if_stmt>)
+        <block>{
+            <expr><call><name>push_back</name><argument_list>(<argument><expr><name>OP_0</name></expr></argument>)</argument_list></call></expr>;
+        }</block></block></expr>
+        <if_stmt><else>else
+        <block>{<block_content>
+            <expr_stmt><expr><operator>*</operator><name>this</name> <operator>&lt;&lt;</operator> <name>CScriptNum</name><operator>::</operator><call><name>serialize</name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt/>}</block_content>
+        return *this</block><empty_stmt>;</empty_stmt></else></if_stmt>
+    }</block></expr></range></decl></decl_stmt>
+<label><name>public</name>:</label>
+    <macro><name>CScript</name><argument_list>()</argument_list></macro> <block>{<block_content> </block_content>}</block>
+    <macro><name>CScript</name><argument_list>(<argument>const_iterator pbegin</argument>, <argument>const_iterator pend</argument>)</argument_list></macro> : <macro><name>CScriptBase</name><argument_list>(<argument>pbegin</argument>, <argument>pend</argument>)</argument_list></macro> <block>{<block_content> </block_content>}</block>
+    <macro><name>CScript</name><argument_list>(<argument>std::vector&lt;unsigned char&gt;::const_iterator pbegin</argument>, <argument>std::vector&lt;unsigned char&gt;::const_iterator pend</argument>)</argument_list></macro> : <macro><name>CScriptBase</name><argument_list>(<argument>pbegin</argument>, <argument>pend</argument>)</argument_list></macro> <block>{<block_content> </block_content>}</block>
+    <macro><name>CScript</name><argument_list>(<argument>const unsigned char* pbegin</argument>, <argument>const unsigned char* pend</argument>)</argument_list></macro> : <macro><name>CScriptBase</name><argument_list>(<argument>pbegin</argument>, <argument>pend</argument>)</argument_list></macro> <block>{<block_content> </block_content>}</block>
+
+    <expr_stmt><expr><name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITEAS</name><argument_list>(<argument><expr><name>CScriptBase</name></expr></argument>, <argument><expr><operator>*</operator><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <expr_stmt><expr><name>CScript</name><operator>&amp;</operator> <name>operator</name><operator>+=</operator><operator>(</operator><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <expr><call><name>reserve</name><argument_list>(<argument><expr><call><name>size</name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>b</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>b</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>friend</name> <name>CScript</name> <name>operator</name><operator>+</operator><operator>(</operator><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <expr><name>CScript</name> <name>ret</name> <operator>=</operator> <name>a</name></expr>;
+        <expr><name>ret</name> <operator>+=</operator> <name>b</name></expr>;
+        <return>return <expr><name>ret</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <macro><name>CScript</name><argument_list>(<argument>int64_t b</argument>)</argument_list></macro>        <block>{<block_content> <expr_stmt><expr><name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><name>b</name><operator>)</operator></expr>;</expr_stmt> </block_content>}</block>
+
+    <function><type><name>explicit</name></type> <name>CScript</name><parameter_list>(<parameter><decl><type><name>opcodetype</name></type> <name>b</name></decl></parameter>)</parameter_list>     <block>{<block_content> <expr_stmt><expr><name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><name>b</name><operator>)</operator></expr>;</expr_stmt> </block_content>}</block></function>
+    <function><type><name>explicit</name></type> <name>CScript</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScriptNum</name><modifier>&amp;</modifier></type> <name>b</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><name>b</name><operator>)</operator></expr>;</expr_stmt> </block_content>}</block></function>
+    <comment type="line">// delete non-existent constructor to defend against future introduction</comment>
+    <comment type="line">// e.g. via prevector</comment>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>CScript</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>b</name></expr></argument>)</argument_list> <init>= <expr><name>delete</name></expr></init></decl>;</decl_stmt>
+
+
+    <expr_stmt><expr><name>CScript</name><operator>&amp;</operator> <name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><name>int64_t</name> <name>b</name><operator>)</operator> <block>{ <return>return <expr><call><name>push_int64</name><argument_list>(<argument><expr><name>b</name></expr></argument>)</argument_list></call></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>CScript</name><operator>&amp;</operator> <name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><name>opcodetype</name> <name>opcode</name><operator>)</operator>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><name><name>opcode</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">0</literal> <operator>||</operator> <name>opcode</name></expr></argument> &gt;</argument_list></name> <literal type="number">0xff</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>throw</name> <name>std</name><operator>::</operator><call><name>runtime_error</name><argument_list>(<argument><expr><literal type="string">"CScript::operator&lt;&lt;(): invalid opcode"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator><name>opcode</name></expr></argument>)</argument_list></call></block></expr>;</expr_stmt>
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }
+
+    CScript<expr_stmt><expr><operator>&amp;</operator> <name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><specifier>const</specifier> <name>CScriptNum</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <expr><operator>*</operator><name>this</name> <operator>&lt;&lt;</operator> <call><name><name>b</name><operator>.</operator><name>getvch</name></name><argument_list>()</argument_list></call></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>CScript</name><operator>&amp;</operator> <name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name>OP_PUSHDATA1</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt/></block_content></block></if></if_stmt>}</block></expr></expr_stmt>
+        <if_stmt><if type="elseif">else if <condition>(<expr><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">0xff</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>OP_PUSHDATA1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <if type="elseif">else if <condition>(<expr><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">0xffff</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>OP_PUSHDATA2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>_data</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>WriteLE16</name><argument_list>(<argument><expr><name>_data</name></expr></argument>, <argument><expr><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>_data</name></expr></argument>, <argument><expr><name>_data</name> <operator>+</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>_data</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <else>else
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>OP_PUSHDATA4</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>_data</name><index>[<expr><literal type="number">4</literal></expr>]</index></name></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>WriteLE32</name><argument_list>(<argument><expr><name>_data</name></expr></argument>, <argument><expr><call><name><name>b</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>_data</name></expr></argument>, <argument><expr><name>_data</name> <operator>+</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>_data</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>b</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>b</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }
+
+    CScript<expr_stmt><expr><operator>&amp;</operator> <name>operator</name><operator>&lt;&lt;</operator><operator>(</operator><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>b</name><operator>)</operator>
+    <block>{
+        <comment type="line">// I'm not sure if this should push the script or concatenate scripts.</comment>
+        <comment type="line">// If there's ever a use for pushing a script onto a script, delete this member fn</comment>
+        <expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><literal type="string">"Warning: Pushing a CScript onto a CScript with &lt;&lt; is probably not intended, use + to concatenate!"</literal></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><operator>*</operator><name>this</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetOp</name><argument_list>(<argument><expr><name>const_iterator</name><operator>&amp;</operator> <name>pc</name></expr></argument>, <argument><expr><name>opcodetype</name><operator>&amp;</operator> <name>opcodeRet</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchRet</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <return>return <expr><call><name>GetScriptOp</name><argument_list>(<argument><expr><name>pc</name></expr></argument>, <argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>opcodeRet</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>vchRet</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>GetOp</name><argument_list>(<argument><expr><name>const_iterator</name><operator>&amp;</operator> <name>pc</name></expr></argument>, <argument><expr><name>opcodetype</name><operator>&amp;</operator> <name>opcodeRet</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <return>return <expr><call><name>GetScriptOp</name><argument_list>(<argument><expr><name>pc</name></expr></argument>, <argument><expr><call><name>end</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>opcodeRet</name></expr></argument>, <argument><expr><name>nullptr</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+
+    <comment type="block" format="doxygen">/** Encode/decode small integers: */</comment>
+    <function><type><specifier>static</specifier> <name>int</name></type> <name>DecodeOP_N</name><parameter_list>(<parameter><decl><type><name>opcodetype</name></type> <name>opcode</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>opcode</name> <operator>==</operator> <name>OP_0</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>opcode</name> <operator>&gt;=</operator> <name>OP_1</name> <operator>&amp;&amp;</operator> <name>opcode</name> <operator>&lt;=</operator> <name>OP_16</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><operator>(</operator><name>int</name><operator>)</operator><name>opcode</name> <operator>-</operator> <operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name>OP_1</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator></expr>;</return>
+    </block_content>}</block></function>
+    <function><type><specifier>static</specifier> <name>opcodetype</name></type> <name>EncodeOP_N</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>n</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>n</name> <operator>&gt;=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>n</name> <operator>&lt;=</operator> <literal type="number">16</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>n</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>OP_0</name></expr>;</return></block_content></block></if></if_stmt>
+        <return>return <expr><operator>(</operator><name>opcodetype</name><operator>)</operator><operator>(</operator><name>OP_1</name><operator>+</operator><name>n</name><operator>-</operator><literal type="number">1</literal><operator>)</operator></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/**
+     * Pre-version-0.6, Bitcoin always counted CHECKMULTISIGs
+     * as 20 sigops. With pay-to-script-hash, that changed:
+     * CHECKMULTISIGs serialized in scriptSigs are
+     * counted more accurately, assuming they are of the form
+     *  ... OP_N CHECKMULTISIG ...
+     */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>GetSigOpCount</name><argument_list>(<argument><expr><name>bool</name> <name>fAccurate</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Accurately count sigOps, including sigOps in
+     * pay-to-script-hash transactions:
+     */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>GetSigOpCount</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>scriptSig</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsPayToScriptHash</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsPayToWitnessScriptHash</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>IsWitnessProgram</name><argument_list>(<argument><expr><name>int</name><operator>&amp;</operator> <name>version</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>program</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Called by IsStandardTx and P2SH/BIP62 VerifyScript (which makes it consensus-critical). */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>IsPushOnly</name><argument_list>(<argument><expr><name>const_iterator</name> <name>pc</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsPushOnly</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Check if the script contains valid OP_CODES */</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>HasValidOps</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Returns whether the script is guaranteed to fail at execution,
+     * regardless of the initial stack. This allows outputs to be pruned
+     * instantly when entering the UTXO set.
+     */</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsUnspendable</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><operator>(</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>*</operator><call><name>begin</name><argument_list>()</argument_list></call> <operator>==</operator> <name>OP_RETURN</name><operator>)</operator> <operator>||</operator> <operator>(</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_SCRIPT_SIZE</name><operator>)</operator></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <function><type><name>void</name></type> <name>clear</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <comment type="line">// The default prevector::clear() does not release memory</comment>
+        <expr_stmt><expr><name>CScriptBase</name><operator>::</operator><call><name>clear</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>shrink_to_fit</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+};
+
+<struct>struct <name>CScriptWitness</name>
+<block>{
+    <comment type="line">// Note that this encodes the data elements being pushed, rather than</comment>
+    <comment type="line">// encoding them as a CScript that pushes them.</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name> <name>stack</name></expr>;</expr_stmt>
+
+    <comment type="line">// Some compilers complain without a default constructor</comment>
+    <macro><name>CScriptWitness</name><argument_list>()</argument_list></macro> <block>{<block_content> </block_content>}</block>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsNull</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><call><name><name>stack</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>;</return> }</block></expr></expr_stmt>
+
+    <function><type><name>void</name></type> <name>SetNull</name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>stack</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt> <expr_stmt><expr><call><name><name>stack</name><operator>.</operator><name>shrink_to_fit</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>ToString</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+}</block>;</struct>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_SCRIPT_SCRIPT_H</comment>
+</unit>
