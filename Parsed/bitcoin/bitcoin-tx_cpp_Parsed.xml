@@ -1,0 +1,866 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/bitcoin-tx.cpp"><comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;clientversion.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;coins.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/consensus.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;core_io.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;key_io.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/rbf.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/sign.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/signingprovider.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;univalue.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/moneystr.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/rbf.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;functional&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdio.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>fCreateBlank</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name>UniValue</name></expr></argument>&gt;</argument_list></name></type> <name>registers</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>CONTINUE_EXECUTION</name><init>=<expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name><operator>(</operator><specifier>const</specifier> <name>char</name><modifier>*</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>G_TRANSLATION_FUN</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SetupBitcoinTxArgs</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>SetupHelpOptions</name><argument_list>(<argument><expr><name>gArgs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"-create"</literal></expr></argument>, <argument><expr><literal type="string">"Create new, empty TX."</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>OPTIONS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"-json"</literal></expr></argument>, <argument><expr><literal type="string">"Select JSON output"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>OPTIONS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"-txid"</literal></expr></argument>, <argument><expr><literal type="string">"Output only the hex-encoded transaction id of the resultant transaction."</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>OPTIONS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetupChainParamsBaseOptions</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"delin=N"</literal></expr></argument>, <argument><expr><literal type="string">"Delete input N from TX"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"delout=N"</literal></expr></argument>, <argument><expr><literal type="string">"Delete output N from TX"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"in=TXID:VOUT(:SEQUENCE_NUMBER)"</literal></expr></argument>, <argument><expr><literal type="string">"Add input to TX"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"locktime=N"</literal></expr></argument>, <argument><expr><literal type="string">"Set TX lock time to N"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"nversion=N"</literal></expr></argument>, <argument><expr><literal type="string">"Set TX version to N"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"outaddr=VALUE:ADDRESS"</literal></expr></argument>, <argument><expr><literal type="string">"Add address-based output to TX"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"outdata=[VALUE:]DATA"</literal></expr></argument>, <argument><expr><literal type="string">"Add data-based output to TX"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"outmultisig=VALUE:REQUIRED:PUBKEYS:PUBKEY1:PUBKEY2:....[:FLAGS]"</literal></expr></argument>, <argument><expr><literal type="string">"Add Pay To n-of-m Multi-sig output to TX. n = REQUIRED, m = PUBKEYS. "</literal>
+        <literal type="string">"Optionally add the \"W\" flag to produce a pay-to-witness-script-hash output. "</literal>
+        <literal type="string">"Optionally add the \"S\" flag to wrap the output in a pay-to-script-hash."</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"outpubkey=VALUE:PUBKEY[:FLAGS]"</literal></expr></argument>, <argument><expr><literal type="string">"Add pay-to-pubkey output to TX. "</literal>
+        <literal type="string">"Optionally add the \"W\" flag to produce a pay-to-witness-pubkey-hash output. "</literal>
+        <literal type="string">"Optionally add the \"S\" flag to wrap the output in a pay-to-script-hash."</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"outscript=VALUE:SCRIPT[:FLAGS]"</literal></expr></argument>, <argument><expr><literal type="string">"Add raw script output to TX. "</literal>
+        <literal type="string">"Optionally add the \"W\" flag to produce a pay-to-witness-script-hash output. "</literal>
+        <literal type="string">"Optionally add the \"S\" flag to wrap the output in a pay-to-script-hash."</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"replaceable(=N)"</literal></expr></argument>, <argument><expr><literal type="string">"Set RBF opt-in sequence number for input N (if not provided, opt-in all available inputs)"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"sign=SIGHASH-FLAGS"</literal></expr></argument>, <argument><expr><literal type="string">"Add zero or more signatures to transaction. "</literal>
+        <literal type="string">"This command requires JSON registers:"</literal>
+        <literal type="string">"prevtxs=JSON object, "</literal>
+        <literal type="string">"privatekeys=JSON object. "</literal>
+        <literal type="string">"See signrawtransactionwithkey docs for format of sighash flags, JSON objects."</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"load=NAME:FILENAME"</literal></expr></argument>, <argument><expr><literal type="string">"Load JSON file FILENAME into register NAME"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>REGISTER_COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>AddArg</name></name><argument_list>(<argument><expr><literal type="string">"set=NAME:JSON-STRING"</literal></expr></argument>, <argument><expr><literal type="string">"Set register NAME to given JSON-STRING"</literal></expr></argument>, <argument><expr><name><name>ArgsManager</name><operator>::</operator><name>ALLOW_ANY</name></name></expr></argument>, <argument><expr><name><name>OptionsCategory</name><operator>::</operator><name>REGISTER_COMMANDS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">//</comment>
+<comment type="line">// This function returns either one of EXIT_ codes when it's expected to stop the process or</comment>
+<comment type="line">// CONTINUE_EXECUTION when it's expected to continue further.</comment>
+<comment type="line">//</comment>
+<function><type><specifier>static</specifier> <name>int</name></type> <name>AppInitRawTx</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>argc</name></decl></parameter>, <parameter><decl><type><name>char</name><modifier>*</modifier></type> <name><name>argv</name><index>[]</index></name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">//</comment>
+    <comment type="line">// Parameters</comment>
+    <comment type="line">//</comment>
+    <expr_stmt><expr><call><name>SetupBitcoinTxArgs</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>error</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>gArgs</name><operator>.</operator><name>ParseParameters</name></name><argument_list>(<argument><expr><name>argc</name></expr></argument>, <argument><expr><name>argv</name></expr></argument>, <argument><expr><name>error</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></argument>, <argument><expr><literal type="string">"Error parsing command line arguments: %s\n"</literal></expr></argument>, <argument><expr><name>error</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>EXIT_FAILURE</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Check for -chain, -testnet or -regtest parameter (Params() calls are only valid after this clause)</comment>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name>SelectParams</name><argument_list>(<argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetChainName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></argument>, <argument><expr><literal type="string">"Error: %s\n"</literal></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>EXIT_FAILURE</name></expr>;</return>
+    </block_content>}</block></catch></try>
+
+    <expr_stmt><expr><name>fCreateBlank</name> <operator>=</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-create"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>argc</name> <operator>&lt;</operator> <literal type="number">2</literal> <operator>||</operator> <call><name>HelpRequested</name><argument_list>(<argument><expr><name>gArgs</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// First part of help message is specific to this utility</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strUsage</name> <init>= <expr><name>PACKAGE_NAME</name> <literal type="string">" bitcoin-tx utility version "</literal> <operator>+</operator> <call><name>FormatFullVersion</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"\n\n"</literal> <operator>+</operator>
+            <literal type="string">"Usage:  bitcoin-tx [options] &lt;hex-tx&gt; [commands]  Update hex-encoded bitcoin transaction\n"</literal> <operator>+</operator>
+            <literal type="string">"or:     bitcoin-tx [options] -create [commands]   Create hex-encoded bitcoin transaction\n"</literal> <operator>+</operator>
+            <literal type="string">"\n"</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>strUsage</name> <operator>+=</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetHelpMessage</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cout</name></name></expr></argument>, <argument><expr><literal type="string">"%s"</literal></expr></argument>, <argument><expr><name>strUsage</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>argc</name> <operator>&lt;</operator> <literal type="number">2</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></argument>, <argument><expr><literal type="string">"Error: too few parameters\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><name>EXIT_FAILURE</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <return>return <expr><name>EXIT_SUCCESS</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>CONTINUE_EXECUTION</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>RegisterSetJson</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>rawJson</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>val</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>val</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><name>rawJson</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strErr</name> <init>= <expr><literal type="string">"Cannot parse JSON for key "</literal> <operator>+</operator> <name>key</name></expr></init></decl>;</decl_stmt>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name><name>registers</name><index>[<expr><name>key</name></expr>]</index></name> <operator>=</operator> <name>val</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>RegisterSet</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// separate NAME:VALUE in string</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>pos</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>pos</name> <operator>==</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator> <operator>||</operator>
+        <operator>(</operator><name>pos</name> <operator>==</operator> <literal type="number">0</literal><operator>)</operator> <operator>||</operator>
+        <operator>(</operator><name>pos</name> <operator>==</operator> <operator>(</operator><call><name><name>strInput</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Register input requires NAME:VALUE"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>key</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>valStr</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>pos</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>RegisterSetJson</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>valStr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>RegisterLoad</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// separate NAME:FILENAME in string</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>pos</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>pos</name> <operator>==</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator> <operator>||</operator>
+        <operator>(</operator><name>pos</name> <operator>==</operator> <literal type="number">0</literal><operator>)</operator> <operator>||</operator>
+        <operator>(</operator><name>pos</name> <operator>==</operator> <operator>(</operator><call><name><name>strInput</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Register load requires NAME:FILENAME"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>key</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>filename</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>pos</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>f</name> <init>= <expr><call><name>fopen</name><argument_list>(<argument><expr><call><name><name>filename</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">"r"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>f</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strErr</name> <init>= <expr><literal type="string">"Cannot open file "</literal> <operator>+</operator> <name>filename</name></expr></init></decl>;</decl_stmt>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// load file chunks into one big buffer</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>valStr</name></decl>;</decl_stmt>
+    <while>while <condition>(<expr><operator>(</operator><operator>!</operator><call><name>feof</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><operator>!</operator><call><name>ferror</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call><operator>)</operator></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>char</name></type> <name><name>buf</name><index>[<expr><literal type="number">4096</literal></expr>]</index></name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>bread</name> <init>= <expr><call><name>fread</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><name>f</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>bread</name> <operator>&lt;=</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><call><name><name>valStr</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>valStr</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>buf</name></expr></argument>, <argument><expr><name>bread</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>error</name> <init>= <expr><call><name>ferror</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>fclose</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>error</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strErr</name> <init>= <expr><literal type="string">"Error reading file "</literal> <operator>+</operator> <name>filename</name></expr></init></decl>;</decl_stmt>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// evaluate as JSON buffer register</comment>
+    <expr_stmt><expr><call><name>RegisterSetJson</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>valStr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>CAmount</name></type> <name>ExtractAndValidateValue</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strValue</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>value</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseMoney</name><argument_list>(<argument><expr><name>strValue</name></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX output value"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <return>return <expr><name>value</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxVersion</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>cmdVal</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>newVersion</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt64</name><argument_list>(<argument><expr><name>cmdVal</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>newVersion</name></expr></argument>)</argument_list></call> <operator>||</operator> <name><name>newVersion</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal> <operator>||</operator> <name>newVersion</name></expr></argument> &gt;</argument_list></name> <name><name>CTransaction</name><operator>::</operator><name>MAX_STANDARD_VERSION</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Invalid TX version requested: '"</literal> <operator>+</operator> <name>cmdVal</name> <operator>+</operator> <literal type="string">"'"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <operator>(</operator><name>int</name><operator>)</operator> <name>newVersion</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxLocktime</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>cmdVal</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>newLocktime</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt64</name><argument_list>(<argument><expr><name>cmdVal</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>newLocktime</name></expr></argument>)</argument_list></call> <operator>||</operator> <name><name>newLocktime</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">0LL</literal> <operator>||</operator> <name>newLocktime</name></expr></argument> &gt;</argument_list></name> <literal type="number">0xffffffffLL</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Invalid TX locktime requested: '"</literal> <operator>+</operator> <name>cmdVal</name> <operator>+</operator> <literal type="string">"'"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>nLockTime</name></name> <operator>=</operator> <operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator> <name>newLocktime</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxRBFOptIn</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInIdx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// parse requested index</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>inIdx</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt64</name><argument_list>(<argument><expr><name>strInIdx</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>inIdx</name></expr></argument>)</argument_list></call> <operator>||</operator> <name>inIdx</name> <operator>&lt;</operator> <literal type="number">0</literal> <operator>||</operator> <name>inIdx</name> <operator>&gt;=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Invalid TX input index '"</literal> <operator>+</operator> <name>strInIdx</name> <operator>+</operator> <literal type="string">"'"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// set the nSequence to MAX_INT - 2 (= RBF opt in flag)</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>cnt</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>strInIdx</name> <operator>==</operator> <literal type="string">""</literal> <operator>||</operator> <name>cnt</name> <operator>==</operator> <name>inIdx</name></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>&gt;</operator> <name>MAX_BIP125_RBF_SEQUENCE</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>=</operator> <name>MAX_BIP125_RBF_SEQUENCE</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><operator>++</operator><name>cnt</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxAddInput</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vStrInputParts</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vStrInputParts</name></expr></argument>, <argument><expr><name>strInput</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// separate TXID:VOUT in string</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"TX input missing separator"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// extract and validate TXID</comment>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>txid</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseHashStr</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><name>txid</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX input txid"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>minTxOutSz</name> <init>= <expr><literal type="number">9</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>maxVout</name> <init>= <expr><name>MAX_BLOCK_WEIGHT</name> <operator>/</operator> <operator>(</operator><name>WITNESS_SCALE_FACTOR</name> <operator>*</operator> <name>minTxOutSz</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// extract and validate vout</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strVout</name> <init>= <expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>vout</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt64</name><argument_list>(<argument><expr><name>strVout</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>vout</name></expr></argument>)</argument_list></call> <operator>||</operator> <name><name>vout</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">0</literal> <operator>||</operator> <name>vout</name></expr></argument> &gt;</argument_list></name> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>maxVout</name></expr></argument>)</argument_list></cast></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX input vout '"</literal> <operator>+</operator> <name>strVout</name> <operator>+</operator> <literal type="string">"'"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// extract the optional sequence number</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nSequenceIn</name> <init>= <expr><name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_FINAL</name></name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nSequenceIn</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>stoul</name></name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// append to transaction input list</comment>
+    <decl_stmt><decl><type><name>CTxIn</name></type> <name>txin</name><argument_list>(<argument><expr><name>txid</name></expr></argument>, <argument><expr><name>vout</name></expr></argument>, <argument><expr><call><name>CScript</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>nSequenceIn</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txin</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxAddOutAddr</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Separate into VALUE:ADDRESS</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vStrInputParts</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vStrInputParts</name></expr></argument>, <argument><expr><name>strInput</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"TX output missing or too many separators"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// Extract and validate VALUE</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>value</name> <init>= <expr><call><name>ExtractAndValidateValue</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// extract and validate ADDRESS</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strAddr</name> <init>= <expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CTxDestination</name></type> <name>destination</name> <init>= <expr><call><name>DecodeDestination</name><argument_list>(<argument><expr><name>strAddr</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsValidDestination</name><argument_list>(<argument><expr><name>destination</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX output address"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>scriptPubKey</name> <init>= <expr><call><name>GetScriptForDestination</name><argument_list>(<argument><expr><name>destination</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// construct TxOut, append to transaction output list</comment>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>txout</name><argument_list>(<argument><expr><name>value</name></expr></argument>, <argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxAddOutPubKey</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Separate into VALUE:PUBKEY[:FLAGS]</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vStrInputParts</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vStrInputParts</name></expr></argument>, <argument><expr><name>strInput</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">2</literal> <operator>||</operator> <call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">3</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"TX output missing or too many separators"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// Extract and validate VALUE</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>value</name> <init>= <expr><call><name>ExtractAndValidateValue</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Extract and validate PUBKEY</comment>
+    <decl_stmt><decl><type><name>CPubKey</name></type> <name>pubkey</name><argument_list>(<argument><expr><call><name>ParseHex</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pubkey</name><operator>.</operator><name>IsFullyValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX output pubkey"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>scriptPubKey</name> <init>= <expr><call><name>GetScriptForRawPubKey</name><argument_list>(<argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Extract and validate FLAGS</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>bSegWit</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>bScriptHash</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">3</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>flags</name> <init>= <expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>bSegWit</name> <operator>=</operator> <operator>(</operator><call><name><name>flags</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'W'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>bScriptHash</name> <operator>=</operator> <operator>(</operator><call><name><name>flags</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'S'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>bSegWit</name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pubkey</name><operator>.</operator><name>IsCompressed</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Uncompressed pubkeys are not useable for SegWit outputs"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Call GetScriptForWitness() to build a P2WSH scriptPubKey</comment>
+        <expr_stmt><expr><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForWitness</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>bScriptHash</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Get the ID for the script, and then construct a P2SH destination for it.</comment>
+        <expr_stmt><expr><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>ScriptHash</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// construct TxOut, append to transaction output list</comment>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>txout</name><argument_list>(<argument><expr><name>value</name></expr></argument>, <argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxAddOutMultiSig</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Separate into VALUE:REQUIRED:NUMKEYS:PUBKEY1:PUBKEY2:....[:FLAGS]</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vStrInputParts</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vStrInputParts</name></expr></argument>, <argument><expr><name>strInput</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Check that there are enough parameters</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">3</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Not enough multisig parameters"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// Extract and validate VALUE</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>value</name> <init>= <expr><call><name>ExtractAndValidateValue</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Extract REQUIRED</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>required</name> <init>= <expr><call><name>stoul</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Extract NUMKEYS</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>numkeys</name> <init>= <expr><call><name>stoul</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Validate there are the correct number of pubkeys</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name>numkeys</name> <operator>+</operator> <literal type="number">3</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"incorrect number of multisig pubkeys"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name><name>required</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal> <operator>||</operator> <name>required</name></expr></argument> &gt;</argument_list></name> <name>MAX_PUBKEYS_PER_MULTISIG</name> <operator>||</operator> <name><name>numkeys</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">1</literal> <operator>||</operator> <name>numkeys</name></expr></argument> &gt;</argument_list></name> <name>MAX_PUBKEYS_PER_MULTISIG</name> <operator>||</operator> <name>numkeys</name> <operator>&lt;</operator> <name>required</name></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"multisig parameter mismatch. Required "</literal> \
+                            <operator>+</operator> <call><name><name>std</name><operator>::</operator><name>to_string</name></name><argument_list>(<argument><expr><name>required</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" of "</literal> <operator>+</operator> <call><name><name>std</name><operator>::</operator><name>to_string</name></name><argument_list>(<argument><expr><name>numkeys</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"signatures."</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// extract and validate PUBKEYs</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CPubKey</name></expr></argument>&gt;</argument_list></name></type> <name>pubkeys</name></decl>;</decl_stmt>
+    <for>for<control>(<init><decl><type><name>int</name></type> <name>pos</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</init> <condition><expr><name>pos</name> <operator>&lt;=</operator> <call><name>int</name><argument_list>(<argument><expr><name>numkeys</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>pos</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>CPubKey</name></type> <name>pubkey</name><argument_list>(<argument><expr><call><name>ParseHex</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><name>pos</name> <operator>+</operator> <literal type="number">2</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pubkey</name><operator>.</operator><name>IsFullyValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX output pubkey"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>pubkeys</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Extract FLAGS</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>bSegWit</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>bScriptHash</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>numkeys</name> <operator>+</operator> <literal type="number">4</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>flags</name> <init>= <expr><call><name><name>vStrInputParts</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>bSegWit</name> <operator>=</operator> <operator>(</operator><call><name><name>flags</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'W'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>bScriptHash</name> <operator>=</operator> <operator>(</operator><call><name><name>flags</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'S'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <if type="elseif">else if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>numkeys</name> <operator>+</operator> <literal type="number">4</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Validate that there were no more parameters passed</comment>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Too many parameters"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CScript</name></type> <name>scriptPubKey</name> <init>= <expr><call><name>GetScriptForMultisig</name><argument_list>(<argument><expr><name>required</name></expr></argument>, <argument><expr><name>pubkeys</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>bSegWit</name></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>pubkey</name> <range>: <expr><name>pubkeys</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pubkey</name><operator>.</operator><name>IsCompressed</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Uncompressed pubkeys are not useable for SegWit outputs"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+        <comment type="line">// Call GetScriptForWitness() to build a P2WSH scriptPubKey</comment>
+        <expr_stmt><expr><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForWitness</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>bScriptHash</name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_SCRIPT_ELEMENT_SIZE</name></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(
+                        <argument><expr><literal type="string">"redeemScript exceeds size limit: %d &gt; %d"</literal></expr></argument>, <argument><expr><call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>MAX_SCRIPT_ELEMENT_SIZE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Get the ID for the script, and then construct a P2SH destination for it.</comment>
+        <expr_stmt><expr><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>ScriptHash</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// construct TxOut, append to transaction output list</comment>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>txout</name><argument_list>(<argument><expr><name>value</name></expr></argument>, <argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxAddOutData</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>value</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// separate [VALUE:]DATA in string</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>pos</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">':'</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>pos</name><operator>==</operator><literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"TX output value not specified"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>pos</name> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Extract and validate VALUE</comment>
+        <expr_stmt><expr><name>value</name> <operator>=</operator> <call><name>ExtractAndValidateValue</name><argument_list>(<argument><expr><call><name><name>strInput</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// extract and validate DATA</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strData</name> <init>= <expr><call><name><name>strInput</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>pos</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsHex</name><argument_list>(<argument><expr><name>strData</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid TX output data"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name> <init>= <expr><call><name>ParseHex</name><argument_list>(<argument><expr><name>strData</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>txout</name><argument_list>(<argument><expr><name>value</name></expr></argument>, <argument><expr><call><name>CScript</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>OP_RETURN</name> <operator>&lt;&lt;</operator> <name>data</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxAddOutScript</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInput</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// separate VALUE:SCRIPT[:FLAGS]</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>vStrInputParts</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>vStrInputParts</name></expr></argument>, <argument><expr><name>strInput</name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">":"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"TX output missing separator"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <comment type="line">// Extract and validate VALUE</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>value</name> <init>= <expr><call><name>ExtractAndValidateValue</name><argument_list>(<argument><expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// extract and validate script</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strScript</name> <init>= <expr><name><name>vStrInputParts</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>scriptPubKey</name> <init>= <expr><call><name>ParseScript</name><argument_list>(<argument><expr><name>strScript</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Extract FLAGS</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>bSegWit</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>bScriptHash</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vStrInputParts</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">3</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>flags</name> <init>= <expr><call><name><name>vStrInputParts</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>bSegWit</name> <operator>=</operator> <operator>(</operator><call><name><name>flags</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'W'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>bScriptHash</name> <operator>=</operator> <operator>(</operator><call><name><name>flags</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'S'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_SCRIPT_SIZE</name></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(
+                    <argument><expr><literal type="string">"script exceeds size limit: %d &gt; %d"</literal></expr></argument>, <argument><expr><call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>MAX_SCRIPT_SIZE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>bSegWit</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForWitness</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>bScriptHash</name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_SCRIPT_ELEMENT_SIZE</name></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(
+                        <argument><expr><literal type="string">"redeemScript exceeds size limit: %d &gt; %d"</literal></expr></argument>, <argument><expr><call><name><name>scriptPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>MAX_SCRIPT_ELEMENT_SIZE</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>ScriptHash</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// construct TxOut, append to transaction output list</comment>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>txout</name><argument_list>(<argument><expr><name>value</name></expr></argument>, <argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>txout</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxDelInput</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strInIdx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// parse requested deletion index</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>inIdx</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt64</name><argument_list>(<argument><expr><name>strInIdx</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>inIdx</name></expr></argument>)</argument_list></call> <operator>||</operator> <name>inIdx</name> <operator>&lt;</operator> <literal type="number">0</literal> <operator>||</operator> <name>inIdx</name> <operator>&gt;=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Invalid TX input index '"</literal> <operator>+</operator> <name>strInIdx</name> <operator>+</operator> <literal type="string">"'"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// delete input from transaction</comment>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <name>inIdx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxDelOutput</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strOutIdx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// parse requested deletion index</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>outIdx</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseInt64</name><argument_list>(<argument><expr><name>strOutIdx</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>outIdx</name></expr></argument>)</argument_list></call> <operator>||</operator> <name>outIdx</name> <operator>&lt;</operator> <literal type="number">0</literal> <operator>||</operator> <name>outIdx</name> <operator>&gt;=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Invalid TX output index '"</literal> <operator>+</operator> <name>strOutIdx</name> <operator>+</operator> <literal type="string">"'"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// delete output from transaction</comment>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <name>outIdx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>N_SIGHASH_OPTS</name> <init>= <expr><literal type="number">6</literal></expr></init></decl>;</decl_stmt>
+<struct><specifier>static</specifier> <specifier>const</specifier> struct <block>{<public type="default">
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>flagStr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>flags</name></decl>;</decl_stmt>
+</public>}</block> <decl><name><name>sighashOptions</name><index>[<expr><name>N_SIGHASH_OPTS</name></expr>]</index></name> <init>= <expr><block>{
+    <expr><block>{<expr><literal type="string">"ALL"</literal></expr>, <expr><name>SIGHASH_ALL</name></expr>}</block></expr>,
+    <expr><block>{<expr><literal type="string">"NONE"</literal></expr>, <expr><name>SIGHASH_NONE</name></expr>}</block></expr>,
+    <expr><block>{<expr><literal type="string">"SINGLE"</literal></expr>, <expr><name>SIGHASH_SINGLE</name></expr>}</block></expr>,
+    <expr><block>{<expr><literal type="string">"ALL|ANYONECANPAY"</literal></expr>, <expr><name>SIGHASH_ALL</name><operator>|</operator><name>SIGHASH_ANYONECANPAY</name></expr>}</block></expr>,
+    <expr><block>{<expr><literal type="string">"NONE|ANYONECANPAY"</literal></expr>, <expr><name>SIGHASH_NONE</name><operator>|</operator><name>SIGHASH_ANYONECANPAY</name></expr>}</block></expr>,
+    <expr><block>{<expr><literal type="string">"SINGLE|ANYONECANPAY"</literal></expr>, <expr><name>SIGHASH_SINGLE</name><operator>|</operator><name>SIGHASH_ANYONECANPAY</name></expr>}</block></expr>,
+}</block></expr></init></decl>;</struct>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>findSighashFlags</name><parameter_list>(<parameter><decl><type><name>int</name><modifier>&amp;</modifier></type> <name>flags</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>flagStr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>flags</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>N_SIGHASH_OPTS</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>flagStr</name> <operator>==</operator> <name><name>sighashOptions</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>flagStr</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>flags</name> <operator>=</operator> <name><name>sighashOptions</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>flags</name></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>CAmount</name></type> <name>AmountFromValue</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>UniValue</name><modifier>&amp;</modifier></type> <name>value</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>value</name><operator>.</operator><name>isNum</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>value</name><operator>.</operator><name>isStr</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Amount is not a number or string"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>amount</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseFixedPoint</name><argument_list>(<argument><expr><call><name><name>value</name><operator>.</operator><name>getValStr</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>amount</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Invalid amount"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>MoneyRange</name><argument_list>(<argument><expr><name>amount</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"Amount out of range"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <return>return <expr><name>amount</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTxSign</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>flagStr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>nHashType</name> <init>= <expr><name>SIGHASH_ALL</name></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>flagStr</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>findSighashFlags</name><argument_list>(<argument><expr><name>nHashType</name></expr></argument>, <argument><expr><name>flagStr</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"unknown sighash flag/sign option"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// mergedTx will end up with all the signatures; it</comment>
+    <comment type="line">// starts as a clone of the raw tx:</comment>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>mergedTx</name><argument_list>{<argument><expr><name>tx</name></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CMutableTransaction</name></type> <name>txv</name><argument_list>{<argument><expr><name>tx</name></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CCoinsView</name></type> <name>viewDummy</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CCoinsViewCache</name></type> <name>view</name><argument_list>(<argument><expr><operator>&amp;</operator><name>viewDummy</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>registers</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><literal type="string">"privatekeys"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"privatekeys register variable must be set."</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>FillableSigningProvider</name></type> <name>tempKeystore</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>keysObj</name> <init>= <expr><name><name>registers</name><index>[<expr><literal type="string">"privatekeys"</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>kidx</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>kidx</name> <operator>&lt;</operator> <call><name><name>keysObj</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>kidx</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>keysObj</name><index>[<expr><name>kidx</name></expr>]</index></name><operator>.</operator><call><name>isStr</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"privatekey not a std::string"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+        <decl_stmt><decl><type><name>CKey</name></type> <name>key</name> <init>= <expr><call><name>DecodeSecret</name><argument_list>(<argument><expr><name><name>keysObj</name><index>[<expr><name>kidx</name></expr>]</index></name><operator>.</operator><call><name>getValStr</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"privatekey not valid"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>tempKeystore</name><operator>.</operator><name>AddKey</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Add previous txouts given in the RPC call:</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>registers</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><literal type="string">"prevtxs"</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"prevtxs register variable must be set."</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>prevtxsObj</name> <init>= <expr><name><name>registers</name><index>[<expr><literal type="string">"prevtxs"</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>previdx</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>previdx</name> <operator>&lt;</operator> <call><name><name>prevtxsObj</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>previdx</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>prevOut</name> <init>= <expr><name><name>prevtxsObj</name><index>[<expr><name>previdx</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>prevOut</name><operator>.</operator><name>isObject</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"expected prevtxs internal object"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name><name>UniValue</name><operator>::</operator><name>VType</name></name></expr></argument>&gt;</argument_list></name></type> <name>types</name> <init>= <expr><block>{
+                <expr><block>{<expr><literal type="string">"txid"</literal></expr>, <expr><name><name>UniValue</name><operator>::</operator><name>VSTR</name></name></expr>}</block></expr>,
+                <expr><block>{<expr><literal type="string">"vout"</literal></expr>, <expr><name><name>UniValue</name><operator>::</operator><name>VNUM</name></name></expr>}</block></expr>,
+                <expr><block>{<expr><literal type="string">"scriptPubKey"</literal></expr>, <expr><name><name>UniValue</name><operator>::</operator><name>VSTR</name></name></expr>}</block></expr>,
+            }</block></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>prevOut</name><operator>.</operator><name>checkObject</name></name><argument_list>(<argument><expr><name>types</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"prevtxs internal object typecheck fail"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>uint256</name></type> <name>txid</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ParseHashStr</name><argument_list>(<argument><expr><name><name>prevOut</name><index>[<expr><literal type="string">"txid"</literal></expr>]</index></name><operator>.</operator><call><name>get_str</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>txid</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"txid must be hexadecimal string (not '"</literal> <operator>+</operator> <name><name>prevOut</name><index>[<expr><literal type="string">"txid"</literal></expr>]</index></name><operator>.</operator><call><name>get_str</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="string">"')"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+            </block_content>}</block></if></if_stmt>
+
+            <decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>nOut</name> <init>= <expr><name><name>prevOut</name><index>[<expr><literal type="string">"vout"</literal></expr>]</index></name><operator>.</operator><call><name>get_int</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>nOut</name> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"vout must be positive"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>COutPoint</name></type> <name>out</name><argument_list>(<argument><expr><name>txid</name></expr></argument>, <argument><expr><name>nOut</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>pkData</name><argument_list>(<argument><expr><call><name>ParseHexUV</name><argument_list>(<argument><expr><name><name>prevOut</name><index>[<expr><literal type="string">"scriptPubKey"</literal></expr>]</index></name></expr></argument>, <argument><expr><literal type="string">"scriptPubKey"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>CScript</name></type> <name>scriptPubKey</name><argument_list>(<argument><expr><call><name><name>pkData</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>pkData</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+            <block>{<block_content>
+                <decl_stmt><decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>coin</name> <init>= <expr><call><name><name>view</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>coin</name><operator>.</operator><name>IsSpent</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>scriptPubKey</name></name> <operator>!=</operator> <name>scriptPubKey</name></expr>)</condition> <block>{<block_content>
+                    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>err</name><argument_list>(<argument><expr><literal type="string">"Previous output scriptPubKey mismatch:\n"</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <expr_stmt><expr><name>err</name> <operator>=</operator> <name>err</name> <operator>+</operator> <call><name>ScriptToAsmStr</name><argument_list>(<argument><expr><name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"\nvs:\n"</literal><operator>+</operator>
+                        <call><name>ScriptToAsmStr</name><argument_list>(<argument><expr><name>scriptPubKey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><name>err</name></expr></argument>)</argument_list></call></expr>;</throw>
+                </block_content>}</block></if></if_stmt>
+                <decl_stmt><decl><type><name>Coin</name></type> <name>newcoin</name></decl>;</decl_stmt>
+                <expr_stmt><expr><name><name>newcoin</name><operator>.</operator><name>out</name><operator>.</operator><name>scriptPubKey</name></name> <operator>=</operator> <name>scriptPubKey</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>newcoin</name><operator>.</operator><name>out</name><operator>.</operator><name>nValue</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><call><name><name>prevOut</name><operator>.</operator><name>exists</name></name><argument_list>(<argument><expr><literal type="string">"amount"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name><name>newcoin</name><operator>.</operator><name>out</name><operator>.</operator><name>nValue</name></name> <operator>=</operator> <call><name>AmountFromValue</name><argument_list>(<argument><expr><name><name>prevOut</name><index>[<expr><literal type="string">"amount"</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+                <expr_stmt><expr><name><name>newcoin</name><operator>.</operator><name>nHeight</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>view</name><operator>.</operator><name>AddCoin</name></name><argument_list>(<argument><expr><name>out</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>newcoin</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block>
+
+            <comment type="line">// if redeemScript given and private keys given,</comment>
+            <comment type="line">// add redeemScript to the tempKeystore so it can be signed:</comment>
+            <if_stmt><if>if <condition>(<expr><operator>(</operator><call><name><name>scriptPubKey</name><operator>.</operator><name>IsPayToScriptHash</name></name><argument_list>()</argument_list></call> <operator>||</operator> <call><name><name>scriptPubKey</name><operator>.</operator><name>IsPayToWitnessScriptHash</name></name><argument_list>()</argument_list></call><operator>)</operator> <operator>&amp;&amp;</operator>
+                <call><name><name>prevOut</name><operator>.</operator><name>exists</name></name><argument_list>(<argument><expr><literal type="string">"redeemScript"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>UniValue</name></type> <name>v</name> <init>= <expr><name><name>prevOut</name><index>[<expr><literal type="string">"redeemScript"</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>rsData</name><argument_list>(<argument><expr><call><name>ParseHexUV</name><argument_list>(<argument><expr><name>v</name></expr></argument>, <argument><expr><literal type="string">"redeemScript"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>CScript</name></type> <name>redeemScript</name><argument_list>(<argument><expr><call><name><name>rsData</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>rsData</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>tempKeystore</name><operator>.</operator><name>AddCScript</name></name><argument_list>(<argument><expr><name>redeemScript</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>FillableSigningProvider</name><modifier>&amp;</modifier></type> <name>keystore</name> <init>= <expr><name>tempKeystore</name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>fHashSingle</name> <init>= <expr><operator>(</operator><operator>(</operator><name>nHashType</name> <operator>&amp;</operator> <operator>~</operator><name>SIGHASH_ANYONECANPAY</name><operator>)</operator> <operator>==</operator> <name>SIGHASH_SINGLE</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Sign what we can:</comment>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>mergedTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <init>= <expr><name><name>mergedTx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>coin</name> <init>= <expr><call><name><name>view</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name><name>txin</name><operator>.</operator><name>prevout</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>coin</name><operator>.</operator><name>IsSpent</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>prevPubKey</name> <init>= <expr><name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>amount</name> <init>= <expr><name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>nValue</name></name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>SignatureData</name></type> <name>sigdata</name> <init>= <expr><call><name>DataFromTransaction</name><argument_list>(<argument><expr><name>mergedTx</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name><name>coin</name><operator>.</operator><name>out</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Only sign SIGHASH_SINGLE if there's a corresponding output:</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fHashSingle</name> <operator>||</operator> <operator>(</operator><name>i</name> <operator>&lt;</operator> <call><name><name>mergedTx</name><operator>.</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>ProduceSignature</name><argument_list>(<argument><expr><name>keystore</name></expr></argument>, <argument><expr><call><name>MutableTransactionSignatureCreator</name><argument_list>(<argument><expr><operator>&amp;</operator><name>mergedTx</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name>amount</name></expr></argument>, <argument><expr><name>nHashType</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>prevPubKey</name></expr></argument>, <argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><call><name>UpdateInput</name><argument_list>(<argument><expr><name>txin</name></expr></argument>, <argument><expr><name>sigdata</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><name>tx</name> <operator>=</operator> <name>mergedTx</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<class>class <name>Secp256k1Init</name>
+<block>{<private type="default">
+    <decl_stmt><decl><type><name>ECCVerifyHandle</name></type> <name>globalVerifyHandle</name></decl>;</decl_stmt>
+
+</private><public>public:
+    <constructor><name>Secp256k1Init</name><parameter_list>()</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>ECC_Start</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+    <destructor><name>~Secp256k1Init</name><parameter_list>()</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>ECC_Stop</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></destructor>
+</public>}</block>;</class>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>MutateTx</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>command</name></decl></parameter>,
+                     <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>commandVal</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Secp256k1Init</name></expr></argument>&gt;</argument_list></name></type> <name>ecc</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"nversion"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxVersion</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"locktime"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxLocktime</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"replaceable"</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>MutateTxRBFOptIn</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"delin"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxDelInput</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"in"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxAddInput</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"delout"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxDelOutput</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"outaddr"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxAddOutAddr</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"outpubkey"</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ecc</name><operator>.</operator><name>reset</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Secp256k1Init</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>MutateTxAddOutPubKey</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"outmultisig"</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ecc</name><operator>.</operator><name>reset</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Secp256k1Init</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>MutateTxAddOutMultiSig</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"outscript"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxAddOutScript</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"outdata"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>MutateTxAddOutData</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"sign"</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>ecc</name><operator>.</operator><name>reset</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>Secp256k1Init</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>MutateTxSign</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"load"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>RegisterLoad</name><argument_list>(<argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+
+    <if type="elseif">else if <condition>(<expr><name>command</name> <operator>==</operator> <literal type="string">"set"</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>RegisterSet</name><argument_list>(<argument><expr><name>commandVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+
+    <else>else<block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"unknown command"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>OutputTxJSON</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>entry</name><argument_list>(<argument><expr><name><name>UniValue</name><operator>::</operator><name>VOBJ</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>TxToUniv</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><call><name>uint256</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>jsonOutput</name> <init>= <expr><call><name><name>entry</name><operator>.</operator><name>write</name></name><argument_list>(<argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cout</name></name></expr></argument>, <argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>jsonOutput</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>OutputTxHash</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHexHash</name> <init>= <expr><call><name><name>tx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHex</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt> <comment type="line">// the hex-encoded transaction hash (aka the transaction id)</comment>
+
+    <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cout</name></name></expr></argument>, <argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>strHexHash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>OutputTxHex</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHex</name> <init>= <expr><call><name>EncodeHexTx</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cout</name></name></expr></argument>, <argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>strHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>OutputTx</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-json"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>OutputTxJSON</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-txid"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>OutputTxHash</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>OutputTxHex</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>readStdin</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>buf</name><index>[<expr><literal type="number">4096</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>ret</name></decl>;</decl_stmt>
+
+    <while>while <condition>(<expr><operator>!</operator><call><name>feof</name><argument_list>(<argument><expr><name>stdin</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>bread</name> <init>= <expr><call><name>fread</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><name>stdin</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>ret</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>bread</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>bread</name> <operator>&lt;</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>buf</name></expr></argument>)</argument_list></sizeof></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></while>
+
+    <if_stmt><if>if <condition>(<expr><call><name>ferror</name><argument_list>(<argument><expr><name>stdin</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"error reading stdin"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>algorithm</name><operator>::</operator><name>trim_right</name></name><argument_list>(<argument><expr><name>ret</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>CommandLineRawTx</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>argc</name></decl></parameter>, <parameter><decl><type><name>char</name><modifier>*</modifier></type> <name><name>argv</name><index>[]</index></name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strPrint</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nRet</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+        <comment type="line">// Skip switches; Permit common stdin convention "-"</comment>
+        <while>while <condition>(<expr><name>argc</name> <operator>&gt;</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <call><name>IsSwitchChar</name><argument_list>(<argument><expr><name><name>argv</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator>
+               <operator>(</operator><name><name>argv</name><index>[<expr><literal type="number">1</literal></expr>]</index><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>!=</operator> <literal type="number">0</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>argc</name><operator>--</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><name>argv</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+
+        <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>tx</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>startArg</name></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fCreateBlank</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// require at least one param</comment>
+            <if_stmt><if>if <condition>(<expr><name>argc</name> <operator>&lt;</operator> <literal type="number">2</literal></expr>)</condition><block type="pseudo"><block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"too few parameters"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+            <comment type="line">// param: hex-encoded bitcoin transaction</comment>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHexTx</name><argument_list>(<argument><expr><name><name>argv</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>strHexTx</name> <operator>==</operator> <literal type="string">"-"</literal></expr>)</condition><block type="pseudo"><block_content>                 <comment type="line">// "-" implies standard input</comment>
+                <expr_stmt><expr><name>strHexTx</name> <operator>=</operator> <call><name>readStdin</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>DecodeHexTx</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>strHexTx</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"invalid transaction encoding"</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+            <expr_stmt><expr><name>startArg</name> <operator>=</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><name>startArg</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt></block_content></block></else></if_stmt>
+
+        <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><name>startArg</name></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>argc</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>arg</name> <init>= <expr><name><name>argv</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>key</name></decl>, <decl><type ref="prev"/><name>value</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>size_t</name></type> <name>eqpos</name> <init>= <expr><call><name><name>arg</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="char">'='</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>eqpos</name> <operator>==</operator> <name><name>std</name><operator>::</operator><name>string</name><operator>::</operator><name>npos</name></name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>key</name> <operator>=</operator> <name>arg</name></expr>;</expr_stmt></block_content></block></if>
+            <else>else <block>{<block_content>
+                <expr_stmt><expr><name>key</name> <operator>=</operator> <call><name><name>arg</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>eqpos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>value</name> <operator>=</operator> <call><name><name>arg</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>eqpos</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+
+            <expr_stmt><expr><call><name>MutateTx</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>key</name></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><call><name>OutputTx</name><argument_list>(<argument><expr><call><name>CTransaction</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>strPrint</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><literal type="string">"error: "</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nRet</name> <operator>=</operator> <name>EXIT_FAILURE</name></expr>;</expr_stmt>
+    </block_content>}</block></catch>
+    <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>PrintExceptionContinue</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="string">"CommandLineRawTx()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <throw>throw;</throw>
+    </block_content>}</block></catch></try>
+
+    <if_stmt><if>if <condition>(<expr><name>strPrint</name> <operator>!=</operator> <literal type="string">""</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><ternary><condition><expr><name>nRet</name> <operator>==</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><name><name>std</name><operator>::</operator><name>cout</name></name></expr> </then><else>: <expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></else></ternary></expr></argument>, <argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>strPrint</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>nRet</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name>main</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>argc</name></decl></parameter>, <parameter><decl><type><name>char</name><modifier>*</modifier></type> <name><name>argv</name><index>[]</index></name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>SetupEnvironment</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name>AppInitRawTx</name><argument_list>(<argument><expr><name>argc</name></expr></argument>, <argument><expr><name>argv</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <name>CONTINUE_EXECUTION</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>ret</name></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>PrintExceptionContinue</name><argument_list>(<argument><expr><operator>&amp;</operator><name>e</name></expr></argument>, <argument><expr><literal type="string">"AppInitRawTx()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>EXIT_FAILURE</name></expr>;</return>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>PrintExceptionContinue</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="string">"AppInitRawTx()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><name>EXIT_FAILURE</name></expr>;</return>
+    </block_content>}</block></catch></try>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><name>EXIT_FAILURE</name></expr></init></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>CommandLineRawTx</name><argument_list>(<argument><expr><name>argc</name></expr></argument>, <argument><expr><name>argv</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>PrintExceptionContinue</name><argument_list>(<argument><expr><operator>&amp;</operator><name>e</name></expr></argument>, <argument><expr><literal type="string">"CommandLineRawTx()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch> <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>PrintExceptionContinue</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="string">"CommandLineRawTx()"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+</unit>

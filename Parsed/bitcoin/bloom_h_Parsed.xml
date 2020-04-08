@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/bloom.h"><comment type="line">// Copyright (c) 2012-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_BLOOM_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_BLOOM_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>COutPoint</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CTransaction</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint256</name></decl>;</decl_stmt>
+
+<comment type="line" format="doxygen">//! 20,000 items with fp rate &lt; 0.1% or 10,000 items and &lt;0.0001%</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>MAX_BLOOM_FILTER_SIZE</name> <init>= <expr><literal type="number">36000</literal></expr></init></decl>;</decl_stmt> <comment type="line">// bytes</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>MAX_HASH_FUNCS</name> <init>= <expr><literal type="number">50</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * First two bits of nFlags control how much IsRelevantAndUpdate actually updates
+ * The remaining bits are reserved
+ */</comment>
+<enum>enum <name>bloomflags</name>
+<block>{
+    <decl><name>BLOOM_UPDATE_NONE</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>BLOOM_UPDATE_ALL</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>,
+    <comment type="line">// Only adds outpoints to the filter if the output is a pay-to-pubkey/pay-to-multisig script</comment>
+    <decl><name>BLOOM_UPDATE_P2PUBKEY_ONLY</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>,
+    <decl><name>BLOOM_UPDATE_MASK</name> <init>= <expr><literal type="number">3</literal></expr></init></decl>,
+}</block>;</enum>
+
+<comment type="block" format="doxygen">/**
+ * BloomFilter is a probabilistic filter which SPV clients provide
+ * so that we can filter the transactions we send them.
+ *
+ * This allows for significantly more efficient transaction and block downloads.
+ *
+ * Because bloom filters are probabilistic, a SPV node can increase the false-
+ * positive rate, making us send it transactions which aren't actually its,
+ * allowing clients to trade more bandwidth for more privacy by obfuscating which
+ * keys are controlled by them.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CBloomFilter</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>vData</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>isFull</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>isEmpty</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nHashFuncs</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nTweak</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>nFlags</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>Hash</name><argument_list>(<argument><expr><name>unsigned</name> <name>int</name> <name>nHashNum</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vDataToHash</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/**
+     * Creates a new bloom filter which will provide the given fp rate when filled with the given number of elements
+     * Note that if the given parameters will result in a filter outside the bounds of the protocol limits,
+     * the filter created will be as close to the given parameters as possible within the protocol limits.
+     * This will apply if nFPRate is very low or nElements is unreasonably high.
+     * nTweak is a constant which is added to the seed value passed to the hash function
+     * It should generally always be a random value (and is largely only exposed for unit testing)
+     * nFlags should be one of the BLOOM_UPDATE_* enums (not _MASK)
+     */</comment>
+    <macro><name>CBloomFilter</name><argument_list>(<argument>const unsigned int nElements</argument>, <argument>const double nFPRate</argument>, <argument>const unsigned int nTweak</argument>, <argument>unsigned char nFlagsIn</argument>)</argument_list></macro><empty_stmt>;</empty_stmt>
+    <expr_stmt><expr><call><name>CBloomFilter</name><argument_list>()</argument_list></call> <operator>:</operator> <call><name>isFull</name><argument_list>(<argument><expr><name>true</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>isEmpty</name><argument_list>(<argument><expr><name>false</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>nHashFuncs</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>nTweak</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>nFlags</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro> <expr><block>{}</block>
+
+    <name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vData</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nHashFuncs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nTweak</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nFlags</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <decl_stmt><decl><type><name>void</name></type> <name>insert</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vKey</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>insert</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>COutPoint</name><modifier>&amp;</modifier></type> <name>outpoint</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>insert</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>contains</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vKey</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>contains</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name><operator>&amp;</operator> <name>outpoint</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>contains</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>clear</name><parameter_list>()</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>reset</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>nNewTweak</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! True if the size is &lt;= MAX_BLOOM_FILTER_SIZE and the number of hash functions is &lt;= MAX_HASH_FUNCS</comment>
+    <comment type="line" format="doxygen">//! (catch a filter which was just deserialized which was too big)</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsWithinSizeConstraints</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Also adds any outputs which match the filter to the filter (to match their spending txes)</comment>
+    <function_decl><type><name>bool</name></type> <name>IsRelevantAndUpdate</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Checks for empty and full filters to avoid wasting cpu</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateEmptyFull</name><parameter_list>()</parameter_list>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * RollingBloomFilter is a probabilistic "keep track of most recently inserted" set.
+ * Construct it with the number of items to keep track of, and a false-positive
+ * rate. Unlike CBloomFilter, by default nTweak is set to a cryptographically
+ * secure random value for you. Similarly rather than clear() the method
+ * reset() is provided, which also changes nTweak to decrease the impact of
+ * false-positives.
+ *
+ * contains(item) will always return true if item was one of the last N to 1.5*N
+ * insert()'ed ... but may also return true for items that were not inserted.
+ *
+ * It needs around 1.8 bytes per element per factor 0.1 of false positive rate.
+ * (More accurately: 3/(log(256)*log(2)) * log(1/fpRate) * nElements bytes)
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CRollingBloomFilter</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <macro><name>CRollingBloomFilter</name><argument_list>(<argument>const unsigned int nElements</argument>, <argument>const double nFPRate</argument>)</argument_list></macro><empty_stmt>;</empty_stmt>
+
+    <decl_stmt><decl><type><name>void</name></type> <name>insert</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vKey</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>insert</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>bool</name></type> <name>contains</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vKey</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>contains</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>reset</name><parameter_list>()</parameter_list>;</function_decl>
+
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>int</name></type> <name>nEntriesPerGeneration</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nEntriesThisGeneration</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nGeneration</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name> <name>data</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nTweak</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nHashFuncs</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_BLOOM_H</comment>
+</unit>

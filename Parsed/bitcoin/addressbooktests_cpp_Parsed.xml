@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/test/addressbooktests.cpp"><cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/test/addressbooktests.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/test/util.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/node.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/editaddressdialog.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/optionsmodel.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/platformstyle.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/qvalidatedlineedit.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/walletmodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;key.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;key_io.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/wallet.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QApplication&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QTimer&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QMessageBox&gt;</cpp:file></cpp:include>
+
+<namespace>namespace
+<block>{
+
+<comment type="block" format="doxygen">/**
+ * Fill the edit address dialog box with data, submit it, and ensure that
+ * the resulting message meets expectations.
+ */</comment>
+<function><type><name>void</name></type> <name>EditAddressAndSubmit</name><parameter_list>(
+        <parameter><decl><type><name>EditAddressDialog</name><modifier>*</modifier></type> <name>dialog</name></decl></parameter>,
+        <parameter><decl><type><specifier>const</specifier> <name>QString</name><modifier>&amp;</modifier></type> <name>label</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QString</name><modifier>&amp;</modifier></type> <name>address</name></decl></parameter>, <parameter><decl><type><name>QString</name></type> <name>expected_msg</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>warning_text</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>dialog</name><operator>-&gt;</operator><name>findChild</name><argument_list type="generic">&lt;<argument><expr><name>QLineEdit</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="string">"labelEdit"</literal></expr></argument>)</argument_list></call><operator>-&gt;</operator><call><name>setText</name><argument_list>(<argument><expr><name>label</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dialog</name><operator>-&gt;</operator><name>findChild</name><argument_list type="generic">&lt;<argument><expr><name>QValidatedLineEdit</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="string">"addressEdit"</literal></expr></argument>)</argument_list></call><operator>-&gt;</operator><call><name>setText</name><argument_list>(<argument><expr><name>address</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>ConfirmMessage</name><argument_list>(<argument><expr><operator>&amp;</operator><name>warning_text</name></expr></argument>, <argument><expr><literal type="number">5</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dialog</name><operator>-&gt;</operator><name>accept</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>QCOMPARE</name><argument_list>(<argument><expr><name>warning_text</name></expr></argument>, <argument><expr><name>expected_msg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * Test adding various send addresses to the address book.
+ *
+ * There are three cases tested:
+ *
+ *   - new_address: a new address which should add as a send address successfully.
+ *   - existing_s_address: an existing sending address which won't add successfully.
+ *   - existing_r_address: an existing receiving address which won't add successfully.
+ *
+ * In each case, verify the resulting state of the address book and optionally
+ * the warning message presented to the user.
+ */</comment>
+<function><type><name>void</name></type> <name>TestAddAddressesToSendBook</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Node</name></name><modifier>&amp;</modifier></type> <name>node</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TestChain100Setup</name></type> <name>test</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name></type> <name>wallet</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_shared</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>node</name><operator>.</operator><name>context</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name><name>chain</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>WalletLocation</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>WalletDatabase</name><operator>::</operator><name>CreateMock</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>firstRun</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>wallet</name><operator>-&gt;</operator><name>LoadWallet</name></name><argument_list>(<argument><expr><name>firstRun</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>auto</name></type> <name>build_address</name> <init>= <expr><lambda><capture>[<argument><modifier>&amp;</modifier><name>wallet</name></argument>]</capture><parameter_list>()</parameter_list> <block>{<block_content>
+        <decl_stmt><decl><type><name>CKey</name></type> <name>key</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>key</name><operator>.</operator><name>MakeNewKey</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CTxDestination</name></type> <name>dest</name><argument_list>(<argument><expr><call><name>GetDestinationForKey</name><argument_list>(
+            <argument><expr><call><name><name>key</name><operator>.</operator><name>GetPubKey</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>wallet</name><operator>-&gt;</operator><name>m_default_address_type</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+        <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>dest</name></expr></argument>, <argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><call><name>EncodeDestination</name><argument_list>(<argument><expr><name>dest</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></lambda></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CTxDestination</name></type> <name>r_key_dest</name></decl>, <decl><type ref="prev"/><name>s_key_dest</name></decl>;</decl_stmt>
+
+    <comment type="line">// Add a preexisting "receive" entry in the address book.</comment>
+    <decl_stmt><decl><type><name>QString</name></type> <name>preexisting_r_address</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>r_label</name><argument_list>(<argument><expr><literal type="string">"already here (r)"</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// Add a preexisting "send" entry in the address book.</comment>
+    <decl_stmt><decl><type><name>QString</name></type> <name>preexisting_s_address</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>s_label</name><argument_list>(<argument><expr><literal type="string">"already here (s)"</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// Define a new address (which should add to the address book successfully).</comment>
+    <decl_stmt><decl><type><name>QString</name></type> <name>new_address</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>tie</name></name><argument_list>(<argument><expr><name>r_key_dest</name></expr></argument>, <argument><expr><name>preexisting_r_address</name></expr></argument>)</argument_list></call> <operator>=</operator> <call><name>build_address</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>tie</name></name><argument_list>(<argument><expr><name>s_key_dest</name></expr></argument>, <argument><expr><name>preexisting_s_address</name></expr></argument>)</argument_list></call> <operator>=</operator> <call><name>build_address</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>tie</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>ignore</name></name></expr></argument>, <argument><expr><name>new_address</name></expr></argument>)</argument_list></call> <operator>=</operator> <call><name>build_address</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>wallet</name><operator>-&gt;</operator><name>cs_wallet</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>wallet</name><operator>-&gt;</operator><name>SetAddressBook</name></name><argument_list>(<argument><expr><name>r_key_dest</name></expr></argument>, <argument><expr><call><name><name>r_label</name><operator>.</operator><name>toStdString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">"receive"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>wallet</name><operator>-&gt;</operator><name>SetAddressBook</name></name><argument_list>(<argument><expr><name>s_key_dest</name></expr></argument>, <argument><expr><call><name><name>s_label</name><operator>.</operator><name>toStdString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">"send"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <decl_stmt><decl><type><name>auto</name></type> <name>check_addbook_size</name> <init>= <expr><lambda><capture>[<argument><modifier>&amp;</modifier><name>wallet</name></argument>]</capture><parameter_list>(<parameter><decl><type><name>int</name></type> <name>expected_size</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>wallet</name><operator>-&gt;</operator><name>cs_wallet</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>QCOMPARE</name><argument_list>(<argument><expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>wallet</name><operator>-&gt;</operator><name>mapAddressBook</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr></argument>, <argument><expr><name>expected_size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></lambda></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// We should start with the two addresses we added earlier and nothing else.</comment>
+    <expr_stmt><expr><call><name>check_addbook_size</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Initialize relevant QT models.</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>PlatformStyle</name></expr></argument>&gt;</argument_list></name></type> <name>platformStyle</name><argument_list>(<argument><expr><call><name><name>PlatformStyle</name><operator>::</operator><name>instantiate</name></name><argument_list>(<argument><expr><literal type="string">"other"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>OptionsModel</name></type> <name>optionsModel</name><argument_list>(<argument><expr><name>node</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>AddWallet</name><argument_list>(<argument><expr><name>wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>WalletModel</name></type> <name>walletModel</name><argument_list>(<argument><expr><call><name><name>interfaces</name><operator>::</operator><name>MakeWallet</name></name><argument_list>(<argument><expr><name>wallet</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>node</name></expr></argument>, <argument><expr><call><name><name>platformStyle</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>&amp;</operator><name>optionsModel</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>RemoveWallet</name><argument_list>(<argument><expr><name>wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>EditAddressDialog</name></type> <name>editAddressDialog</name><argument_list>(<argument><expr><name><name>EditAddressDialog</name><operator>::</operator><name>NewSendingAddress</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>editAddressDialog</name><operator>.</operator><name>setModel</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>.</operator><name>getAddressTableModel</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>EditAddressAndSubmit</name><argument_list>(
+        <argument><expr><operator>&amp;</operator><name>editAddressDialog</name></expr></argument>, <argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"uhoh"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>preexisting_r_address</name></expr></argument>,
+        <argument><expr><call><name>QString</name><argument_list>(
+            <argument><expr><literal type="string">"Address \"%1\" already exists as a receiving address with label "</literal>
+            <literal type="string">"\"%2\" and so cannot be added as a sending address."</literal></expr></argument>
+            )</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>preexisting_r_address</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>r_label</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>check_addbook_size</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>EditAddressAndSubmit</name><argument_list>(
+        <argument><expr><operator>&amp;</operator><name>editAddressDialog</name></expr></argument>, <argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"uhoh, different"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>preexisting_s_address</name></expr></argument>,
+        <argument><expr><call><name>QString</name><argument_list>(
+            <argument><expr><literal type="string">"The entered address \"%1\" is already in the address book with "</literal>
+            <literal type="string">"label \"%2\"."</literal></expr></argument>
+            )</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>preexisting_s_address</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>s_label</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>check_addbook_size</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Submit a new address which should add successfully - we expect the</comment>
+    <comment type="line">// warning message to be blank.</comment>
+    <expr_stmt><expr><call><name>EditAddressAndSubmit</name><argument_list>(
+        <argument><expr><operator>&amp;</operator><name>editAddressDialog</name></expr></argument>, <argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"new"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>new_address</name></expr></argument>, <argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>check_addbook_size</name><argument_list>(<argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+}</block></namespace> <comment type="line">// namespace</comment>
+
+<function><type><name>void</name></type> <name><name>AddressBookTests</name><operator>::</operator><name>addressBookTests</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>Q_OS_MAC</name></cpp:ifdef>
+    <if_stmt><if>if <condition>(<expr><call><name><name>QApplication</name><operator>::</operator><name>platformName</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="string">"minimal"</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Disable for mac on "minimal" platform to avoid crashes inside the Qt</comment>
+        <comment type="line">// framework when it tries to look up unimplemented cocoa functions,</comment>
+        <comment type="line">// and fails to handle returned nulls</comment>
+        <comment type="line">// (https://bugreports.qt.io/browse/QTBUG-49686).</comment>
+        <expr_stmt><expr><call><name>QWARN</name><argument_list>(<argument><expr><literal type="string">"Skipping AddressBookTests on mac build with 'minimal' platform set due to Qt bugs. To run AppTests, invoke "</literal>
+              <literal type="string">"with 'QT_QPA_PLATFORM=cocoa test_bitcoin-qt' on mac, or else use a linux or windows build."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <expr_stmt><expr><call><name>TestAddAddressesToSendBook</name><argument_list>(<argument><expr><name>m_node</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

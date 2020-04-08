@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/bench/chacha_poly_aead.cpp"><comment type="line">// Copyright (c) 2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;bench/bench.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/chacha_poly_aead.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/poly1305.h&gt;</cpp:file></cpp:include> <comment type="line">// for the POLY1305_TAGLEN constant</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;hash.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;limits&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;assert.h&gt;</cpp:file></cpp:include>
+
+<comment type="block">/* Number of bytes to process per iteration */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>uint64_t</name></type> <name>BUFFER_SIZE_TINY</name> <init>= <expr><literal type="number">64</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>uint64_t</name></type> <name>BUFFER_SIZE_SMALL</name> <init>= <expr><literal type="number">256</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>uint64_t</name></type> <name>BUFFER_SIZE_LARGE</name> <init>= <expr><literal type="number">1024</literal> <operator>*</operator> <literal type="number">1024</literal></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>char</name></type> <name><name>k1</name><index>[<expr><literal type="number">32</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>char</name></type> <name><name>k2</name><index>[<expr><literal type="number">32</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>ChaCha20Poly1305AEAD</name></type> <name>aead</name><argument_list>(<argument><expr><name>k1</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>, <argument><expr><name>k2</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>buffersize</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>include_decryption</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>in</name><argument_list>(<argument><expr><name>buffersize</name> <operator>+</operator> <name>CHACHA20_POLY1305_AEAD_AAD_LEN</name> <operator>+</operator> <name>POLY1305_TAGLEN</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>out</name><argument_list>(<argument><expr><name>buffersize</name> <operator>+</operator> <name>CHACHA20_POLY1305_AEAD_AAD_LEN</name> <operator>+</operator> <name>POLY1305_TAGLEN</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>seqnr_payload</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>seqnr_aad</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>aad_pos</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>len</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><call><name><name>state</name><operator>.</operator><name>KeepRunning</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// encrypt or decrypt the buffer with a static key</comment>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>aead</name><operator>.</operator><name>Crypt</name></name><argument_list>(<argument><expr><name>seqnr_payload</name></expr></argument>, <argument><expr><name>seqnr_aad</name></expr></argument>, <argument><expr><name>aad_pos</name></expr></argument>, <argument><expr><call><name><name>out</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>out</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>in</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>buffersize</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>include_decryption</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// if we decrypt, include the GetLength</comment>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>aead</name><operator>.</operator><name>GetLength</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>len</name></expr></argument>, <argument><expr><name>seqnr_aad</name></expr></argument>, <argument><expr><name>aad_pos</name></expr></argument>, <argument><expr><call><name><name>in</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>aead</name><operator>.</operator><name>Crypt</name></name><argument_list>(<argument><expr><name>seqnr_payload</name></expr></argument>, <argument><expr><name>seqnr_aad</name></expr></argument>, <argument><expr><name>aad_pos</name></expr></argument>, <argument><expr><call><name><name>out</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>out</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>in</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>buffersize</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// increase main sequence number</comment>
+        <expr_stmt><expr><name>seqnr_payload</name><operator>++</operator></expr>;</expr_stmt>
+        <comment type="line">// increase aad position (position in AAD keystream)</comment>
+        <expr_stmt><expr><name>aad_pos</name> <operator>+=</operator> <name>CHACHA20_POLY1305_AEAD_AAD_LEN</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>aad_pos</name> <operator>+</operator> <name>CHACHA20_POLY1305_AEAD_AAD_LEN</name> <operator>&gt;</operator> <name>CHACHA20_ROUND_OUTPUT</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>aad_pos</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>seqnr_aad</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>seqnr_payload</name> <operator>+</operator> <literal type="number">1</literal> <operator>==</operator> <call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// reuse of nonce+key is okay while benchmarking.</comment>
+            <expr_stmt><expr><name>seqnr_payload</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>seqnr_aad</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>aad_pos</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD_64BYTES_ONLY_ENCRYPT</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>CHACHA20_POLY1305_AEAD</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_TINY</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD_256BYTES_ONLY_ENCRYPT</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>CHACHA20_POLY1305_AEAD</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_SMALL</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD_1MB_ONLY_ENCRYPT</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>CHACHA20_POLY1305_AEAD</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_LARGE</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD_64BYTES_ENCRYPT_DECRYPT</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>CHACHA20_POLY1305_AEAD</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_TINY</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD_256BYTES_ENCRYPT_DECRYPT</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>CHACHA20_POLY1305_AEAD</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_SMALL</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CHACHA20_POLY1305_AEAD_1MB_ENCRYPT_DECRYPT</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>CHACHA20_POLY1305_AEAD</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_LARGE</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// Add Hash() (dbl-sha256) bench for comparison</comment>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>HASH</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>buffersize</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>hash</name><index>[<expr><name><name>CHash256</name><operator>::</operator><name>OUTPUT_SIZE</name></name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>in</name><argument_list>(<argument><expr><name>buffersize</name></expr></argument>,<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <while>while <condition>(<expr><call><name><name>state</name><operator>.</operator><name>KeepRunning</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>CHash256</name><argument_list>()</argument_list></call><operator>.</operator><call><name>Write</name><argument_list>(<argument><expr><call><name><name>in</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>in</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>Finalize</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></while>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>HASH_64BYTES</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>HASH</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_TINY</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>HASH_256BYTES</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>HASH</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_SMALL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>HASH_1MB</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>HASH</name><argument_list>(<argument><expr><name>state</name></expr></argument>, <argument><expr><name>BUFFER_SIZE_LARGE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CHACHA20_POLY1305_AEAD_64BYTES_ONLY_ENCRYPT</name></expr></argument>, <argument><expr><literal type="number">500000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CHACHA20_POLY1305_AEAD_256BYTES_ONLY_ENCRYPT</name></expr></argument>, <argument><expr><literal type="number">250000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CHACHA20_POLY1305_AEAD_1MB_ONLY_ENCRYPT</name></expr></argument>, <argument><expr><literal type="number">340</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CHACHA20_POLY1305_AEAD_64BYTES_ENCRYPT_DECRYPT</name></expr></argument>, <argument><expr><literal type="number">500000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CHACHA20_POLY1305_AEAD_256BYTES_ENCRYPT_DECRYPT</name></expr></argument>, <argument><expr><literal type="number">250000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CHACHA20_POLY1305_AEAD_1MB_ENCRYPT_DECRYPT</name></expr></argument>, <argument><expr><literal type="number">340</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>HASH_64BYTES</name></expr></argument>, <argument><expr><literal type="number">500000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>HASH_256BYTES</name></expr></argument>, <argument><expr><literal type="number">250000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>HASH_1MB</name></expr></argument>, <argument><expr><literal type="number">340</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</unit>

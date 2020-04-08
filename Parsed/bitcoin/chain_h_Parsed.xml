@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/interfaces/chain.h"><comment type="line">// Copyright (c) 2018-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_INTERFACES_CHAIN_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_INTERFACES_CHAIN_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;optional.h&gt;</cpp:file></cpp:include>               <comment type="line">// For Optional and nullopt</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include> <comment type="line">// For CTransactionRef</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stddef.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CBlock</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CFeeRate</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CRPCCommand</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CScheduler</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>Coin</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint256</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>RBFTransactionState</name></decl>;</decl_stmt>
+<struct_decl>struct <name>CBlockLocator</name>;</struct_decl>
+<struct_decl>struct <name>FeeCalculation</name>;</struct_decl>
+<struct_decl>struct <name>NodeContext</name>;</struct_decl>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>interfaces</name> <block>{<block_content>
+
+<decl_stmt><decl><type><name>class</name></type> <name>Handler</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>Wallet</name></decl>;</decl_stmt>
+
+<comment type="line" format="doxygen">//! Interface giving clients (wallet processes, maybe other analysis tools in</comment>
+<comment type="line" format="doxygen">//! the future) ability to access to the chain state, receive notifications,</comment>
+<comment type="line" format="doxygen">//! estimate fees, and submit transactions.</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! TODO: Current chain methods are too low level, exposing too much of the</comment>
+<comment type="line" format="doxygen">//! internal workings of the bitcoin node, and not being very convenient to use.</comment>
+<comment type="line" format="doxygen">//! Chain methods should be cleaned up and simplified over time. Examples:</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! * The Chain::lock() method, which lets clients delay chain tip updates</comment>
+<comment type="line" format="doxygen">//!   should be removed when clients are able to respond to updates</comment>
+<comment type="line" format="doxygen">//!   asynchronously</comment>
+<comment type="line" format="doxygen">//!   (https://github.com/bitcoin/bitcoin/pull/10973#issuecomment-380101269).</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! * The initMessages() and loadWallet() methods which the wallet uses to send</comment>
+<comment type="line" format="doxygen">//!   notifications to the GUI should go away when GUI and wallet can directly</comment>
+<comment type="line" format="doxygen">//!   communicate with each other without going through the node</comment>
+<comment type="line" format="doxygen">//!   (https://github.com/bitcoin/bitcoin/pull/15288#discussion_r253321096).</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! * The handleRpc, registerRpcs, rpcEnableDeprecated methods and other RPC</comment>
+<comment type="line" format="doxygen">//!   methods can go away if wallets listen for HTTP requests on their own</comment>
+<comment type="line" format="doxygen">//!   ports instead of registering to handle requests on the node HTTP port.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>Chain</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><macro><name>Chain</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+    <comment type="line" format="doxygen">//! Interface for querying locked chain state, used by legacy code that</comment>
+    <comment type="line" format="doxygen">//! assumes state won't change between calls. New code should avoid using</comment>
+    <comment type="line" format="doxygen">//! the Lock interface and instead call higher-level Chain methods</comment>
+    <comment type="line" format="doxygen">//! that return more information so the chain doesn't need to stay locked</comment>
+    <comment type="line" format="doxygen">//! between calls.</comment>
+    <name>class</name> <name>Lock</name>
+    <block>{
+    <expr><name>public</name><operator>:</operator>
+        <name>virtual</name> <operator>~</operator><macro><name>Lock</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+        <comment type="line" format="doxygen">//! Get current chain height, not including genesis block (returns 0 if</comment>
+        <comment type="line" format="doxygen">//! chain only contains genesis block, nullopt if chain does not contain</comment>
+        <comment type="line" format="doxygen">//! any blocks).</comment>
+        <name>virtual</name> <name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <call><name>getHeight</name><argument_list>()</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Get block height above genesis block. Returns 0 for genesis block,</comment>
+        <comment type="line" format="doxygen">//! 1 for following block, and so on. Returns nullopt for a block not</comment>
+        <comment type="line" format="doxygen">//! included in the current chain.</comment>
+        <expr><name>virtual</name> <name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <call><name>getBlockHeight</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>)</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Get block hash. Height must be valid or this function will abort.</comment>
+        <expr><name>virtual</name> <name>uint256</name> <macro><name>getBlockHash</name><argument_list>(<argument>int height</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Get block time. Height must be valid or this function will abort.</comment>
+        <expr><name>virtual</name> <name>int64_t</name> <macro><name>getBlockTime</name><argument_list>(<argument>int height</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Get block median time past. Height must be valid or this function</comment>
+        <comment type="line" format="doxygen">//! will abort.</comment>
+        <expr><name>virtual</name> <name>int64_t</name> <macro><name>getBlockMedianTimePast</name><argument_list>(<argument>int height</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Check that the block is available on disk (i.e. has not been</comment>
+        <comment type="line" format="doxygen">//! pruned), and contains transactions.</comment>
+        <expr><name>virtual</name> <name>bool</name> <macro><name>haveBlockOnDisk</name><argument_list>(<argument>int height</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Return height of the first block in the chain with timestamp equal</comment>
+        <comment type="line" format="doxygen">//! or greater than the given time and height equal or greater than the</comment>
+        <comment type="line" format="doxygen">//! given height, or nullopt if there is no block with a high enough</comment>
+        <comment type="line" format="doxygen">//! timestamp and height. Also return the block hash as an optional output parameter</comment>
+        <comment type="line" format="doxygen">//! (to avoid the cost of a second lookup in case this information is needed.)</comment>
+        <expr><name>virtual</name> <name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <macro><name>findFirstBlockWithTimeAndHeight</name><argument_list>(<argument>int64_t time</argument>, <argument>int height</argument>, <argument>uint256* hash</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Return height of last block in the specified range which is pruned, or</comment>
+        <comment type="line" format="doxygen">//! nullopt if no block in the range is pruned. Range is inclusive.</comment>
+        <expr><name>virtual</name> <name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <macro><name>findPruned</name><argument_list>(<argument>int start_height = <literal type="number">0</literal></argument>, <argument>Optional&lt;int&gt; stop_height = nullopt</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Return height of the specified block if it is on the chain, otherwise</comment>
+        <comment type="line" format="doxygen">//! return the height of the highest block on chain that's an ancestor</comment>
+        <comment type="line" format="doxygen">//! of the specified block, or nullopt if there is no common ancestor.</comment>
+        <comment type="line" format="doxygen">//! Also return the height of the specified block as an optional output</comment>
+        <comment type="line" format="doxygen">//! parameter (to avoid the cost of a second hash lookup in case this</comment>
+        <comment type="line" format="doxygen">//! information is desired).</comment>
+        <expr><name>virtual</name> <name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <call><name>findFork</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>, <argument><expr><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>height</name></expr></argument>)</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Get locator for the current chain tip.</comment>
+        <expr><name>virtual</name> <name>CBlockLocator</name> <call><name>getTipLocator</name><argument_list>()</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Return height of the highest block on chain in common with the locator,</comment>
+        <comment type="line" format="doxygen">//! which will either be the original block used to create the locator,</comment>
+        <comment type="line" format="doxygen">//! or one of its ancestors.</comment>
+        <expr><name>virtual</name> <name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <call><name>findLocatorFork</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockLocator</name><operator>&amp;</operator> <name>locator</name></expr></argument>)</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+        <comment type="line" format="doxygen">//! Check if transaction will be final given chain height current time.</comment>
+        <expr><name>virtual</name> <name>bool</name> <call><name>checkFinalTx</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTransaction</name><operator>&amp;</operator> <name>tx</name></expr></argument>)</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;
+    }</block></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Return Lock interface. Chain is locked when this is called, and</comment>
+    <comment type="line" format="doxygen">//! unlocked when the returned interface is freed.</comment>
+    <expr_stmt><expr><name>virtual</name> <name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Lock</name></expr></argument>&gt;</argument_list></name> <macro><name>lock</name><argument_list>(<argument>bool try_lock = false</argument>)</argument_list></macro> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Return whether node has the block and optionally return block metadata</comment>
+    <comment type="line" format="doxygen">//! or contents.</comment>
+    <comment type="line" format="doxygen">//!</comment>
+    <comment type="line" format="doxygen">//! If a block pointer is provided to retrieve the block contents, and the</comment>
+    <comment type="line" format="doxygen">//! block exists but doesn't have data (for example due to pruning), the</comment>
+    <comment type="line" format="doxygen">//! block will be empty and all fields set to null.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>findBlock</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>,
+        <parameter><decl><type><name>CBlock</name><modifier>*</modifier></type> <name>block</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>,
+        <parameter><decl><type><name>int64_t</name><modifier>*</modifier></type> <name>time</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>,
+        <parameter><decl><type><name>int64_t</name><modifier>*</modifier></type> <name>max_time</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Look up unspent output information. Returns coins in the mempool and in</comment>
+    <comment type="line" format="doxygen">//! the current chain UTXO set. Iterates through all the keys in the map and</comment>
+    <comment type="line" format="doxygen">//! populates the values.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>findCoins</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>COutPoint</name></expr></argument>, <argument><expr><name>Coin</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>coins</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Estimate fraction of total transactions verified if blocks up to</comment>
+    <comment type="line" format="doxygen">//! the specified block hash are verified.</comment>
+    <function_decl><type><name>virtual</name> <name>double</name></type> <name>guessVerificationProgress</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>block_hash</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if transaction is RBF opt in.</comment>
+    <function_decl><type><name>virtual</name> <name>RBFTransactionState</name></type> <name>isRBFOptIn</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if transaction has descendants in mempool.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>hasDescendantsInMempool</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txid</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Transaction is added to memory pool, if the transaction fee is below the</comment>
+    <comment type="line" format="doxygen">//! amount specified by max_tx_fee, and broadcast to all peers if relay is set to true.</comment>
+    <comment type="line" format="doxygen">//! Return false if the transaction could not be added due to the fee or for another reason.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>broadcastTransaction</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTransactionRef</name><operator>&amp;</operator> <name>tx</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>err_string</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CAmount</name><operator>&amp;</operator> <name>max_tx_fee</name></expr></argument>, <argument><expr><name>bool</name> <name>relay</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Calculate mempool ancestor and descendant counts for the given transaction.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>getTransactionAncestry</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txid</name></decl></parameter>, <parameter><decl><type><name>size_t</name><modifier>&amp;</modifier></type> <name>ancestors</name></decl></parameter>, <parameter><decl><type><name>size_t</name><modifier>&amp;</modifier></type> <name>descendants</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Get the node's package limits.</comment>
+    <comment type="line" format="doxygen">//! Currently only returns the ancestor and descendant count limits, but could be enhanced to</comment>
+    <comment type="line" format="doxygen">//! return more policy settings.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>getPackageLimits</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name><modifier>&amp;</modifier></type> <name>limit_ancestor_count</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name><modifier>&amp;</modifier></type> <name>limit_descendant_count</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if transaction will pass the mempool's chain limits.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>checkChainLimits</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Estimate smart fee.</comment>
+    <function_decl><type><name>virtual</name> <name>CFeeRate</name></type> <name>estimateSmartFee</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>num_blocks</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>conservative</name></decl></parameter>, <parameter><decl><type><name>FeeCalculation</name><modifier>*</modifier></type> <name>calc</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Fee estimator max target.</comment>
+    <function_decl><type><name>virtual</name> <name>unsigned</name> <name>int</name></type> <name>estimateMaxBlocks</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Mempool minimum fee.</comment>
+    <function_decl><type><name>virtual</name> <name>CFeeRate</name></type> <name>mempoolMinFee</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Relay current minimum fee (from -minrelaytxfee and -incrementalrelayfee settings).</comment>
+    <function_decl><type><name>virtual</name> <name>CFeeRate</name></type> <name>relayMinFee</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Relay incremental fee setting (-incrementalrelayfee), reflecting cost of relay.</comment>
+    <function_decl><type><name>virtual</name> <name>CFeeRate</name></type> <name>relayIncrementalFee</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Relay dust fee setting (-dustrelayfee), reflecting lowest rate it's economical to spend.</comment>
+    <function_decl><type><name>virtual</name> <name>CFeeRate</name></type> <name>relayDustFee</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if any block has been pruned.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>havePruned</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if the node is ready to broadcast transactions.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>isReadyToBroadcast</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if in IBD.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>isInitialBlockDownload</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Check if shutdown requested.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>shutdownRequested</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Get adjusted time.</comment>
+    <function_decl><type><name>virtual</name> <name>int64_t</name></type> <name>getAdjustedTime</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Send init message.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>initMessage</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>message</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Send init warning.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>initWarning</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>message</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Send init error.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>initError</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>message</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Send wallet load notification to the GUI.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>loadWallet</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Wallet</name></expr></argument>&gt;</argument_list></name> <name>wallet</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Send progress indicator.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>showProgress</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>title</name></expr></argument>, <argument><expr><name>int</name> <name>progress</name></expr></argument>, <argument><expr><name>bool</name> <name>resume_possible</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Chain notifications.</comment>
+    <decl_stmt><decl><type><name>class</name></type> <name>Notifications</name>
+    <block>{<block_content>
+    <label><name>public</name>:</label>
+        <expr_stmt><expr><name>virtual</name> <operator>~</operator><macro><name>Notifications</name><argument_list>()</argument_list></macro> <block>{}</block>
+        <name>virtual</name> <name>void</name> <macro><name>TransactionAddedToMempool</name><argument_list>(<argument>const CTransactionRef&amp; tx</argument>)</argument_list></macro> <block>{}</block>
+        <name>virtual</name> <name>void</name> <macro><name>TransactionRemovedFromMempool</name><argument_list>(<argument>const CTransactionRef&amp; ptx</argument>)</argument_list></macro> <block>{}</block>
+        <name>virtual</name> <name>void</name> <macro><name>BlockConnected</name><argument_list>(<argument>const CBlock&amp; block</argument>, <argument>const std::vector&lt;CTransactionRef&gt;&amp; tx_conflicted</argument>, <argument>int height</argument>)</argument_list></macro> <block>{}</block>
+        <name>virtual</name> <name>void</name> <macro><name>BlockDisconnected</name><argument_list>(<argument>const CBlock&amp; block</argument>, <argument>int height</argument>)</argument_list></macro> <block>{}</block>
+        <name>virtual</name> <name>void</name> <macro><name>UpdatedBlockTip</name><argument_list>()</argument_list></macro> <block>{}</block>
+        <name>virtual</name> <name>void</name> <macro><name>ChainStateFlushed</name><argument_list>(<argument>const CBlockLocator&amp; locator</argument>)</argument_list></macro> <block>{}</block></expr></expr_stmt>
+    </block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+    <comment type="line" format="doxygen">//! Register handler for notifications.</comment>
+    <expr_stmt><expr><name>virtual</name> <name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Handler</name></expr></argument>&gt;</argument_list></name> <call><name>handleNotifications</name><argument_list>(<argument><expr><name>Notifications</name><operator>&amp;</operator> <name>notifications</name></expr></argument>)</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Wait for pending notifications to be processed unless block hash points to the current</comment>
+    <comment type="line" format="doxygen">//! chain tip.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>waitForNotificationsIfTipChanged</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>old_tip</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Register handler for RPC. Command is not copied, so reference</comment>
+    <comment type="line" format="doxygen">//! needs to remain valid until Handler is disconnected.</comment>
+    <expr_stmt><expr><name>virtual</name> <name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Handler</name></expr></argument>&gt;</argument_list></name> <call><name>handleRpc</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CRPCCommand</name><operator>&amp;</operator> <name>command</name></expr></argument>)</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Check if deprecated RPC is enabled.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>rpcEnableDeprecated</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>method</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Run function after given number of seconds. Cancel any previous calls with same name.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>rpcRunLater</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>name</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>fn</name></expr></argument>, <argument><expr><name>int64_t</name> <name>seconds</name></expr></argument>)</argument_list> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Current RPC serialization flags.</comment>
+    <function_decl><type><name>virtual</name> <name>int</name></type> <name>rpcSerializationFlags</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Synchronously send TransactionAddedToMempool notifications about all</comment>
+    <comment type="line" format="doxygen">//! current mempool transactions to the specified handler and return after</comment>
+    <comment type="line" format="doxygen">//! the last one is sent. These notifications aren't coordinated with async</comment>
+    <comment type="line" format="doxygen">//! notifications sent by handleNotifications, so out of date async</comment>
+    <comment type="line" format="doxygen">//! notifications from handleNotifications can arrive during and after</comment>
+    <comment type="line" format="doxygen">//! synchronous notifications from requestMempoolTransactions. Clients need</comment>
+    <comment type="line" format="doxygen">//! to be prepared to handle this by ignoring notifications about unknown</comment>
+    <comment type="line" format="doxygen">//! removed transactions and already added new transactions.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>requestMempoolTransactions</name><parameter_list>(<parameter><decl><type><name>Notifications</name><modifier>&amp;</modifier></type> <name>notifications</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line" format="doxygen">//! Interface to let node manage chain clients (wallets, or maybe tools for</comment>
+<comment type="line" format="doxygen">//! monitoring and analysis in the future).</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>ChainClient</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><macro><name>ChainClient</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+    <comment type="line" format="doxygen">//! Register rpcs.</comment>
+    <name>virtual</name> <name>void</name> <call><name>registerRpcs</name><argument_list>()</argument_list></call> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Check for errors before loading.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>verify</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Load saved state.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>load</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Start client execution and provide a scheduler.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>start</name><parameter_list>(<parameter><decl><type><name>CScheduler</name><modifier>&amp;</modifier></type> <name>scheduler</name></decl></parameter>)</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Save state to disk.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>flush</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Shut down client.</comment>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>stop</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line" format="doxygen">//! Return implementation of Chain interface.</comment>
+<expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Chain</name></expr></argument>&gt;</argument_list></name> <call><name>MakeChain</name><argument_list>(<argument><expr><name>NodeContext</name><operator>&amp;</operator> <name>node</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<comment type="line" format="doxygen">//! Return implementation of ChainClient interface for a wallet client. This</comment>
+<comment type="line" format="doxygen">//! function will be undefined in builds where ENABLE_WALLET is false.</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! Currently, wallets are the only chain clients. But in the future, other</comment>
+<comment type="line" format="doxygen">//! types of chain clients could be added, such as tools for monitoring,</comment>
+<comment type="line" format="doxygen">//! analysis, or fee estimation. These clients need to expose their own</comment>
+<comment type="line" format="doxygen">//! MakeXXXClient functions returning their implementations of the ChainClient</comment>
+<comment type="line" format="doxygen">//! interface.</comment>
+<expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>ChainClient</name></expr></argument>&gt;</argument_list></name> <call><name>MakeWalletClient</name><argument_list>(<argument><expr><name>Chain</name><operator>&amp;</operator> <name>chain</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>string</name></expr></argument>&gt;</argument_list></name> <name>wallet_filenames</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+</block_content>}</block></decl></decl_stmt> <comment type="line">// namespace interfaces</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_INTERFACES_CHAIN_H</comment>
+</unit>

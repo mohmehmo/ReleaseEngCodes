@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/bitcoinaddressvalidator.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/bitcoinaddressvalidator.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;key_io.h&gt;</cpp:file></cpp:include>
+
+<comment type="block">/* Base58 characters are:
+     "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+
+  This is:
+  - All numbers except for '0'
+  - All upper-case letters except for 'I' and 'O'
+  - All lower-case letters except for 'l'
+*/</comment>
+
+<constructor><name><name>BitcoinAddressEntryValidator</name><operator>::</operator><name>BitcoinAddressEntryValidator</name></name><parameter_list>(<parameter><decl><type><name>QObject</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QValidator</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><name><name>QValidator</name><operator>::</operator><name>State</name></name></type> <name><name>BitcoinAddressEntryValidator</name><operator>::</operator><name>validate</name></name><parameter_list>(<parameter><decl><type><name>QString</name> <modifier>&amp;</modifier></type><name>input</name></decl></parameter>, <parameter><decl><type><name>int</name> <modifier>&amp;</modifier></type><name>pos</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Q_UNUSED</name><argument_list>(<argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Empty address is "intermediate" input</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>input</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>QValidator</name><operator>::</operator><name>Intermediate</name></name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Correction</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>idx</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>idx</name> <operator>&lt;</operator> <call><name><name>input</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition><incr/>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>bool</name></type> <name>removeChar</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>QChar</name></type> <name>ch</name> <init>= <expr><call><name><name>input</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>idx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Corrections made are very conservative on purpose, to avoid</comment>
+        <comment type="line">// users unexpectedly getting away with typos that would normally</comment>
+        <comment type="line">// be detected, and thus sending to the wrong address.</comment>
+        <switch>switch<condition>(<expr><call><name><name>ch</name><operator>.</operator><name>unicode</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+        <comment type="line">// Qt categorizes these as "Other_Format" not "Separator_Space"</comment>
+        <case>case <expr><literal type="number">0x200B</literal></expr>:</case> <comment type="line">// ZERO WIDTH SPACE</comment>
+        <case>case <expr><literal type="number">0xFEFF</literal></expr>:</case> <comment type="line">// ZERO WIDTH NO-BREAK SPACE</comment>
+            <expr_stmt><expr><name>removeChar</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            <break>break;</break>
+        <default>default:</default>
+            <break>break;</break>
+        </block_content>}</block></switch>
+
+        <comment type="line">// Remove whitespace</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>ch</name><operator>.</operator><name>isSpace</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>removeChar</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <comment type="line">// To next character</comment>
+        <if_stmt><if>if <condition>(<expr><name>removeChar</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>input</name><operator>.</operator><name>remove</name></name><argument_list>(<argument><expr><name>idx</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><operator>++</operator><name>idx</name></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Validation</comment>
+    <decl_stmt><decl><type><name><name>QValidator</name><operator>::</operator><name>State</name></name></type> <name>state</name> <init>= <expr><name><name>QValidator</name><operator>::</operator><name>Acceptable</name></name></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>idx</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>idx</name> <operator>&lt;</operator> <call><name><name>input</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>idx</name></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>ch</name> <init>= <expr><call><name><name>input</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>idx</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>unicode</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>(</operator><name>ch</name> <operator>&gt;=</operator> <literal type="char">'0'</literal> <operator>&amp;&amp;</operator> <name>ch</name><operator>&lt;=</operator><literal type="char">'9'</literal><operator>)</operator> <operator>||</operator>
+            <operator>(</operator><name>ch</name> <operator>&gt;=</operator> <literal type="char">'a'</literal> <operator>&amp;&amp;</operator> <name>ch</name><operator>&lt;=</operator><literal type="char">'z'</literal><operator>)</operator> <operator>||</operator>
+            <operator>(</operator><name>ch</name> <operator>&gt;=</operator> <literal type="char">'A'</literal> <operator>&amp;&amp;</operator> <name>ch</name><operator>&lt;=</operator><literal type="char">'Z'</literal><operator>)</operator><operator>)</operator> <operator>&amp;&amp;</operator>
+            <name>ch</name> <operator>!=</operator> <literal type="char">'I'</literal> <operator>&amp;&amp;</operator> <name>ch</name> <operator>!=</operator> <literal type="char">'O'</literal></expr>)</condition> <comment type="line">// Characters invalid in both Base58 and Bech32</comment>
+        <block>{<block_content>
+            <comment type="line">// Alphanumeric and not a 'forbidden' character</comment>
+        </block_content>}</block></if>
+        <else>else
+        <block>{<block_content>
+            <expr_stmt><expr><name>state</name> <operator>=</operator> <name><name>QValidator</name><operator>::</operator><name>Invalid</name></name></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><name>state</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>BitcoinAddressCheckValidator</name><operator>::</operator><name>BitcoinAddressCheckValidator</name></name><parameter_list>(<parameter><decl><type><name>QObject</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QValidator</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><name><name>QValidator</name><operator>::</operator><name>State</name></name></type> <name><name>BitcoinAddressCheckValidator</name><operator>::</operator><name>validate</name></name><parameter_list>(<parameter><decl><type><name>QString</name> <modifier>&amp;</modifier></type><name>input</name></decl></parameter>, <parameter><decl><type><name>int</name> <modifier>&amp;</modifier></type><name>pos</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Q_UNUSED</name><argument_list>(<argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Validate the passed Bitcoin address</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>IsValidDestinationString</name><argument_list>(<argument><expr><call><name><name>input</name><operator>.</operator><name>toStdString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name><name>QValidator</name><operator>::</operator><name>Acceptable</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name><name>QValidator</name><operator>::</operator><name>Invalid</name></name></expr>;</return>
+</block_content>}</block></function>
+</unit>

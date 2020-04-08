@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/bloom.cpp"><comment type="line">// Copyright (c) 2012-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;bloom.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;hash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/standard.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;math.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdlib.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LN2SQUARED</name></cpp:macro> <cpp:value>0.4804530139182014246671025263266649717305529515945455</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LN2</name></cpp:macro> <cpp:value>0.6931471805599453094172321214581765680755001343602552</cpp:value></cpp:define>
+
+<constructor><name><name>CBloomFilter</name><operator>::</operator><name>CBloomFilter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>nElements</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>double</name></type> <name>nFPRate</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>nTweakIn</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>nFlagsIn</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <comment type="block" format="doxygen">/**
+     * The ideal size for a bloom filter with a given number of elements and false positive rate is:
+     * - nElements * log(fp rate) / ln(2)^2
+     * We ignore filter parameters which will create a bloom filter larger than the protocol limits
+     */</comment>
+    <call><name>vData</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><operator>(</operator><operator>-</operator><literal type="number">1</literal>  <operator>/</operator> <name>LN2SQUARED</name> <operator>*</operator> <name>nElements</name> <operator>*</operator> <call><name>log</name><argument_list>(<argument><expr><name>nFPRate</name></expr></argument>)</argument_list></call><operator>)</operator></expr></argument>, <argument><expr><name>MAX_BLOOM_FILTER_SIZE</name> <operator>*</operator> <literal type="number">8</literal></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">8</literal></expr></argument>)</argument_list></call>,
+    <comment type="block" format="doxygen">/**
+     * The ideal number of hash functions is filter size * ln(2) / number of elements
+     * Again, we ignore filter parameters which will create a bloom filter with more hash functions than the protocol limits
+     * See https://en.wikipedia.org/wiki/Bloom_filter for an explanation of these formulas
+     */</comment>
+    <call><name>isFull</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>,
+    <call><name>isEmpty</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call>,
+    <call><name>nHashFuncs</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><operator>(</operator><call><name><name>vData</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <literal type="number">8</literal> <operator>/</operator> <name>nElements</name> <operator>*</operator> <name>LN2</name><operator>)</operator></expr></argument>, <argument><expr><name>MAX_HASH_FUNCS</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>,
+    <call><name>nTweak</name><argument_list>(<argument><expr><name>nTweakIn</name></expr></argument>)</argument_list></call>,
+    <call><name>nFlags</name><argument_list>(<argument><expr><name>nFlagsIn</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><specifier>inline</specifier> <name>unsigned</name> <name>int</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>Hash</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nHashNum</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vDataToHash</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// 0xFBA4C795 chosen as it guarantees a reasonable bit difference between nHashNum values.</comment>
+    <return>return <expr><call><name>MurmurHash3</name><argument_list>(<argument><expr><name>nHashNum</name> <operator>*</operator> <literal type="number">0xFBA4C795</literal> <operator>+</operator> <name>nTweak</name></expr></argument>, <argument><expr><name>vDataToHash</name></expr></argument>)</argument_list></call> <operator>%</operator> <operator>(</operator><call><name><name>vData</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <literal type="number">8</literal><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>insert</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vKey</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>isFull</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nHashFuncs</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nIndex</name> <init>= <expr><call><name>Hash</name><argument_list>(<argument><expr><name>i</name></expr></argument>, <argument><expr><name>vKey</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Sets bit nIndex of vData</comment>
+        <expr_stmt><expr><name><name>vData</name><index>[<expr><name>nIndex</name> <operator>&gt;&gt;</operator> <literal type="number">3</literal></expr>]</index></name> <operator>|=</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <operator>(</operator><literal type="number">7</literal> <operator>&amp;</operator> <name>nIndex</name><operator>)</operator><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><name>isEmpty</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>insert</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>COutPoint</name><modifier>&amp;</modifier></type> <name>outpoint</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>stream</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>stream</name> <operator>&lt;&lt;</operator> <name>outpoint</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name><argument_list>(<argument><expr><call><name><name>stream</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>stream</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>insert</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>contains</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vKey</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>isFull</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>isEmpty</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nHashFuncs</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nIndex</name> <init>= <expr><call><name>Hash</name><argument_list>(<argument><expr><name>i</name></expr></argument>, <argument><expr><name>vKey</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Checks bit nIndex of vData</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><operator>(</operator><name><name>vData</name><index>[<expr><name>nIndex</name> <operator>&gt;&gt;</operator> <literal type="number">3</literal></expr>]</index></name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <operator>(</operator><literal type="number">7</literal> <operator>&amp;</operator> <name>nIndex</name><operator>)</operator><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>contains</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>COutPoint</name><modifier>&amp;</modifier></type> <name>outpoint</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>stream</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>stream</name> <operator>&lt;&lt;</operator> <name>outpoint</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name><argument_list>(<argument><expr><call><name><name>stream</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>stream</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><call><name>contains</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>contains</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><call><name>contains</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>clear</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>vData</name><operator>.</operator><name>assign</name></name><argument_list>(<argument><expr><call><name><name>vData</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>,<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>isFull</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>isEmpty</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>reset</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>nNewTweak</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>clear</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nTweak</name> <operator>=</operator> <name>nNewTweak</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>IsWithinSizeConstraints</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>vData</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <name>MAX_BLOOM_FILTER_SIZE</name> <operator>&amp;&amp;</operator> <name>nHashFuncs</name> <operator>&lt;=</operator> <name>MAX_HASH_FUNCS</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>IsRelevantAndUpdate</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fFound</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Match if the filter contains the hash of tx</comment>
+    <comment type="line">//  for finding tx when they appear in a block</comment>
+    <if_stmt><if>if <condition>(<expr><name>isFull</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>isEmpty</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name> <init>= <expr><call><name><name>tx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>contains</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>fFound</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name> <init>= <expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Match if the filter contains any arbitrary script data element in any scriptPubKey in tx</comment>
+        <comment type="line">// If this matches, also add the specific output that was matched.</comment>
+        <comment type="line">// This means clients don't have to update the filter themselves when a new relevant tx</comment>
+        <comment type="line">// is discovered in order to find spending transactions, which avoids round-tripping and race conditions.</comment>
+        <decl_stmt><decl><type><name><name>CScript</name><operator>::</operator><name>const_iterator</name></name></type> <name>pc</name> <init>= <expr><call><name><name>txout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>pc</name> <operator>&lt;</operator> <call><name><name>txout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>opcodetype</name></type> <name>opcode</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>txout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>GetOp</name></name><argument_list>(<argument><expr><name>pc</name></expr></argument>, <argument><expr><name>opcode</name></expr></argument>, <argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <break>break;</break></block_content></block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name>contains</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>fFound</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>(</operator><name>nFlags</name> <operator>&amp;</operator> <name>BLOOM_UPDATE_MASK</name><operator>)</operator> <operator>==</operator> <name>BLOOM_UPDATE_ALL</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>COutPoint</name><argument_list>(<argument><expr><name>hash</name></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+                <if type="elseif">else if <condition>(<expr><operator>(</operator><name>nFlags</name> <operator>&amp;</operator> <name>BLOOM_UPDATE_MASK</name><operator>)</operator> <operator>==</operator> <name>BLOOM_UPDATE_P2PUBKEY_ONLY</name></expr>)</condition>
+                <block>{<block_content>
+                    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>vSolutions</name></decl>;</decl_stmt>
+                    <decl_stmt><decl><type><name>txnouttype</name></type> <name>type</name> <init>= <expr><call><name>Solver</name><argument_list>(<argument><expr><name><name>txout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><name>vSolutions</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>type</name> <operator>==</operator> <name>TX_PUBKEY</name> <operator>||</operator> <name>type</name> <operator>==</operator> <name>TX_MULTISIG</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><call><name>COutPoint</name><argument_list>(<argument><expr><name>hash</name></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                </block_content>}</block></if></if_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></for>
+
+    <if_stmt><if>if <condition>(<expr><name>fFound</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <comment type="line">// Match if the filter contains an outpoint tx spends</comment>
+        <if_stmt><if>if <condition>(<expr><call><name>contains</name><argument_list>(<argument><expr><name><name>txin</name><operator>.</operator><name>prevout</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+
+        <comment type="line">// Match if the filter contains any arbitrary script data element in any scriptSig in tx</comment>
+        <decl_stmt><decl><type><name><name>CScript</name><operator>::</operator><name>const_iterator</name></name></type> <name>pc</name> <init>= <expr><call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>data</name></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>pc</name> <operator>&lt;</operator> <call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>opcodetype</name></type> <name>opcode</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>GetOp</name></name><argument_list>(<argument><expr><name>pc</name></expr></argument>, <argument><expr><name>opcode</name></expr></argument>, <argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <break>break;</break></block_content></block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name>contains</name><argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBloomFilter</name><operator>::</operator><name>UpdateEmptyFull</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>full</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>empty</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>vData</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <expr_stmt><expr><name>full</name> <operator>&amp;=</operator> <name><name>vData</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="number">0xff</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>empty</name> <operator>&amp;=</operator> <name><name>vData</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><name>isFull</name> <operator>=</operator> <name>full</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>isEmpty</name> <operator>=</operator> <name>empty</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<constructor><name><name>CRollingBloomFilter</name><operator>::</operator><name>CRollingBloomFilter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>nElements</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>double</name></type> <name>fpRate</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>double</name></type> <name>logFpRate</name> <init>= <expr><call><name>log</name><argument_list>(<argument><expr><name>fpRate</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="block">/* The optimal number of hash functions is log(fpRate) / log(0.5), but
+     * restrict it to the range 1-50. */</comment>
+    <expr_stmt><expr><name>nHashFuncs</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><operator>(</operator><name>int</name><operator>)</operator><call><name>round</name><argument_list>(<argument><expr><name>logFpRate</name> <operator>/</operator> <call><name>log</name><argument_list>(<argument><expr><literal type="number">0.5</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">50</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* In this rolling bloom filter, we'll store between 2 and 3 generations of nElements / 2 entries. */</comment>
+    <expr_stmt><expr><name>nEntriesPerGeneration</name> <operator>=</operator> <operator>(</operator><name>nElements</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>/</operator> <literal type="number">2</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nMaxElements</name> <init>= <expr><name>nEntriesPerGeneration</name> <operator>*</operator> <literal type="number">3</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block">/* The maximum fpRate = pow(1.0 - exp(-nHashFuncs * nMaxElements / nFilterBits), nHashFuncs)
+     * =&gt;          pow(fpRate, 1.0 / nHashFuncs) = 1.0 - exp(-nHashFuncs * nMaxElements / nFilterBits)
+     * =&gt;          1.0 - pow(fpRate, 1.0 / nHashFuncs) = exp(-nHashFuncs * nMaxElements / nFilterBits)
+     * =&gt;          log(1.0 - pow(fpRate, 1.0 / nHashFuncs)) = -nHashFuncs * nMaxElements / nFilterBits
+     * =&gt;          nFilterBits = -nHashFuncs * nMaxElements / log(1.0 - pow(fpRate, 1.0 / nHashFuncs))
+     * =&gt;          nFilterBits = -nHashFuncs * nMaxElements / log(1.0 - exp(logFpRate / nHashFuncs))
+     */</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nFilterBits</name> <init>= <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><call><name>ceil</name><argument_list>(<argument><expr><operator>-</operator><literal type="number">1.0</literal> <operator>*</operator> <name>nHashFuncs</name> <operator>*</operator> <name>nMaxElements</name> <operator>/</operator> <call><name>log</name><argument_list>(<argument><expr><literal type="number">1.0</literal> <operator>-</operator> <call><name>exp</name><argument_list>(<argument><expr><name>logFpRate</name> <operator>/</operator> <name>nHashFuncs</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>data</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* For each data element we need to store 2 bits. If both bits are 0, the
+     * bit is treated as unset. If the bits are (01), (10), or (11), the bit is
+     * treated as set in generation 1, 2, or 3 respectively.
+     * These bits are stored in separate integers: position P corresponds to bit
+     * (P &amp; 63) of the integers data[(P &gt;&gt; 6) * 2] and data[(P &gt;&gt; 6) * 2 + 1]. */</comment>
+    <expr_stmt><expr><call><name><name>data</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><operator>(</operator><operator>(</operator><name>nFilterBits</name> <operator>+</operator> <literal type="number">63</literal><operator>)</operator> <operator>/</operator> <literal type="number">64</literal><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<comment type="block">/* Similar to CBloomFilter::Hash */</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>uint32_t</name></type> <name>RollingBloomHash</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nHashNum</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>nTweak</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vDataToHash</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>MurmurHash3</name><argument_list>(<argument><expr><name>nHashNum</name> <operator>*</operator> <literal type="number">0xFBA4C795</literal> <operator>+</operator> <name>nTweak</name></expr></argument>, <argument><expr><name>vDataToHash</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+
+<comment type="line">// A replacement for x % n. This assumes that x and n are 32bit integers, and x is a uniformly random distributed 32bit value</comment>
+<comment type="line">// which should be the case for a good hash.</comment>
+<comment type="line">// See https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>uint32_t</name></type> <name>FastMod</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>x</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>n</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name>x</name> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>n</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CRollingBloomFilter</name><operator>::</operator><name>insert</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vKey</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>nEntriesThisGeneration</name> <operator>==</operator> <name>nEntriesPerGeneration</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>nEntriesThisGeneration</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nGeneration</name><operator>++</operator></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nGeneration</name> <operator>==</operator> <literal type="number">4</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>nGeneration</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>nGenerationMask1</name> <init>= <expr><literal type="number">0</literal> <operator>-</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><operator>(</operator><name>nGeneration</name> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>nGenerationMask2</name> <init>= <expr><literal type="number">0</literal> <operator>-</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><operator>(</operator><name>nGeneration</name> <operator>&gt;&gt;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <comment type="block">/* Wipe old entries that used this generation number. */</comment>
+        <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>p</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>p</name> <operator>&lt;</operator> <call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>p</name> <operator>+=</operator> <literal type="number">2</literal></expr></incr>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>p1</name> <init>= <expr><name><name>data</name><index>[<expr><name>p</name></expr>]</index></name></expr></init></decl>, <decl><type ref="prev"/><name>p2</name> <init>= <expr><name><name>data</name><index>[<expr><name>p</name> <operator>+</operator> <literal type="number">1</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>mask</name> <init>= <expr><operator>(</operator><name>p1</name> <operator>^</operator> <name>nGenerationMask1</name><operator>)</operator> <operator>|</operator> <operator>(</operator><name>p2</name> <operator>^</operator> <name>nGenerationMask2</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name><name>data</name><index>[<expr><name>p</name></expr>]</index></name> <operator>=</operator> <name>p1</name> <operator>&amp;</operator> <name>mask</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>data</name><index>[<expr><name>p</name> <operator>+</operator> <literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <name>p2</name> <operator>&amp;</operator> <name>mask</name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>nEntriesThisGeneration</name><operator>++</operator></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>n</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>n</name> <operator>&lt;</operator> <name>nHashFuncs</name></expr>;</condition> <incr><expr><name>n</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>h</name> <init>= <expr><call><name>RollingBloomHash</name><argument_list>(<argument><expr><name>n</name></expr></argument>, <argument><expr><name>nTweak</name></expr></argument>, <argument><expr><name>vKey</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>bit</name> <init>= <expr><name>h</name> <operator>&amp;</operator> <literal type="number">0x3F</literal></expr></init></decl>;</decl_stmt>
+        <comment type="block">/* FastMod works with the upper bits of h, so it is safe to ignore that the lower bits of h are already used for bit. */</comment>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>pos</name> <init>= <expr><call><name>FastMod</name><argument_list>(<argument><expr><name>h</name></expr></argument>, <argument><expr><call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="block">/* The lowest bit of pos is ignored, and set to zero for the first bit, and to one for the second. */</comment>
+        <expr_stmt><expr><name><name>data</name><index>[<expr><name>pos</name> <operator>&amp;</operator> <operator>~</operator><literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name><name>data</name><index>[<expr><name>pos</name> <operator>&amp;</operator> <operator>~</operator><literal type="number">1</literal></expr>]</index></name> <operator>&amp;</operator> <operator>~</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><literal type="number">1</literal><operator>)</operator> <operator>&lt;&lt;</operator> <name>bit</name><operator>)</operator><operator>)</operator> <operator>|</operator> <operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><operator>(</operator><name>nGeneration</name> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator><operator>)</operator> <operator>&lt;&lt;</operator> <name>bit</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>data</name><index>[<expr><name>pos</name> <operator>|</operator> <literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name><name>data</name><index>[<expr><name>pos</name> <operator>|</operator> <literal type="number">1</literal></expr>]</index></name> <operator>&amp;</operator> <operator>~</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><literal type="number">1</literal><operator>)</operator> <operator>&lt;&lt;</operator> <name>bit</name><operator>)</operator><operator>)</operator> <operator>|</operator> <operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><operator>(</operator><name>nGeneration</name> <operator>&gt;&gt;</operator> <literal type="number">1</literal><operator>)</operator><operator>)</operator> <operator>&lt;&lt;</operator> <name>bit</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CRollingBloomFilter</name><operator>::</operator><name>insert</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vData</name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>insert</name><argument_list>(<argument><expr><name>vData</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CRollingBloomFilter</name><operator>::</operator><name>contains</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vKey</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>n</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>n</name> <operator>&lt;</operator> <name>nHashFuncs</name></expr>;</condition> <incr><expr><name>n</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>h</name> <init>= <expr><call><name>RollingBloomHash</name><argument_list>(<argument><expr><name>n</name></expr></argument>, <argument><expr><name>nTweak</name></expr></argument>, <argument><expr><name>vKey</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>bit</name> <init>= <expr><name>h</name> <operator>&amp;</operator> <literal type="number">0x3F</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>pos</name> <init>= <expr><call><name>FastMod</name><argument_list>(<argument><expr><name>h</name></expr></argument>, <argument><expr><call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="block">/* If the relevant bit is not set in either data[pos &amp; ~1] or data[pos | 1], the filter does not contain vKey */</comment>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><operator>(</operator><operator>(</operator><operator>(</operator><name><name>data</name><index>[<expr><name>pos</name> <operator>&amp;</operator> <operator>~</operator><literal type="number">1</literal></expr>]</index></name> <operator>|</operator> <name><name>data</name><index>[<expr><name>pos</name> <operator>|</operator> <literal type="number">1</literal></expr>]</index></name><operator>)</operator> <operator>&gt;&gt;</operator> <name>bit</name><operator>)</operator> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CRollingBloomFilter</name><operator>::</operator><name>contains</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vData</name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <return>return <expr><call><name>contains</name><argument_list>(<argument><expr><name>vData</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CRollingBloomFilter</name><operator>::</operator><name>reset</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>nTweak</name> <operator>=</operator> <macro><name>GetRand</name><argument_list>(<argument>std::numeric_limits&lt;unsigned int&gt;::max()</argument>)</argument_list></macro></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nEntriesThisGeneration</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nGeneration</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>fill</name></name><argument_list>(<argument><expr><call><name><name>data</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>data</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

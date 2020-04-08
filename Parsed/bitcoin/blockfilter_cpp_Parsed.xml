@@ -1,0 +1,340 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/blockfilter.cpp"><comment type="line">// Copyright (c) 2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;mutex&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sstream&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;blockfilter.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/siphash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;hash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+
+<comment type="line" format="doxygen">/// SerType used to serialize parameters in GCS filter encoding.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>int</name></type> <name>GCS_SER_TYPE</name> <init>= <expr><name>SER_NETWORK</name></expr></init></decl>;</decl_stmt>
+
+<comment type="line" format="doxygen">/// Protocol version used to serialize parameters in GCS filter encoding.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>constexpr</specifier> <name>int</name></type> <name>GCS_SER_VERSION</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>BlockFilterType</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>g_filter_types</name> <init>= <expr><block>{
+    <expr><block>{<expr><name><name>BlockFilterType</name><operator>::</operator><name>BASIC</name></name></expr>, <expr><literal type="string">"basic"</literal></expr>}</block></expr>,
+}</block></expr></init></decl>;</decl_stmt>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>OStream</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>void</name></type> <name>GolombRiceEncode</name><parameter_list>(<parameter><decl><type><name><name>BitStreamWriter</name><argument_list type="generic">&lt;<argument><expr><name>OStream</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>bitwriter</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>P</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>x</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Write quotient as unary-encoded: q 1's followed by one 0.</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>q</name> <init>= <expr><name>x</name> <operator>&gt;&gt;</operator> <name>P</name></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>q</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nbits</name> <init>= <expr><ternary><condition><expr><name>q</name> <operator>&lt;=</operator> <literal type="number">64</literal></expr> ?</condition><then> <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>q</name></expr></argument>)</argument_list></cast></expr> </then><else>: <expr><literal type="number">64</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>bitwriter</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>~</operator><literal type="number">0ULL</literal></expr></argument>, <argument><expr><name>nbits</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>q</name> <operator>-=</operator> <name>nbits</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><call><name><name>bitwriter</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Write the remainder in P bits. Since the remainder is just the bottom</comment>
+    <comment type="line">// P bits of x, there is no need to mask first.</comment>
+    <expr_stmt><expr><call><name><name>bitwriter</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>x</name></expr></argument>, <argument><expr><name>P</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>IStream</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>uint64_t</name></type> <name>GolombRiceDecode</name><parameter_list>(<parameter><decl><type><name><name>BitStreamReader</name><argument_list type="generic">&lt;<argument><expr><name>IStream</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>bitreader</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>P</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Read unary-encoded quotient: q 1's followed by one 0.</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>q</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><call><name><name>bitreader</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><operator>++</operator><name>q</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>r</name> <init>= <expr><call><name><name>bitreader</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name>P</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <return>return <expr><operator>(</operator><name>q</name> <operator>&lt;&lt;</operator> <name>P</name><operator>)</operator> <operator>+</operator> <name>r</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// Map a value x that is uniformly distributed in the range [0, 2^64) to a</comment>
+<comment type="line">// value uniformly distributed in [0, n) by returning the upper 64 bits of</comment>
+<comment type="line">// x * n.</comment>
+<comment type="line">//</comment>
+<comment type="line">// See: https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/</comment>
+<function><type><specifier>static</specifier> <name>uint64_t</name></type> <name>MapIntoRange</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>x</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name></type> <name>n</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>__SIZEOF_INT128__</name></cpp:ifdef>
+    <return>return <expr><operator>(</operator><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>__int128</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>x</name></expr></argument>)</argument_list></cast> <operator>*</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>__int128</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></cast><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">64</literal></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <comment type="line">// To perform the calculation on 64-bit numbers without losing the</comment>
+    <comment type="line">// result to overflow, split the numbers into the most significant and</comment>
+    <comment type="line">// least significant 32 bits and perform multiplication piece-wise.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// See: https://stackoverflow.com/a/26855440</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>x_hi</name> <init>= <expr><name>x</name> <operator>&gt;&gt;</operator> <literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>x_lo</name> <init>= <expr><name>x</name> <operator>&amp;</operator> <literal type="number">0xFFFFFFFF</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>n_hi</name> <init>= <expr><name>n</name> <operator>&gt;&gt;</operator> <literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>n_lo</name> <init>= <expr><name>n</name> <operator>&amp;</operator> <literal type="number">0xFFFFFFFF</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>ac</name> <init>= <expr><name>x_hi</name> <operator>*</operator> <name>n_hi</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>ad</name> <init>= <expr><name>x_hi</name> <operator>*</operator> <name>n_lo</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>bc</name> <init>= <expr><name>x_lo</name> <operator>*</operator> <name>n_hi</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>bd</name> <init>= <expr><name>x_lo</name> <operator>*</operator> <name>n_lo</name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>mid34</name> <init>= <expr><operator>(</operator><name>bd</name> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator> <operator>+</operator> <operator>(</operator><name>bc</name> <operator>&amp;</operator> <literal type="number">0xFFFFFFFF</literal><operator>)</operator> <operator>+</operator> <operator>(</operator><name>ad</name> <operator>&amp;</operator> <literal type="number">0xFFFFFFFF</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>upper64</name> <init>= <expr><name>ac</name> <operator>+</operator> <operator>(</operator><name>bc</name> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator> <operator>+</operator> <operator>(</operator><name>ad</name> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator> <operator>+</operator> <operator>(</operator><name>mid34</name> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <return>return <expr><name>upper64</name></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<function><type><name>uint64_t</name></type> <name><name>GCSFilter</name><operator>::</operator><name>HashToRange</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Element</name><modifier>&amp;</modifier></type> <name>element</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>hash</name> <init>= <expr><call><name>CSipHasher</name><argument_list>(<argument><expr><name><name>m_params</name><operator>.</operator><name>m_siphash_k0</name></name></expr></argument>, <argument><expr><name><name>m_params</name><operator>.</operator><name>m_siphash_k1</name></name></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>Write</name><argument_list>(<argument><expr><call><name><name>element</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>element</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>Finalize</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><call><name>MapIntoRange</name><argument_list>(<argument><expr><name>hash</name></expr></argument>, <argument><expr><name>m_F</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>GCSFilter</name><operator>::</operator><name>BuildHashedSet</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>ElementSet</name><modifier>&amp;</modifier></type> <name>elements</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name></type> <name>hashed_elements</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hashed_elements</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><call><name><name>elements</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>Element</name><modifier>&amp;</modifier></type> <name>element</name> <range>: <expr><name>elements</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>hashed_elements</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>HashToRange</name><argument_list>(<argument><expr><name>element</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>sort</name></name><argument_list>(<argument><expr><call><name><name>hashed_elements</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>hashed_elements</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>hashed_elements</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>GCSFilter</name><operator>::</operator><name>GCSFilter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Params</name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_params</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call>, <call><name>m_N</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>m_F</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>m_encoded</name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></call>
+</member_init_list><block>{<block_content/>}</block></constructor>
+
+<constructor><name><name>GCSFilter</name><operator>::</operator><name>GCSFilter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Params</name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>encoded_filter</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_params</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call>, <call><name>m_encoded</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>encoded_filter</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <decl_stmt><decl><type><name>VectorReader</name></type> <name>stream</name><argument_list>(<argument><expr><name>GCS_SER_TYPE</name></expr></argument>, <argument><expr><name>GCS_SER_VERSION</name></expr></argument>, <argument><expr><name>m_encoded</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>N</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>stream</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>m_N</name> <operator>=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>N</name></expr></argument>)</argument_list></cast></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>m_N</name> <operator>!=</operator> <name>N</name></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><name>failure</name></name><argument_list>(<argument><expr><literal type="string">"N must be &lt;2^32"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>m_F</name> <operator>=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>m_N</name></expr></argument>)</argument_list></cast> <operator>*</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name><name>m_params</name><operator>.</operator><name>m_M</name></name></expr></argument>)</argument_list></cast></expr>;</expr_stmt>
+
+    <comment type="line">// Verify that the encoded filter contains exactly N elements. If it has too much or too little</comment>
+    <comment type="line">// data, a std::ios_base::failure exception will be raised.</comment>
+    <decl_stmt><decl><type><name><name>BitStreamReader</name><argument_list type="generic">&lt;<argument><expr><name>VectorReader</name></expr></argument>&gt;</argument_list></name></type> <name>bitreader</name><argument_list>(<argument><expr><name>stream</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>uint64_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>m_N</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>GolombRiceDecode</name><argument_list>(<argument><expr><name>bitreader</name></expr></argument>, <argument><expr><name><name>m_params</name><operator>.</operator><name>m_P</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stream</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>ios_base</name><operator>::</operator><name>failure</name></name><argument_list>(<argument><expr><literal type="string">"encoded_filter contains excess data"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></constructor>
+
+<constructor><name><name>GCSFilter</name><operator>::</operator><name>GCSFilter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Params</name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ElementSet</name><modifier>&amp;</modifier></type> <name>elements</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_params</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>N</name> <init>= <expr><call><name><name>elements</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>m_N</name> <operator>=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>N</name></expr></argument>)</argument_list></cast></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>m_N</name> <operator>!=</operator> <name>N</name></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>invalid_argument</name></name><argument_list>(<argument><expr><literal type="string">"N must be &lt;2^32"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>m_F</name> <operator>=</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>m_N</name></expr></argument>)</argument_list></cast> <operator>*</operator> <cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name><name>m_params</name><operator>.</operator><name>m_M</name></name></expr></argument>)</argument_list></cast></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>CVectorWriter</name></type> <name>stream</name><argument_list>(<argument><expr><name>GCS_SER_TYPE</name></expr></argument>, <argument><expr><name>GCS_SER_VERSION</name></expr></argument>, <argument><expr><name>m_encoded</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>WriteCompactSize</name><argument_list>(<argument><expr><name>stream</name></expr></argument>, <argument><expr><name>m_N</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>elements</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>BitStreamWriter</name><argument_list type="generic">&lt;<argument><expr><name>CVectorWriter</name></expr></argument>&gt;</argument_list></name></type> <name>bitwriter</name><argument_list>(<argument><expr><name>stream</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>last_value</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>uint64_t</name></type> <name>value</name> <range>: <expr><call><name>BuildHashedSet</name><argument_list>(<argument><expr><name>elements</name></expr></argument>)</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>delta</name> <init>= <expr><name>value</name> <operator>-</operator> <name>last_value</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>GolombRiceEncode</name><argument_list>(<argument><expr><name>bitwriter</name></expr></argument>, <argument><expr><name><name>m_params</name><operator>.</operator><name>m_P</name></name></expr></argument>, <argument><expr><name>delta</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>last_value</name> <operator>=</operator> <name>value</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>bitwriter</name><operator>.</operator><name>Flush</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>GCSFilter</name><operator>::</operator><name>MatchInternal</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint64_t</name><modifier>*</modifier></type> <name>element_hashes</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>VectorReader</name></type> <name>stream</name><argument_list>(<argument><expr><name>GCS_SER_TYPE</name></expr></argument>, <argument><expr><name>GCS_SER_VERSION</name></expr></argument>, <argument><expr><name>m_encoded</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// Seek forward by size of N</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>N</name> <init>= <expr><call><name>ReadCompactSize</name><argument_list>(<argument><expr><name>stream</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>N</name> <operator>==</operator> <name>m_N</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>BitStreamReader</name><argument_list type="generic">&lt;<argument><expr><name>VectorReader</name></expr></argument>&gt;</argument_list></name></type> <name>bitreader</name><argument_list>(<argument><expr><name>stream</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>value</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>hashes_index</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>m_N</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>delta</name> <init>= <expr><call><name>GolombRiceDecode</name><argument_list>(<argument><expr><name>bitreader</name></expr></argument>, <argument><expr><name><name>m_params</name><operator>.</operator><name>m_P</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>value</name> <operator>+=</operator> <name>delta</name></expr>;</expr_stmt>
+
+        <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>hashes_index</name> <operator>==</operator> <name>size</name></expr>)</condition> <block>{<block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>element_hashes</name><index>[<expr><name>hashes_index</name></expr>]</index></name> <operator>==</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+            </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>element_hashes</name><index>[<expr><name>hashes_index</name></expr>]</index></name> <operator>&gt;</operator> <name>value</name></expr>)</condition> <block>{<block_content>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <expr_stmt><expr><name>hashes_index</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>GCSFilter</name><operator>::</operator><name>Match</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Element</name><modifier>&amp;</modifier></type> <name>element</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>query</name> <init>= <expr><call><name>HashToRange</name><argument_list>(<argument><expr><name>element</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><call><name>MatchInternal</name><argument_list>(<argument><expr><operator>&amp;</operator><name>query</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>GCSFilter</name><operator>::</operator><name>MatchAny</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>ElementSet</name><modifier>&amp;</modifier></type> <name>elements</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name></type> <name>queries</name> <init>= <expr><call><name>BuildHashedSet</name><argument_list>(<argument><expr><name>elements</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><call><name>MatchInternal</name><argument_list>(<argument><expr><call><name><name>queries</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>queries</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>BlockFilterTypeName</name><parameter_list>(<parameter><decl><type><name>BlockFilterType</name></type> <name>filter_type</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>unknown_retval</name> <init>= <expr><literal type="string">""</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>g_filter_types</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>filter_type</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><ternary><condition><expr><name>it</name> <operator>!=</operator> <call><name><name>g_filter_types</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><name><name>it</name><operator>-&gt;</operator><name>second</name></name></expr> </then><else>: <expr><name>unknown_retval</name></expr></else></ternary></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>BlockFilterTypeByName</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>name</name></decl></parameter>, <parameter><decl><type><name>BlockFilterType</name><modifier>&amp;</modifier></type> <name>filter_type</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>entry</name> <range>: <expr><name>g_filter_types</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>entry</name><operator>.</operator><name>second</name></name> <operator>==</operator> <name>name</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>filter_type</name> <operator>=</operator> <name><name>entry</name><operator>.</operator><name>first</name></name></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>BlockFilterType</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>AllBlockFilterTypes</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>BlockFilterType</name></expr></argument>&gt;</argument_list></name></type> <name>types</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>once_flag</name></name></type> <name>flag</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>call_once</name></name><argument_list>(<argument><expr><name>flag</name></expr></argument>, <argument><expr><lambda><capture>[]</capture><parameter_list>()</parameter_list> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>types</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><call><name><name>g_filter_types</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>auto</name> <name>entry</name> : <name>g_filter_types</name></type></decl></init>)</control> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>types</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>entry</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+        </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>types</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>ListBlockFilterTypes</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>type_list</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>once_flag</name></name></type> <name>flag</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>call_once</name></name><argument_list>(<argument><expr><name>flag</name></expr></argument>, <argument><expr><lambda><capture>[]</capture><parameter_list>()</parameter_list> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>stringstream</name></name> <name>ret</name></type></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>bool</name> <name>first</name> = true</type></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>auto</name> <name>entry</name> : <name>g_filter_types</name></type></decl></init>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name>first</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>ret</name> <operator>&lt;&lt;</operator> <literal type="string">", "</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                <expr_stmt><expr><name>ret</name> <operator>&lt;&lt;</operator> <name><name>entry</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>first</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+            </block_content>}</block></for>
+            <expr_stmt><expr><name>type_list</name> <operator>=</operator> <call><name><name>ret</name><operator>.</operator><name>str</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>type_list</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name><name>GCSFilter</name><operator>::</operator><name>ElementSet</name></name></type> <name>BasicFilterElements</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>,
+                                                 <parameter><decl><type><specifier>const</specifier> <name>CBlockUndo</name><modifier>&amp;</modifier></type> <name>block_undo</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>GCSFilter</name><operator>::</operator><name>ElementSet</name></name></type> <name>elements</name></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTransactionRef</name><modifier>&amp;</modifier></type> <name>tx</name> <range>: <expr><name><name>block</name><operator>.</operator><name>vtx</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTxOut</name><modifier>&amp;</modifier></type> <name>txout</name> <range>: <expr><name><name>tx</name><operator>-&gt;</operator><name>vout</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>script</name> <init>= <expr><name><name>txout</name><operator>.</operator><name>scriptPubKey</name></name></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>||</operator> <name><name>script</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>OP_RETURN</name></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>elements</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><call><name><name>script</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>script</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></for>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CTxUndo</name><modifier>&amp;</modifier></type> <name>tx_undo</name> <range>: <expr><name><name>block_undo</name><operator>.</operator><name>vtxundo</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>prevout</name> <range>: <expr><name><name>tx_undo</name><operator>.</operator><name>vprevout</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>script</name> <init>= <expr><name><name>prevout</name><operator>.</operator><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>script</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>elements</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><call><name><name>script</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>script</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></for>
+
+    <return>return <expr><name>elements</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>BlockFilter</name><operator>::</operator><name>BlockFilter</name></name><parameter_list>(<parameter><decl><type><name>BlockFilterType</name></type> <name>filter_type</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>block_hash</name></decl></parameter>,
+                         <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>filter</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_filter_type</name><argument_list>(<argument><expr><name>filter_type</name></expr></argument>)</argument_list></call>, <call><name>m_block_hash</name><argument_list>(<argument><expr><name>block_hash</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <decl_stmt><decl><type><name><name>GCSFilter</name><operator>::</operator><name>Params</name></name></type> <name>params</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>BuildParams</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>invalid_argument</name></name><argument_list>(<argument><expr><literal type="string">"unknown filter_type"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>m_filter</name> <operator>=</operator> <call><name>GCSFilter</name><argument_list>(<argument><expr><name>params</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>filter</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<constructor><name><name>BlockFilter</name><operator>::</operator><name>BlockFilter</name></name><parameter_list>(<parameter><decl><type><name>BlockFilterType</name></type> <name>filter_type</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockUndo</name><modifier>&amp;</modifier></type> <name>block_undo</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_filter_type</name><argument_list>(<argument><expr><name>filter_type</name></expr></argument>)</argument_list></call>, <call><name>m_block_hash</name><argument_list>(<argument><expr><call><name><name>block</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <decl_stmt><decl><type><name><name>GCSFilter</name><operator>::</operator><name>Params</name></name></type> <name>params</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>BuildParams</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>invalid_argument</name></name><argument_list>(<argument><expr><literal type="string">"unknown filter_type"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>m_filter</name> <operator>=</operator> <call><name>GCSFilter</name><argument_list>(<argument><expr><name>params</name></expr></argument>, <argument><expr><call><name>BasicFilterElements</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>block_undo</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>BlockFilter</name><operator>::</operator><name>BuildParams</name></name><parameter_list>(<parameter><decl><type><name><name>GCSFilter</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <switch>switch <condition>(<expr><name>m_filter_type</name></expr>)</condition> <block>{<block_content>
+    <case>case <expr><name><name>BlockFilterType</name><operator>::</operator><name>BASIC</name></name></expr>:</case>
+        <expr_stmt><expr><name><name>params</name><operator>.</operator><name>m_siphash_k0</name></name> <operator>=</operator> <call><name><name>m_block_hash</name><operator>.</operator><name>GetUint64</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>params</name><operator>.</operator><name>m_siphash_k1</name></name> <operator>=</operator> <call><name><name>m_block_hash</name><operator>.</operator><name>GetUint64</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>params</name><operator>.</operator><name>m_P</name></name> <operator>=</operator> <name>BASIC_FILTER_P</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>params</name><operator>.</operator><name>m_M</name></name> <operator>=</operator> <name>BASIC_FILTER_M</name></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    <case>case <expr><name><name>BlockFilterType</name><operator>::</operator><name>INVALID</name></name></expr>:</case>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></switch>
+
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>uint256</name></type> <name><name>BlockFilter</name><operator>::</operator><name>GetHash</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>data</name> <init>= <expr><call><name>GetEncodedFilter</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint256</name></type> <name>result</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>CHash256</name><argument_list>()</argument_list></call><operator>.</operator><call><name>Write</name><argument_list>(<argument><expr><call><name><name>data</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>Finalize</name><argument_list>(<argument><expr><call><name><name>result</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>uint256</name></type> <name><name>BlockFilter</name><operator>::</operator><name>ComputeHeader</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>prev_header</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>filter_hash</name> <init>= <expr><call><name>GetHash</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint256</name></type> <name>result</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>CHash256</name><argument_list>()</argument_list></call>
+        <operator>.</operator><call><name>Write</name><argument_list>(<argument><expr><call><name><name>filter_hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>filter_hash</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>Write</name><argument_list>(<argument><expr><call><name><name>prev_header</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>prev_header</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>Finalize</name><argument_list>(<argument><expr><call><name><name>result</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+</unit>

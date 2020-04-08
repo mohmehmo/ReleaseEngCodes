@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/index/base.h"><comment type="line">// Copyright (c) 2017-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_INDEX_BASE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_INDEX_BASE_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;dbwrapper.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/block.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;threadinterrupt.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validationinterface.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockIndex</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Base class for indices of blockchain data. This implements
+ * CValidationInterface and ensures blocks are indexed sequentially according
+ * to their position in the active chain.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>BaseIndex</name> <range>: <expr><name>public</name> <name>CValidationInterface</name>
+<block>{
+<expr><name>protected</name><operator>:</operator>
+    <name>class</name> <name>DB</name> <operator>:</operator> <name>public</name> <name>CDBWrapper</name>
+    <block>{
+    <expr><name>public</name><operator>:</operator>
+        <macro><name>DB</name><argument_list>(<argument>const fs::path&amp; path</argument>, <argument>size_t n_cache_size</argument>,
+           <argument>bool f_memory = false</argument>, <argument>bool f_wipe = false</argument>, <argument>bool f_obfuscate = false</argument>)</argument_list></macro></expr>;
+
+        <comment type="line" format="doxygen">/// Read block locator of the chain that the txindex is in sync with.</comment>
+        <expr><name>bool</name> <macro><name>ReadBestBlock</name><argument_list>(<argument>CBlockLocator&amp; locator</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+
+        <comment type="line" format="doxygen">/// Write block locator of the chain that the txindex is in sync with.</comment>
+        <expr><name>void</name> <call><name>WriteBestBlock</name><argument_list>(<argument><expr><name>CDBBatch</name><operator>&amp;</operator> <name>batch</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockLocator</name><operator>&amp;</operator> <name>locator</name></expr></argument>)</argument_list></call></expr>;
+    }</block></expr>;
+
+<expr><name>private</name><operator>:</operator>
+    <comment type="line" format="doxygen">/// Whether the index is in sync with the main chain. The flag is flipped</comment>
+    <comment type="line" format="doxygen">/// from false to true once, after which point this starts processing</comment>
+    <comment type="line" format="doxygen">/// ValidationInterface notifications to stay in sync.</comment>
+    <name>std</name><operator>::</operator><name><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <name>m_synced</name><block>{<expr><name>false</name></expr>}</block></expr>;
+
+    <comment type="line" format="doxygen">/// The last block in the chain that the index is in sync with.</comment>
+    <expr><name>std</name><operator>::</operator><name><name>atomic</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator></expr></argument>&gt;</argument_list></name> <name>m_best_block_index</name><block>{<expr><name>nullptr</name></expr>}</block></expr>;
+
+    <expr><name>std</name><operator>::</operator><name>thread</name> <name>m_thread_sync</name></expr>;
+    <expr><name>CThreadInterrupt</name> <name>m_interrupt</name></expr>;
+
+    <comment type="line" format="doxygen">/// Sync the index with the block index starting from the current best block.</comment>
+    <comment type="line" format="doxygen">/// Intended to be run in its own thread, m_thread_sync, and can be</comment>
+    <comment type="line" format="doxygen">/// interrupted with m_interrupt. Once the index gets in sync, the m_synced</comment>
+    <comment type="line" format="doxygen">/// flag is set and the BlockConnected ValidationInterface callback takes</comment>
+    <comment type="line" format="doxygen">/// over and the sync thread exits.</comment>
+    <expr><name>void</name> <call><name>ThreadSync</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">/// Write the current index state (eg. chain block locator and subclass-specific items) to disk.</comment>
+    <comment type="line" format="doxygen">///</comment>
+    <comment type="line" format="doxygen">/// Recommendations for error handling:</comment>
+    <comment type="line" format="doxygen">/// If called on a successor of the previous committed best block in the index, the index can</comment>
+    <comment type="line" format="doxygen">/// continue processing without risk of corruption, though the index state will need to catch up</comment>
+    <comment type="line" format="doxygen">/// from further behind on reboot. If the new state is not a successor of the previous state (due</comment>
+    <comment type="line" format="doxygen">/// to a chain reorganization), the index must halt until Commit succeeds or else it could end up</comment>
+    <comment type="line" format="doxygen">/// getting corrupted.</comment>
+    <expr><name>bool</name> <call><name>Commit</name><argument_list>()</argument_list></call></expr>;
+
+<expr><name>protected</name><operator>:</operator>
+    <name>void</name> <macro><name>BlockConnected</name><argument_list>(<argument>const std::shared_ptr&lt;const CBlock&gt;&amp; block</argument>, <argument>const CBlockIndex* pindex</argument>,
+                        <argument>const std::vector&lt;CTransactionRef&gt;&amp; txn_conflicted</argument>)</argument_list></macro> <name>override</name></expr>;
+
+    <expr><name>void</name> <macro><name>ChainStateFlushed</name><argument_list>(<argument>const CBlockLocator&amp; locator</argument>)</argument_list></macro> <name>override</name></expr>;
+
+    <comment type="line" format="doxygen">/// Initialize internal state from the database and block index.</comment>
+    <expr><name>virtual</name> <name>bool</name> <call><name>Init</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">/// Write update index entries for a newly connected block.</comment>
+    <expr><name>virtual</name> <name>bool</name> <macro><name>WriteBlock</name><argument_list>(<argument>const CBlock&amp; block</argument>, <argument>const CBlockIndex* pindex</argument>)</argument_list></macro> <block>{ <return>return <expr><name>true</name></expr>;</return> }</block>
+
+    <comment type="line" format="doxygen">/// Virtual method called internally by Commit that can be overridden to atomically</comment>
+    <comment type="line" format="doxygen">/// commit more index state.</comment>
+    <name>virtual</name> <name>bool</name> <call><name>CommitInternal</name><argument_list>(<argument><expr><name>CDBBatch</name><operator>&amp;</operator> <name>batch</name></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">/// Rewind index to an earlier chain tip during a chain reorg. The tip must</comment>
+    <comment type="line" format="doxygen">/// be an ancestor of the current best block.</comment>
+    <expr><name>virtual</name> <name>bool</name> <call><name>Rewind</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>current_tip</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>new_tip</name></expr></argument>)</argument_list></call></expr>;
+
+    <expr><name>virtual</name> <name>DB</name><operator>&amp;</operator> <macro><name>GetDB</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+    <comment type="line" format="doxygen">/// Get the name of the index for display in logs.</comment>
+    <expr><name>virtual</name> <specifier>const</specifier> <name>char</name><operator>*</operator> <macro><name>GetName</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+<expr><name>public</name><operator>:</operator>
+    <comment type="line" format="doxygen">/// Destructor interrupts sync thread if running and blocks until it exits.</comment>
+    <name>virtual</name> <operator>~</operator><call><name>BaseIndex</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">/// Blocks the current thread until the index is caught up to the current</comment>
+    <comment type="line" format="doxygen">/// state of the block chain. This only blocks if the index has gotten in</comment>
+    <comment type="line" format="doxygen">/// sync once and only needs to process blocks in the ValidationInterface</comment>
+    <comment type="line" format="doxygen">/// queue. If the index is catching up from far behind, this method does</comment>
+    <comment type="line" format="doxygen">/// not block and immediately returns false.</comment>
+    <expr><name>bool</name> <call><name>BlockUntilSyncedToCurrentChain</name><argument_list>()</argument_list></call></expr>;
+
+    <expr><name>void</name> <call><name>Interrupt</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">/// Start initializes the sync state and registers the instance as a</comment>
+    <comment type="line" format="doxygen">/// ValidationInterface so that it stays in sync with blockchain updates.</comment>
+    <expr><name>void</name> <call><name>Start</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">/// Stops the instance from staying in sync with blockchain updates.</comment>
+    <expr><name>void</name> <call><name>Stop</name><argument_list>()</argument_list></call></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_INDEX_BASE_H</comment>
+</unit>

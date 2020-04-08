@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/addrdb.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;addrdb.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;addrman.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;clientversion.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;hash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;tinyformat.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<namespace>namespace <block>{
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>, <parameter><type><name>typename</name></type> <name>Data</name></parameter>&gt;</parameter_list></template>
+<type><name>bool</name></type> <name>SerializeDB</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>stream</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Data</name><modifier>&amp;</modifier></type> <name>data</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Write and commit header, data</comment>
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>CHashWriter</name></type> <name>hasher</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>stream</name> <operator>&lt;&lt;</operator> <call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>MessageStart</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>data</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>hasher</name> <operator>&lt;&lt;</operator> <call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>MessageStart</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>data</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>stream</name> <operator>&lt;&lt;</operator> <call><name><name>hasher</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Serialize or I/O error - %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></catch></try>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Data</name></parameter>&gt;</parameter_list></template>
+<type><name>bool</name></type> <name>SerializeFileDB</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>prefix</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>path</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>Data</name><modifier>&amp;</modifier></type> <name>data</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Generate random temporary filename</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>short</name></type> <name>randv</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>GetRandBytes</name><argument_list>(<argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>randv</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>randv</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>tmpfn</name> <init>= <expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%s.%04x"</literal></expr></argument>, <argument><expr><name>prefix</name></expr></argument>, <argument><expr><name>randv</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// open temp output file, and associate with CAutoFile</comment>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathTmp</name> <init>= <expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <name>tmpfn</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>file</name> <init>= <expr><call><name><name>fsbridge</name><operator>::</operator><name>fopen</name></name><argument_list>(<argument><expr><name>pathTmp</name></expr></argument>, <argument><expr><literal type="string">"wb"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAutoFile</name></type> <name>fileout</name><argument_list>(<argument><expr><name>file</name></expr></argument>, <argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>fileout</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>fileout</name><operator>.</operator><name>fclose</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>remove</name><argument_list>(<argument><expr><name>pathTmp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Failed to open file %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>pathTmp</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Serialize</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>SerializeDB</name><argument_list>(<argument><expr><name>fileout</name></expr></argument>, <argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>fileout</name><operator>.</operator><name>fclose</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>remove</name><argument_list>(<argument><expr><name>pathTmp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>FileCommit</name><argument_list>(<argument><expr><call><name><name>fileout</name><operator>.</operator><name>Get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>fileout</name><operator>.</operator><name>fclose</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>remove</name><argument_list>(<argument><expr><name>pathTmp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Failed to flush file %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>pathTmp</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>fileout</name><operator>.</operator><name>fclose</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// replace existing file, if any, with new file</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>RenameOver</name><argument_list>(<argument><expr><name>pathTmp</name></expr></argument>, <argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>remove</name><argument_list>(<argument><expr><name>pathTmp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Rename-into-place failed"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>, <parameter><type><name>typename</name></type> <name>Data</name></parameter>&gt;</parameter_list></template>
+<type><name>bool</name></type> <name>DeserializeDB</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>stream</name></decl></parameter>, <parameter><decl><type><name>Data</name><modifier>&amp;</modifier></type> <name>data</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fCheckSum</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name><name>CHashVerifier</name><argument_list type="generic">&lt;<argument><expr><name>Stream</name></expr></argument>&gt;</argument_list></name></type> <name>verifier</name><argument_list>(<argument><expr><operator>&amp;</operator><name>stream</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <comment type="line">// de-serialize file header (network specific magic number) and ..</comment>
+        <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>pchMsgTmp</name><index>[<expr><literal type="number">4</literal></expr>]</index></name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>verifier</name> <operator>&gt;&gt;</operator> <name>pchMsgTmp</name></expr>;</expr_stmt>
+        <comment type="line">// ... verify the network matches ours</comment>
+        <if_stmt><if>if <condition>(<expr><call><name>memcmp</name><argument_list>(<argument><expr><name>pchMsgTmp</name></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>MessageStart</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>pchMsgTmp</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Invalid network magic number"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+        <comment type="line">// de-serialize data</comment>
+        <expr_stmt><expr><name>verifier</name> <operator>&gt;&gt;</operator> <name>data</name></expr>;</expr_stmt>
+
+        <comment type="line">// verify checksum</comment>
+        <if_stmt><if>if <condition>(<expr><name>fCheckSum</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint256</name></type> <name>hashTmp</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>stream</name> <operator>&gt;&gt;</operator> <name>hashTmp</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>hashTmp</name> <operator>!=</operator> <call><name><name>verifier</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Checksum mismatch, data corrupted"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Deserialize or I/O error - %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></catch></try>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Data</name></parameter>&gt;</parameter_list></template>
+<type><name>bool</name></type> <name>DeserializeFileDB</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>path</name></decl></parameter>, <parameter><decl><type><name>Data</name><modifier>&amp;</modifier></type> <name>data</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// open input file, and associate with CAutoFile</comment>
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>file</name> <init>= <expr><call><name><name>fsbridge</name><operator>::</operator><name>fopen</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>, <argument><expr><literal type="string">"rb"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAutoFile</name></type> <name>filein</name><argument_list>(<argument><expr><name>file</name></expr></argument>, <argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>filein</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Failed to open file %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name>DeserializeDB</name><argument_list>(<argument><expr><name>filein</name></expr></argument>, <argument><expr><name>data</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+}</block></namespace>
+
+<constructor><name><name>CBanDB</name><operator>::</operator><name>CBanDB</name></name><parameter_list>(<parameter><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>ban_list_path</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>m_ban_list_path</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>ban_list_path</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>CBanDB</name><operator>::</operator><name>Write</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>banmap_t</name><modifier>&amp;</modifier></type> <name>banSet</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>SerializeFileDB</name><argument_list>(<argument><expr><literal type="string">"banlist"</literal></expr></argument>, <argument><expr><name>m_ban_list_path</name></expr></argument>, <argument><expr><name>banSet</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBanDB</name><operator>::</operator><name>Read</name></name><parameter_list>(<parameter><decl><type><name>banmap_t</name><modifier>&amp;</modifier></type> <name>banSet</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>DeserializeFileDB</name><argument_list>(<argument><expr><name>m_ban_list_path</name></expr></argument>, <argument><expr><name>banSet</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>CAddrDB</name><operator>::</operator><name>CAddrDB</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>pathAddr</name> <operator>=</operator> <call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"peers.dat"</literal></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>CAddrDB</name><operator>::</operator><name>Write</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CAddrMan</name><modifier>&amp;</modifier></type> <name>addr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>SerializeFileDB</name><argument_list>(<argument><expr><literal type="string">"peers"</literal></expr></argument>, <argument><expr><name>pathAddr</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CAddrDB</name><operator>::</operator><name>Read</name></name><parameter_list>(<parameter><decl><type><name>CAddrMan</name><modifier>&amp;</modifier></type> <name>addr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>DeserializeFileDB</name><argument_list>(<argument><expr><name>pathAddr</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CAddrDB</name><operator>::</operator><name>Read</name></name><parameter_list>(<parameter><decl><type><name>CAddrMan</name><modifier>&amp;</modifier></type> <name>addr</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name><modifier>&amp;</modifier></type> <name>ssPeers</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ret</name> <init>= <expr><call><name>DeserializeDB</name><argument_list>(<argument><expr><name>ssPeers</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>ret</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Ensure addrman is left in a clean state</comment>
+        <expr_stmt><expr><call><name><name>addr</name><operator>.</operator><name>Clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+</unit>

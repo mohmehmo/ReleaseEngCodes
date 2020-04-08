@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/blockencodings.cpp"><comment type="line">// Copyright (c) 2016-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;blockencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/consensus.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/sha256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/siphash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;txmempool.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unordered_map&gt;</cpp:file></cpp:include>
+
+<constructor><name><name>CBlockHeaderAndShortTxIDs</name><operator>::</operator><name>CBlockHeaderAndShortTxIDs</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fUseWTXID</name></decl></parameter>)</parameter_list> <member_init_list>:
+        <call><name>nonce</name><argument_list>(<argument><expr><call><name>GetRand</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>,
+        <call><name>shorttxids</name><argument_list>(<argument><expr><call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call>, <call><name>prefilledtxn</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call>, <call><name>header</name><argument_list>(<argument><expr><name>block</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content>
+    <expr_stmt><expr><call><name>FillShortTxIDSelector</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">//TODO: Use our mempool prior to block acceptance to predictively fill more than just the coinbase</comment>
+    <expr_stmt><expr><name><name>prefilledtxn</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <block>{<expr><literal type="number">0</literal></expr>, <expr><name><name>block</name><operator>.</operator><name>vtx</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr>}</block></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name> <init>= <expr><operator>*</operator><name><name>block</name><operator>.</operator><name>vtx</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>shorttxids</name><index>[<expr><name>i</name> <operator>-</operator> <literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <call><name>GetShortID</name><argument_list>(<argument><expr><ternary><condition><expr><name>fUseWTXID</name></expr> ?</condition><then> <expr><call><name><name>tx</name><operator>.</operator><name>GetWitnessHash</name></name><argument_list>()</argument_list></call></expr> </then><else>: <expr><call><name><name>tx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>CBlockHeaderAndShortTxIDs</name><operator>::</operator><name>FillShortTxIDSelector</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>stream</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>stream</name> <operator>&lt;&lt;</operator> <name>header</name> <operator>&lt;&lt;</operator> <name>nonce</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CSHA256</name></type> <name>hasher</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><operator>(</operator><name>unsigned</name> <name>char</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><operator>(</operator><operator>*</operator><call><name><name>stream</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>)</operator></expr></argument>, <argument><expr><call><name><name>stream</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>-</operator> <call><name><name>stream</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>shorttxidhash</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hasher</name><operator>.</operator><name>Finalize</name></name><argument_list>(<argument><expr><call><name><name>shorttxidhash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>shorttxidk0</name> <operator>=</operator> <call><name><name>shorttxidhash</name><operator>.</operator><name>GetUint64</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>shorttxidk1</name> <operator>=</operator> <call><name><name>shorttxidhash</name><operator>.</operator><name>GetUint64</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>uint64_t</name></type> <name><name>CBlockHeaderAndShortTxIDs</name><operator>::</operator><name>GetShortID</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txhash</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <assert type="static">static_assert<argument_list>(<argument><expr><name>SHORTTXIDS_LENGTH</name> <operator>==</operator> <literal type="number">6</literal></expr></argument>, <argument><expr><literal type="string">"shorttxids calculation assumes 6-byte shorttxids"</literal></expr></argument>)</argument_list>;</assert>
+    <return>return <expr><call><name>SipHashUint256</name><argument_list>(<argument><expr><name>shorttxidk0</name></expr></argument>, <argument><expr><name>shorttxidk1</name></expr></argument>, <argument><expr><name>txhash</name></expr></argument>)</argument_list></call> <operator>&amp;</operator> <literal type="number">0xffffffffffffL</literal></expr>;</return>
+</block_content>}</block></function>
+
+
+
+<function><type><name>ReadStatus</name></type> <name><name>PartiallyDownloadedBlock</name><operator>::</operator><name>InitData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockHeaderAndShortTxIDs</name><modifier>&amp;</modifier></type> <name>cmpctblock</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>CTransactionRef</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>extra_txn</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>cmpctblock</name><operator>.</operator><name>header</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>(</operator><call><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>MAX_BLOCK_WEIGHT</name> <operator>/</operator> <name>MIN_SERIALIZABLE_TRANSACTION_WEIGHT</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>header</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>txn_available</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>header</name> <operator>=</operator> <name><name>cmpctblock</name><operator>.</operator><name>header</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>txn_available</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>cmpctblock</name><operator>.</operator><name>BlockTxCount</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int32_t</name></type> <name>lastprefilledindex</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>tx</name><operator>-&gt;</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><name>lastprefilledindex</name> <operator>+=</operator> <name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>index</name> <operator>+</operator> <literal type="number">1</literal></expr>;</expr_stmt> <comment type="line">//index is a uint16_t, so can't overflow here</comment>
+        <if_stmt><if>if <condition>(<expr><name>lastprefilledindex</name> <operator>&gt;</operator> <call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>(</operator><name>uint32_t</name><operator>)</operator><name>lastprefilledindex</name> <operator>&gt;</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>+</operator> <name>i</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// If we are inserting a tx at an index greater than our full list of shorttxids</comment>
+            <comment type="line">// plus the number of prefilled txn we've inserted, then we have txn for which we</comment>
+            <comment type="line">// have neither a prefilled txn or a shorttxid!</comment>
+            <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name><name>txn_available</name><index>[<expr><name>lastprefilledindex</name></expr>]</index></name> <operator>=</operator> <name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>tx</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><name>prefilled_count</name> <operator>=</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>prefilledtxn</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Calculate map of txids -&gt; positions and check mempool to see what we have (or don't)</comment>
+    <comment type="line">// Because well-formed cmpctblock messages will have a (relatively) uniform distribution</comment>
+    <comment type="line">// of short IDs, any highly-uneven distribution of elements can be safely treated as a</comment>
+    <comment type="line">// READ_STATUS_FAILED.</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>, <argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list></name></type> <name>shorttxids</name><argument_list>(<argument><expr><call><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>index_offset</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <while>while <condition>(<expr><name><name>txn_available</name><index>[<expr><name>i</name> <operator>+</operator> <name>index_offset</name></expr>]</index></name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>index_offset</name><operator>++</operator></expr>;</expr_stmt></block_content></block></while>
+        <expr_stmt><expr><name><name>shorttxids</name><index>[<expr><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><index>[<expr><name>i</name></expr>]</index></name></expr>]</index></name> <operator>=</operator> <name>i</name> <operator>+</operator> <name>index_offset</name></expr>;</expr_stmt>
+        <comment type="line">// To determine the chance that the number of entries in a bucket exceeds N,</comment>
+        <comment type="line">// we use the fact that the number of elements in a single bucket is</comment>
+        <comment type="line">// binomially distributed (with n = the number of shorttxids S, and p =</comment>
+        <comment type="line">// 1 / the number of buckets), that in the worst case the number of buckets is</comment>
+        <comment type="line">// equal to S (due to std::unordered_map having a default load factor of 1.0),</comment>
+        <comment type="line">// and that the chance for any bucket to exceed N elements is at most</comment>
+        <comment type="line">// buckets * (the chance that any given bucket is above N elements).</comment>
+        <comment type="line">// Thus: P(max_elements_per_bucket &gt; N) &lt;= S * (1 - cdf(binomial(n=S,p=1/S), N)).</comment>
+        <comment type="line">// If we assume blocks of up to 16000, allowing 12 elements per bucket should</comment>
+        <comment type="line">// only fail once per ~1 million block transfers (per peer and connection).</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>shorttxids</name><operator>.</operator><name>bucket_size</name></name><argument_list>(<argument><expr><call><name><name>shorttxids</name><operator>.</operator><name>bucket</name></name><argument_list>(<argument><expr><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call> <operator>&gt;</operator> <literal type="number">12</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>READ_STATUS_FAILED</name></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// TODO: in the shortid-collision case, we should instead request both transactions</comment>
+    <comment type="line">// which collided. Falling back to full-block-request here is overkill.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <call><name><name>cmpctblock</name><operator>.</operator><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>READ_STATUS_FAILED</name></expr>;</return></block_content></block></if></if_stmt> <comment type="line">// Short ID collision</comment>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>have_txn</name><argument_list>(<argument><expr><call><name><name>txn_available</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>pool</name><operator>-&gt;</operator><name>cs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name><name>CTxMemPool</name><operator>::</operator><name>txiter</name></name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vTxHashes</name> <init>= <expr><name><name>pool</name><operator>-&gt;</operator><name>vTxHashes</name></name></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>vTxHashes</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>shortid</name> <init>= <expr><call><name><name>cmpctblock</name><operator>.</operator><name>GetShortID</name></name><argument_list>(<argument><expr><name><name>vTxHashes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>first</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>, <argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>idit</name> <init>= <expr><call><name><name>shorttxids</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>shortid</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>idit</name> <operator>!=</operator> <call><name><name>shorttxids</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>have_txn</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name> <operator>=</operator> <name><name>vTxHashes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>second</name><operator>-&gt;</operator><name>GetSharedTx</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>have_txn</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name>  <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>mempool_count</name><operator>++</operator></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <comment type="line">// If we find two mempool txn that match the short id, just request it.</comment>
+                <comment type="line">// This should be rare enough that the extra bandwidth doesn't matter,</comment>
+                <comment type="line">// but eating a round-trip due to FillBlock failure would be annoying</comment>
+                <if_stmt><if>if <condition>(<expr><name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name><operator>.</operator><call><name>reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>mempool_count</name><operator>--</operator></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Though ideally we'd continue scanning for the two-txn-match-shortid case,</comment>
+        <comment type="line">// the performance win of an early exit here is too good to pass up and worth</comment>
+        <comment type="line">// the extra risk.</comment>
+        <if_stmt><if>if <condition>(<expr><name>mempool_count</name> <operator>==</operator> <call><name><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    </block_content>}</block>
+
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>extra_txn</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint64_t</name></type> <name>shortid</name> <init>= <expr><call><name><name>cmpctblock</name><operator>.</operator><name>GetShortID</name></name><argument_list>(<argument><expr><name><name>extra_txn</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>first</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>, <argument><expr><name>uint16_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>idit</name> <init>= <expr><call><name><name>shorttxids</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>shortid</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>idit</name> <operator>!=</operator> <call><name><name>shorttxids</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>have_txn</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name> <operator>=</operator> <name><name>extra_txn</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>second</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>have_txn</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name>  <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>mempool_count</name><operator>++</operator></expr>;</expr_stmt>
+                <expr_stmt><expr><name>extra_count</name><operator>++</operator></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <comment type="line">// If we find two mempool/extra txn that match the short id, just</comment>
+                <comment type="line">// request it.</comment>
+                <comment type="line">// This should be rare enough that the extra bandwidth doesn't matter,</comment>
+                <comment type="line">// but eating a round-trip due to FillBlock failure would be annoying</comment>
+                <comment type="line">// Note that we don't want duplication between extra_txn and mempool to</comment>
+                <comment type="line">// trigger this case, so we compare witness hashes first</comment>
+                <if_stmt><if>if <condition>(<expr><name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name> <operator>&amp;&amp;</operator>
+                        <name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name><operator>-&gt;</operator><call><name>GetWitnessHash</name><argument_list>()</argument_list></call> <operator>!=</operator> <name><name>extra_txn</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>second</name><operator>-&gt;</operator><name>GetWitnessHash</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name><name>txn_available</name><index>[<expr><name><name>idit</name><operator>-&gt;</operator><name>second</name></name></expr>]</index></name><operator>.</operator><call><name>reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>mempool_count</name><operator>--</operator></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>extra_count</name><operator>--</operator></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Though ideally we'd continue scanning for the two-txn-match-shortid case,</comment>
+        <comment type="line">// the performance win of an early exit here is too good to pass up and worth</comment>
+        <comment type="line">// the extra risk.</comment>
+        <if_stmt><if>if <condition>(<expr><name>mempool_count</name> <operator>==</operator> <call><name><name>shorttxids</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>CMPCTBLOCK</name></name></expr></argument>, <argument><expr><literal type="string">"Initialized PartiallyDownloadedBlock for block %s using a cmpctblock of size %lu\n"</literal></expr></argument>, <argument><expr><call><name><name>cmpctblock</name><operator>.</operator><name>header</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>GetSerializeSize</name><argument_list>(<argument><expr><name>cmpctblock</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>READ_STATUS_OK</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>PartiallyDownloadedBlock</name><operator>::</operator><name>IsTxAvailable</name></name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>index</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>header</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>index</name> <operator>&lt;</operator> <call><name><name>txn_available</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name><name>txn_available</name><index>[<expr><name>index</name></expr>]</index></name> <operator>!=</operator> <literal type="null">nullptr</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>ReadStatus</name></type> <name><name>PartiallyDownloadedBlock</name><operator>::</operator><name>FillBlock</name></name><parameter_list>(<parameter><decl><type><name>CBlock</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CTransactionRef</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vtx_missing</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>header</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name> <init>= <expr><call><name><name>header</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>block</name> <operator>=</operator> <name>header</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>txn_available</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>tx_missing_offset</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>txn_available</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>txn_available</name><index>[<expr><name>i</name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>vtx_missing</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <name>tx_missing_offset</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><name><name>block</name><operator>.</operator><name>vtx</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <name><name>vtx_missing</name><index>[<expr><name>tx_missing_offset</name><operator>++</operator></expr>]</index></name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>block</name><operator>.</operator><name>vtx</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name><name>txn_available</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Make sure we can't call FillBlock again.</comment>
+    <expr_stmt><expr><call><name><name>header</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>txn_available</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>vtx_missing</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>tx_missing_offset</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>READ_STATUS_INVALID</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>BlockValidationState</name></type> <name>state</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckBlock</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>state</name></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetConsensus</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// TODO: We really want to just check merkle tree manually here,</comment>
+        <comment type="line">// but that is expensive, and CheckBlock caches a block's</comment>
+        <comment type="line">// "checked-status" (in the CBlock?). CBlock should be able to</comment>
+        <comment type="line">// check its own merkle root and cache that check.</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>state</name><operator>.</operator><name>GetResult</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name><name>BlockValidationResult</name><operator>::</operator><name>BLOCK_MUTATED</name></name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>READ_STATUS_FAILED</name></expr>;</return></block_content></block></if></if_stmt> <comment type="line">// Possible Short ID collision</comment>
+        <return>return <expr><name>READ_STATUS_CHECKBLOCK_FAILED</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>CMPCTBLOCK</name></name></expr></argument>, <argument><expr><literal type="string">"Successfully reconstructed block %s with %lu txn prefilled, %lu txn from mempool (incl at least %lu from extra pool) and %lu txn requested\n"</literal></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>prefilled_count</name></expr></argument>, <argument><expr><name>mempool_count</name></expr></argument>, <argument><expr><name>extra_count</name></expr></argument>, <argument><expr><call><name><name>vtx_missing</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vtx_missing</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">5</literal></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>tx</name> <range>: <expr><name>vtx_missing</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>CMPCTBLOCK</name></name></expr></argument>, <argument><expr><literal type="string">"Reconstructed block %s required tx %s\n"</literal></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>ToString</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name>READ_STATUS_OK</name></expr>;</return>
+</block_content>}</block></function>
+</unit>
