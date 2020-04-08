@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/coins.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_COINS_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_COINS_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;compressor.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;core_memusage.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/siphash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memusage.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;assert.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;functional&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unordered_map&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/**
+ * A UTXO entry.
+ *
+ * Serialized format:
+ * - VARINT((coinbase ? 1 : 0) | (height &lt;&lt; 1))
+ * - the non-spent CTxOut (via CTxOutCompressor)
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>Coin</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <comment type="line" format="doxygen">//! unspent transaction output</comment>
+    <decl_stmt><decl><type><name>CTxOut</name></type> <name>out</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! whether containing transaction was a coinbase</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>fCoinBase</name> <range>: <expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! at which height this containing transaction was included in the active block chain</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nHeight</name> <range>: <expr><literal type="number">31</literal></expr></range></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! construct a Coin from a CTxOut and height/coinbase information.</comment>
+    <macro><name>Coin</name><argument_list>(<argument>CTxOut&amp;&amp; outIn</argument>, <argument>int nHeightIn</argument>, <argument>bool fCoinBaseIn</argument>)</argument_list></macro> : <expr_stmt><expr><call><name>out</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>outIn</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>fCoinBase</name><argument_list>(<argument><expr><name>fCoinBaseIn</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>nHeight</name><argument_list>(<argument>nHeightIn</argument>)</argument_list></macro> <expr><block>{}</block>
+    <macro><name>Coin</name><argument_list>(<argument>const CTxOut&amp; outIn</argument>, <argument>int nHeightIn</argument>, <argument>bool fCoinBaseIn</argument>)</argument_list></macro> <operator>:</operator> <call><name>out</name><argument_list>(<argument><expr><name>outIn</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>fCoinBase</name><argument_list>(<argument><expr><name>fCoinBaseIn</name></expr></argument>)</argument_list></call></expr><operator>,</operator><macro><name>nHeight</name><argument_list>(<argument>nHeightIn</argument>)</argument_list></macro> <expr><block>{}</block>
+
+    <name>void</name> <macro><name>Clear</name><argument_list>()</argument_list></macro> <block>{
+        <expr><call><name><name>out</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;
+        <expr><name>fCoinBase</name> <operator>=</operator> <name>false</name></expr>;
+        <expr><name>nHeight</name> <operator>=</operator> <literal type="number">0</literal></expr>;
+    }</block>
+
+    <comment type="line" format="doxygen">//! empty constructor</comment>
+    <call><name>Coin</name><argument_list>()</argument_list></call> <operator>:</operator> <call><name>fCoinBase</name><argument_list>(<argument><expr><name>false</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>nHeight</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro> <expr><block>{ }</block>
+
+    <name>bool</name> <macro><name>IsCoinBase</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+        <return>return <expr><name>fCoinBase</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Serialize</name><argument_list>(<argument><expr><name>Stream</name> <operator>&amp;</operator><name>s</name></expr></argument>)</argument_list> const <block>{<block_content>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name>IsSpent</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>code</name> <init>= <expr><name>nHeight</name> <operator>*</operator> <literal type="number">2</literal> <operator>+</operator> <name>fCoinBase</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>code</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>::</operator><call><name>Serialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>CTxOutCompressor</name><argument_list>(<argument><expr><call><name>REF</name><argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>code</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><operator>::</operator><call><name>Unserialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>code</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nHeight</name> <operator>=</operator> <name>code</name> <operator>&gt;&gt;</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fCoinBase</name> <operator>=</operator> <name>code</name> <operator>&amp;</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>::</operator><call><name>Unserialize</name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>CTxOutCompressor</name><argument_list>(<argument><expr><name>out</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>IsSpent</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+        <return>return <expr><call><name><name>out</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>size_t</name> <macro><name>DynamicMemoryUsage</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+        <return>return <expr><name>memusage</name><operator>::</operator><call><name>DynamicUsage</name><argument_list>(<argument><expr><name><name>out</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>SaltedOutpointHasher</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <comment type="block" format="doxygen">/** Salt */</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint64_t</name></type> <name>k0</name></decl>, <decl><type ref="prev"/><name>k1</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>SaltedOutpointHasher</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * This *must* return size_t. With Boost 1.46 on 32-bit systems the
+     * unordered_map will behave unpredictably if the custom hasher returns a
+     * uint64_t, resulting in failures when syncing the chain (#4634).
+     *
+     * Having the hash noexcept allows libstdc++'s unordered_map to recalculate
+     * the hash during rehash, so it does not have to cache the value. This
+     * reduces node's memory by sizeof(size_t). The required recalculation has
+     * a slight performance penalty (around 1.6%), but this is compensated by
+     * memory savings of about 9% which allow for a larger dbcache setting.
+     *
+     * @see https://gcc.gnu.org/onlinedocs/gcc-9.2.0/libstdc++/manual/manual/unordered_associative.html
+     */</comment>
+    <expr_stmt><expr><name>size_t</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>COutPoint</name><operator>&amp;</operator> <name>id</name><operator>)</operator> <specifier>const</specifier> <name>noexcept</name> <block>{
+        <return>return <expr><call><name>SipHashUint256Extra</name><argument_list>(<argument><expr><name>k0</name></expr></argument>, <argument><expr><name>k1</name></expr></argument>, <argument><expr><name><name>id</name><operator>.</operator><name>hash</name></name></expr></argument>, <argument><expr><name><name>id</name><operator>.</operator><name>n</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<struct>struct <name>CCoinsCacheEntry</name>
+<block>{
+    <decl_stmt><decl><type><name>Coin</name></type> <name>coin</name></decl>;</decl_stmt> <comment type="line">// The actual cached data.</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>flags</name></decl>;</decl_stmt>
+
+    <enum>enum <name>Flags</name> <block>{
+        <decl><name>DIRTY</name> <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr></init></decl>, <comment type="line">// This cache entry is potentially different from the version in the parent view.</comment>
+        <decl><name>FRESH</name> <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>, <comment type="line">// The parent view does not have this entry (or it is pruned).</comment>
+        <comment type="block">/* Note that FRESH is a performance optimization with which we can
+         * erase coins that are fully spent if we know we do not need to
+         * flush the changes to the parent cache.  It is always safe to
+         * not mark FRESH if that condition is not guaranteed.
+         */</comment>
+    }</block>;</enum>
+
+    <expr_stmt><expr><call><name>CCoinsCacheEntry</name><argument_list>()</argument_list></call> <operator>:</operator> <macro><name>flags</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro> <block>{}</block>
+    <name>explicit</name> <call><name>CCoinsCacheEntry</name><argument_list>(<argument><expr><name>Coin</name><operator>&amp;&amp;</operator> <name>coin_</name></expr></argument>)</argument_list></call> <operator>:</operator> <call><name>coin</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>coin_</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>flags</name><argument_list>(<argument><literal type="number">0</literal></argument>)</argument_list></macro> <expr><block>{}</block></expr></expr_stmt>
+}</block>;</struct>
+
+<typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unordered_map</name><argument_list type="generic">&lt;<argument><expr><name>COutPoint</name></expr></argument>, <argument><expr><name>CCoinsCacheEntry</name></expr></argument>, <argument><expr><name>SaltedOutpointHasher</name></expr></argument>&gt;</argument_list></name> <name>CCoinsMap</name></expr>;</expr_stmt></typedef>
+
+<comment type="block" format="doxygen">/** Cursor for iterating over CoinsView state */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsViewCursor</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>CCoinsViewCursor</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name> <operator>&amp;</operator><name>hashBlockIn</name></expr></argument>)</argument_list></call><operator>:</operator> <macro><name>hashBlock</name><argument_list>(<argument>hashBlockIn</argument>)</argument_list></macro> <block>{}</block>
+    <name>virtual</name> <operator>~</operator><macro><name>CCoinsViewCursor</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+    <name>virtual</name> <name>bool</name> <macro><name>GetKey</name><argument_list>(<argument>COutPoint &amp;key</argument>)</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>GetValue</name><argument_list>(<argument><expr><name>Coin</name> <operator>&amp;</operator><name>coin</name></expr></argument>)</argument_list> const <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>virtual</name> <name>unsigned</name> <name>int</name> <macro><name>GetValueSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>virtual</name> <name>bool</name> <macro><name>Valid</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <function_decl><type><name>virtual</name> <name>void</name></type> <name>Next</name><parameter_list>()</parameter_list> <init>= <expr><literal type="number">0</literal></expr></init>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Get best block at the time this cursor was created</comment>
+    <expr_stmt><expr><specifier>const</specifier> <name>uint256</name> <operator>&amp;</operator><macro><name>GetBestBlock</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>hashBlock</name></expr>;</return> }</block></expr></expr_stmt>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hashBlock</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** Abstract view on the open txout dataset. */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsView</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Retrieve the Coin (unspent transaction output) for a given outpoint.
+     *  Returns true only when an unspent coin was found, which is returned in coin.
+     *  When false is returned, coin's value is unspecified.
+     */</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>GetCoin</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name> <operator>&amp;</operator><name>outpoint</name></expr></argument>, <argument><expr><name>Coin</name> <operator>&amp;</operator><name>coin</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Just check whether a given outpoint is unspent.</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>HaveCoin</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name> <operator>&amp;</operator><name>outpoint</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! Retrieve the block hash whose state this CCoinsView currently represents</comment>
+    <expr_stmt><expr><name>virtual</name> <name>uint256</name> <macro><name>GetBestBlock</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Retrieve the range of blocks that may have been only partially written.</comment>
+    <comment type="line" format="doxygen">//! If the database is in a consistent state, the result is the empty vector.</comment>
+    <comment type="line" format="doxygen">//! Otherwise, a two-element vector is returned consisting of the new and</comment>
+    <comment type="line" format="doxygen">//! the old block hash, in that order.</comment>
+    <expr_stmt><expr><name>virtual</name> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <macro><name>GetHeadBlocks</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Do a bulk modification (multiple Coin changes + BestBlock change).</comment>
+    <comment type="line" format="doxygen">//! The passed mapCoins can be modified.</comment>
+    <function_decl><type><name>virtual</name> <name>bool</name></type> <name>BatchWrite</name><parameter_list>(<parameter><decl><type><name>CCoinsMap</name> <modifier>&amp;</modifier></type><name>mapCoins</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>hashBlock</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">//! Get a cursor to iterate over the whole state</comment>
+    <expr_stmt><expr><name>virtual</name> <name>CCoinsViewCursor</name> <operator>*</operator><macro><name>Cursor</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! As we use CCoinsViews polymorphically, have a virtual destructor</comment>
+    <expr_stmt><expr><name>virtual</name> <operator>~</operator><macro><name>CCoinsView</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+    <comment type="line" format="doxygen">//! Estimate database size (0 if not implemented)</comment>
+    <name>virtual</name> <name>size_t</name> <macro><name>EstimateSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><literal type="number">0</literal></expr>;</return> }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+
+<comment type="block" format="doxygen">/** CCoinsView backed by another CCoinsView */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsViewBacked</name> <range>: <expr><name>public</name> <name>CCoinsView</name>
+<block>{
+<expr><name>protected</name><operator>:</operator>
+    <name>CCoinsView</name> <operator>*</operator><name>base</name></expr>;
+
+<expr><name>public</name><operator>:</operator>
+    <call><name>CCoinsViewBacked</name><argument_list>(<argument><expr><name>CCoinsView</name> <operator>*</operator><name>viewIn</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <macro><name>GetCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>, <argument>Coin &amp;coin</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>HaveCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>uint256</name> <macro><name>GetBestBlock</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <macro><name>GetHeadBlocks</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>void</name> <call><name>SetBackend</name><argument_list>(<argument><expr><name>CCoinsView</name> <operator>&amp;</operator><name>viewIn</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <macro><name>BatchWrite</name><argument_list>(<argument>CCoinsMap &amp;mapCoins</argument>, <argument>const uint256 &amp;hashBlock</argument>)</argument_list></macro> <name>override</name></expr>;
+    <expr><name>CCoinsViewCursor</name> <operator>*</operator><macro><name>Cursor</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>size_t</name> <macro><name>EstimateSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+
+<comment type="block" format="doxygen">/** CCoinsView that adds a memory cache for transactions to another CCoinsView */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsViewCache</name> <range>: <expr><name>public</name> <name>CCoinsViewBacked</name>
+<block>{
+<expr><name>protected</name><operator>:</operator>
+    <comment type="block" format="doxygen">/**
+     * Make mutable so that we can "fill the cache" even from Get-methods
+     * declared as "const".
+     */</comment>
+    <name>mutable</name> <name>uint256</name> <name>hashBlock</name></expr>;
+    <expr><name>mutable</name> <name>CCoinsMap</name> <name>cacheCoins</name></expr>;
+
+    <comment type="block">/* Cached dynamic memory usage for the inner Coin objects. */</comment>
+    <expr><name>mutable</name> <name>size_t</name> <name>cachedCoinsUsage</name></expr>;
+
+<expr><name>public</name><operator>:</operator>
+    <call><name>CCoinsViewCache</name><argument_list>(<argument><expr><name>CCoinsView</name> <operator>*</operator><name>baseIn</name></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * By deleting the copy constructor, we prevent accidentally using it when one intends to create a cache on top of a base cache.
+     */</comment>
+    <expr><call><name>CCoinsViewCache</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CCoinsViewCache</name> <operator>&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;
+
+    <comment type="line">// Standard CCoinsView methods</comment>
+    <expr><name>bool</name> <macro><name>GetCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>, <argument>Coin &amp;coin</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>HaveCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>uint256</name> <macro><name>GetBestBlock</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>void</name> <call><name>SetBestBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name> <operator>&amp;</operator><name>hashBlock</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <macro><name>BatchWrite</name><argument_list>(<argument>CCoinsMap &amp;mapCoins</argument>, <argument>const uint256 &amp;hashBlock</argument>)</argument_list></macro> <name>override</name></expr>;
+    <expr><name>CCoinsViewCursor</name><operator>*</operator> <macro><name>Cursor</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name> <block>{
+        <expr><name>throw</name> <name>std</name><operator>::</operator><call><name>logic_error</name><argument_list>(<argument><expr><literal type="string">"CCoinsViewCache cursor iteration not supported."</literal></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <comment type="block" format="doxygen">/**
+     * Check if we have the given utxo already loaded in this cache.
+     * The semantics are the same as HaveCoin(), but no calls to
+     * the backing CCoinsView are made.
+     */</comment>
+    <name>bool</name> <macro><name>HaveCoinInCache</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * Return a reference to Coin in the cache, or a pruned one if not found. This is
+     * more efficient than GetCoin.
+     *
+     * Generally, do not hold the reference returned for more than a short scope.
+     * While the current implementation allows for modifications to the contents
+     * of the cache while holding the reference, this behavior should not be relied
+     * on! To be safe, best to not hold the returned reference through any other
+     * calls to this cache.
+     */</comment>
+    <expr><specifier>const</specifier> <name>Coin</name><operator>&amp;</operator> <macro><name>AccessCoin</name><argument_list>(<argument>const COutPoint &amp;output</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * Add a coin. Set potential_overwrite to true if a non-pruned version may
+     * already exist.
+     */</comment>
+    <expr><name>void</name> <macro><name>AddCoin</name><argument_list>(<argument>const COutPoint&amp; outpoint</argument>, <argument>Coin&amp;&amp; coin</argument>, <argument>bool potential_overwrite</argument>)</argument_list></macro></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * Spend a coin. Pass moveto in order to get the deleted data.
+     * If no unspent output exists for the passed outpoint, this call
+     * has no effect.
+     */</comment>
+    <expr><name>bool</name> <call><name>SpendCoin</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name> <operator>&amp;</operator><name>outpoint</name></expr></argument>, <argument><expr><name>Coin</name><operator>*</operator> <name>moveto</name> <operator>=</operator> <name>nullptr</name></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * Push the modifications applied to this cache to its base.
+     * Failure to call this method before destruction will cause the changes to be forgotten.
+     * If false is returned, the state of this cache (and its backing view) will be undefined.
+     */</comment>
+    <expr><name>bool</name> <call><name>Flush</name><argument_list>()</argument_list></call></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * Removes the UTXO with the given outpoint from the cache, if it is
+     * not modified.
+     */</comment>
+    <expr><name>void</name> <call><name>Uncache</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name> <operator>&amp;</operator><name>outpoint</name></expr></argument>)</argument_list></call></expr>;
+
+    <comment type="line" format="doxygen">//! Calculate the size of the cache (in number of transaction outputs)</comment>
+    <expr><name>unsigned</name> <name>int</name> <macro><name>GetCacheSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;
+
+    <comment type="line" format="doxygen">//! Calculate the size of the cache (in bytes)</comment>
+    <expr><name>size_t</name> <macro><name>DynamicMemoryUsage</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;
+
+    <comment type="block" format="doxygen">/**
+     * Amount of bitcoins coming in to a transaction
+     * Note that lightweight clients may not know anything besides the hash of previous transactions,
+     * so may not be able to calculate this.
+     *
+     * @param[in] tx    transaction for which we are checking input total
+     * @return  Sum of value of all inputs (scriptSigs)
+     */</comment>
+    <expr><name>CAmount</name> <macro><name>GetValueIn</name><argument_list>(<argument>const CTransaction&amp; tx</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+
+    <comment type="line" format="doxygen">//! Check whether all prevouts of the transaction are present in the UTXO set represented by this view</comment>
+    <expr><name>bool</name> <macro><name>HaveInputs</name><argument_list>(<argument>const CTransaction&amp; tx</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+
+<expr><name>private</name><operator>:</operator>
+    <comment type="block" format="doxygen">/**
+     * @note this is marked const, but may actually append to `cacheCoins`, increasing
+     * memory usage.
+     */</comment>
+    <name>CCoinsMap</name><operator>::</operator><name>iterator</name> <macro><name>FetchCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>)</argument_list></macro> <specifier>const</specifier></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<comment type="line" format="doxygen">//! Utility function to add all of a transaction's outputs to a cache.</comment>
+<comment type="line" format="doxygen">//! When check is false, this assumes that overwrites are only possible for coinbase transactions.</comment>
+<comment type="line" format="doxygen">//! When check is true, the underlying view may be queried to determine whether an addition is</comment>
+<comment type="line" format="doxygen">//! an overwrite.</comment>
+<comment type="line">// TODO: pass in a boolean to limit these possible overwrites to known</comment>
+<comment type="line">// (pre-BIP34) cases.</comment>
+<function_decl><type><name>void</name></type> <name>AddCoins</name><parameter_list>(<parameter><decl><type><name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>cache</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nHeight</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>check</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line" format="doxygen">//! Utility function to find any unspent output with a given txid.</comment>
+<comment type="line" format="doxygen">//! This function can be quite expensive because in the event of a transaction</comment>
+<comment type="line" format="doxygen">//! which is not found in the cache, it can cause up to MAX_OUTPUTS_PER_BLOCK</comment>
+<comment type="line" format="doxygen">//! lookups to database, so it should be used with care.</comment>
+<function_decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>AccessByTxid</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>cache</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txid</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * This is a minimally invasive approach to shutdown on LevelDB read errors from the
+ * chainstate, while keeping user interface out of the common library, which is shared
+ * between bitcoind, and bitcoin-qt and non-server tools.
+ *
+ * Writes do not need similar protection, as failure to write is handled by the caller.
+*/</comment>
+<decl_stmt><decl><type><name>class</name> <name>CCoinsViewErrorCatcher</name></type> <name>final</name> <range>: <expr><name>public</name> <name>CCoinsViewBacked</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <name>explicit</name> <call><name>CCoinsViewErrorCatcher</name><argument_list>(<argument><expr><name>CCoinsView</name><operator>*</operator> <name>view</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>CCoinsViewBacked</name><argument_list>(<argument>view</argument>)</argument_list></macro> <block>{}</block>
+
+    <name>void</name> <macro><name>AddReadErrCallback</name><argument_list>(<argument>std::function&lt;void()&gt; f</argument>)</argument_list></macro> <block>{
+        <expr><call><name><name>m_err_callbacks</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <name>bool</name> <macro><name>GetCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>, <argument>Coin &amp;coin</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+
+<expr><name>private</name><operator>:</operator>
+    <comment type="block" format="doxygen">/** A list of callbacks to execute upon leveldb read error. */</comment>
+    <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>m_err_callbacks</name></expr>;
+
+}</block></expr></range></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_COINS_H</comment>
+</unit>

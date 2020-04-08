@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/bench/checkqueue.cpp"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;bench/bench.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;checkqueue.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;prevector.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread/thread.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>MIN_CORES</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>BATCHES</name> <init>= <expr><literal type="number">101</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>BATCH_SIZE</name> <init>= <expr><literal type="number">30</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>PREVECTOR_SIZE</name> <init>= <expr><literal type="number">28</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>QUEUE_BATCH_SIZE</name> <init>= <expr><literal type="number">128</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// This Benchmark tests the CheckQueue with a slightly realistic workload,</comment>
+<comment type="line">// where checks all contain a prevector that is indirect 50% of the time</comment>
+<comment type="line">// and there is a little bit of work done between calls to Add.</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>CCheckQueueSpeedPrevectorJob</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <struct>struct <name>PrevectorJob</name> <block>{<public type="default">
+        <decl_stmt><decl><type><name><name>prevector</name><argument_list type="generic">&lt;<argument><expr><name>PREVECTOR_SIZE</name></expr></argument>, <argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>p</name></decl>;</decl_stmt>
+        <constructor><name>PrevectorJob</name><parameter_list>()</parameter_list><block>{<block_content>
+        </block_content>}</block></constructor>
+        <constructor><specifier>explicit</specifier> <name>PrevectorJob</name><parameter_list>(<parameter><decl><type><name>FastRandomContext</name><modifier>&amp;</modifier></type> <name>insecure_rand</name></decl></parameter>)</parameter_list><block>{<block_content>
+            <expr_stmt><expr><call><name><name>p</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>insecure_rand</name><operator>.</operator><name>randrange</name></name><argument_list>(<argument><expr><name>PREVECTOR_SIZE</name><operator>*</operator><literal type="number">2</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></constructor>
+        <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+        <block>{<block_content>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></function>
+        <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>PrevectorJob</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list><block>{<block_content><expr_stmt><expr><call><name><name>p</name><operator>.</operator><name>swap</name></name><argument_list>(<argument><expr><name><name>x</name><operator>.</operator><name>p</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content>}</block></function><empty_stmt>;</empty_stmt>
+    </public>}</block>;</struct>
+    <decl_stmt><decl><type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>PrevectorJob</name></expr></argument>&gt;</argument_list></name></type> <name>queue</name> <argument_list>{<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>MIN_CORES</name></expr></argument>, <argument><expr><call><name>GetNumCores</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>queue</name><operator>.</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <while>while <condition>(<expr><call><name><name>state</name><operator>.</operator><name>KeepRunning</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Make insecure_rand here so that each iteration is identical.</comment>
+        <decl_stmt><decl><type><name>FastRandomContext</name></type> <name>insecure_rand</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>PrevectorJob</name></expr></argument>&gt;</argument_list></name></type> <name>control</name><argument_list>(<argument><expr><operator>&amp;</operator><name>queue</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>PrevectorJob</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>vBatches</name><argument_list>(<argument><expr><name>BATCHES</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>vChecks</name> <operator>:</operator> <name>vBatches</name></expr></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>BATCH_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>size_t</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>BATCH_SIZE</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>insecure_rand</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <comment type="line">// control waits for completion by RAII, but</comment>
+        <comment type="line">// it is done explicitly here for clarity</comment>
+        <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Wait</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>CCheckQueueSpeedPrevectorJob</name></expr></argument>, <argument><expr><literal type="number">1400</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</unit>

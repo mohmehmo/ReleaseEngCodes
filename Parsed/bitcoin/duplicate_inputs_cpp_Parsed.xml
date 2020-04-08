@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/bench/duplicate_inputs.cpp"><comment type="line">// Copyright (c) 2011-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;bench/bench.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/merkle.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pow.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;txmempool.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+
+
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>DuplicateInputs</name><parameter_list>(<parameter><decl><type><name><name>benchmark</name><operator>::</operator><name>State</name></name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CScript</name></type> <name>SCRIPT_PUB</name><argument_list>{<argument><expr><macro><name>CScript</name><argument_list>(<argument>OP_TRUE</argument>)</argument_list></macro></expr></argument>}</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CChainParams</name><modifier>&amp;</modifier></type> <name>chainparams</name> <init>= <expr><call><name>Params</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CBlock</name></type> <name>block</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>coinbaseTx</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>naughtyTx</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name> <init>= <expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>pindexPrev</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>block</name><operator>.</operator><name>nBits</name></name> <operator>=</operator> <call><name>GetNextWorkRequired</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>block</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>block</name><operator>.</operator><name>nNonce</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>nHeight</name> <init>= <expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>+</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Make a coinbase TX</comment>
+    <expr_stmt><expr><call><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name><name>prevout</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <name>SCRIPT_PUB</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <call><name>GetBlockSubsidy</name><argument_list>(<argument><expr><name>nHeight</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <call><name>CScript</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>nHeight</name> <operator>&lt;&lt;</operator> <name>OP_0</name></expr>;</expr_stmt>
+
+
+    <expr_stmt><expr><call><name><name>naughtyTx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>naughtyTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>naughtyTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <name>SCRIPT_PUB</name></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>n_inputs</name> <init>= <expr><operator>(</operator><operator>(</operator><operator>(</operator><name>MAX_BLOCK_SERIALIZED_SIZE</name> <operator>/</operator> <name>WITNESS_SCALE_FACTOR</name><operator>)</operator> <operator>-</operator> <operator>(</operator><call><name>CTransaction</name><argument_list>(<argument><expr><name>coinbaseTx</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>GetTotalSize</name><argument_list>()</argument_list></call> <operator>+</operator> <call><name>CTransaction</name><argument_list>(<argument><expr><name>naughtyTx</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>GetTotalSize</name><argument_list>()</argument_list></call><operator>)</operator><operator>)</operator> <operator>/</operator> <literal type="number">41</literal><operator>)</operator> <operator>-</operator> <literal type="number">100</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>uint64_t</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <operator>(</operator><name>n_inputs</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>naughtyTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name>GetRandHash</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name>CScript</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>naughtyTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name><name>naughtyTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>MakeTransactionRef</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>coinbaseTx</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>MakeTransactionRef</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>naughtyTx</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name><name>block</name><operator>.</operator><name>hashMerkleRoot</name></name> <operator>=</operator> <call><name>BlockMerkleRoot</name><argument_list>(<argument><expr><name>block</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <while>while <condition>(<expr><call><name><name>state</name><operator>.</operator><name>KeepRunning</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>BlockValidationState</name></type> <name>cvstate</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name>CheckBlock</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>cvstate</name></expr></argument>, <argument><expr><call><name><name>chainparams</name><operator>.</operator><name>GetConsensus</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>cvstate</name><operator>.</operator><name>GetRejectReason</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="string">"bad-txns-inputs-duplicate"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<expr_stmt><expr><call><name>BENCHMARK</name><argument_list>(<argument><expr><name>DuplicateInputs</name></expr></argument>, <argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</unit>

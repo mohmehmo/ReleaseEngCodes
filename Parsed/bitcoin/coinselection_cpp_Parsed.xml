@@ -1,0 +1,330 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/wallet/coinselection.cpp"><comment type="line">// Copyright (c) 2017-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/coinselection.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;optional.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/moneystr.h&gt;</cpp:file></cpp:include>
+
+<comment type="line">// Descending order comparator</comment>
+<struct>struct <block>{<public type="default">
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>OutputGroup</name><modifier>&amp;</modifier></type> <name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>OutputGroup</name><modifier>&amp;</modifier></type> <name>b</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+    <block>{<block_content>
+        <return>return <expr><name><name>a</name><operator>.</operator><name>effective_value</name></name> <operator>&gt;</operator> <name><name>b</name><operator>.</operator><name>effective_value</name></name></expr>;</return>
+    </block_content>}</block></function>
+</public>}</block> <decl><name>descending</name></decl>;</struct>
+
+<comment type="block">/*
+ * This is the Branch and Bound Coin Selection algorithm designed by Murch. It searches for an input
+ * set that can pay for the spending target and does not exceed the spending target by more than the
+ * cost of creating and spending a change output. The algorithm uses a depth-first search on a binary
+ * tree. In the binary tree, each node corresponds to the inclusion or the omission of a UTXO. UTXOs
+ * are sorted by their effective values and the trees is explored deterministically per the inclusion
+ * branch first. At each node, the algorithm checks whether the selection is within the target range.
+ * While the selection has not reached the target range, more UTXOs are included. When a selection's
+ * value exceeds the target range, the complete subtree deriving from this selection can be omitted.
+ * At that point, the last included UTXO is deselected and the corresponding omission branch explored
+ * instead. The search ends after the complete tree has been searched or after a limited number of tries.
+ *
+ * The search continues to search for better solutions after one solution has been found. The best
+ * solution is chosen by minimizing the waste metric. The waste metric is defined as the cost to
+ * spend the current inputs at the given fee rate minus the long term expected cost to spend the
+ * inputs, plus the amount the selection exceeds the spending target:
+ *
+ * waste = selectionTotal - target + inputs Ã (currentFeeRate - longTermFeeRate)
+ *
+ * The algorithm uses two additional optimizations. A lookahead keeps track of the total value of
+ * the unexplored UTXOs. A subtree is not explored if the lookahead indicates that the target range
+ * cannot be reached. Further, it is unnecessary to test equivalent combinations. This allows us
+ * to skip testing the inclusion of UTXOs that match the effective value and waste of an omitted
+ * predecessor.
+ *
+ * The Branch and Bound algorithm is described in detail in Murch's Master Thesis:
+ * https://murch.one/wp-content/uploads/2016/11/erhardt2016coinselection.pdf
+ *
+ * @param const std::vector&lt;CInputCoin&gt;&amp; utxo_pool The set of UTXOs that we are choosing from.
+ *        These UTXOs will be sorted in descending order by effective value and the CInputCoins'
+ *        values are their effective values.
+ * @param const CAmount&amp; target_value This is the value that we want to select. It is the lower
+ *        bound of the range.
+ * @param const CAmount&amp; cost_of_change This is the cost of creating and spending a change output.
+ *        This plus target_value is the upper bound of the range.
+ * @param std::set&lt;CInputCoin&gt;&amp; out_set -&gt; This is an output parameter for the set of CInputCoins
+ *        that have been selected.
+ * @param CAmount&amp; value_ret -&gt; This is an output parameter for the total value of the CInputCoins
+ *        that were selected.
+ * @param CAmount not_input_fees -&gt; The fees that need to be paid for the outputs and fixed size
+ *        overhead (version, locktime, marker and flag)
+ */</comment>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>size_t</name></type> <name>TOTAL_TRIES</name> <init>= <expr><literal type="number">100000</literal></expr></init></decl>;</decl_stmt>
+
+<function><type><name>bool</name></type> <name>SelectCoinsBnB</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>OutputGroup</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>utxo_pool</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>target_value</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>cost_of_change</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CInputCoin</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>out_set</name></decl></parameter>, <parameter><decl><type><name>CAmount</name><modifier>&amp;</modifier></type> <name>value_ret</name></decl></parameter>, <parameter><decl><type><name>CAmount</name></type> <name>not_input_fees</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>out_set</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>curr_value</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>curr_selection</name></decl>;</decl_stmt> <comment type="line">// select the utxo at this index</comment>
+    <expr_stmt><expr><call><name><name>curr_selection</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><call><name><name>utxo_pool</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>actual_target</name> <init>= <expr><name>not_input_fees</name> <operator>+</operator> <name>target_value</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Calculate curr_available_value</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>curr_available_value</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>OutputGroup</name><modifier>&amp;</modifier></type> <name>utxo</name> <range>: <expr><name>utxo_pool</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <comment type="line">// Assert that this utxo is not negative. It should never be negative, effective value calculation should have removed it</comment>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name><name>utxo</name><operator>.</operator><name>effective_value</name></name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>curr_available_value</name> <operator>+=</operator> <name><name>utxo</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <if_stmt><if>if <condition>(<expr><name>curr_available_value</name> <operator>&lt;</operator> <name>actual_target</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Sort the utxo_pool</comment>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>sort</name></name><argument_list>(<argument><expr><call><name><name>utxo_pool</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>utxo_pool</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>descending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>curr_waste</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>best_selection</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>best_waste</name> <init>= <expr><name>MAX_MONEY</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Depth First search loop for choosing the UTXOs</comment>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>TOTAL_TRIES</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <comment type="line">// Conditions for starting a backtrack</comment>
+        <decl_stmt><decl><type><name>bool</name></type> <name>backtrack</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>curr_value</name> <operator>+</operator> <name><name>curr_available_value</name> <argument_list type="generic">&lt; <argument><expr><name>actual_target</name> <operator>||</operator>                <comment type="line">// Cannot possibly reach target with the amount remaining in the curr_available_value.</comment>
+            <name>curr_value</name></expr></argument> &gt;</argument_list></name> <name>actual_target</name> <operator>+</operator> <name>cost_of_change</name> <operator>||</operator>    <comment type="line">// Selected value is out of range, go back and try other branch</comment>
+            <operator>(</operator><name>curr_waste</name> <operator>&gt;</operator> <name>best_waste</name> <operator>&amp;&amp;</operator> <operator>(</operator><call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call><operator>.</operator><name>fee</name> <operator>-</operator> <call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call><operator>.</operator><name>long_term_fee</name><operator>)</operator> <operator>&gt;</operator> <literal type="number">0</literal><operator>)</operator></expr>)</condition> <block>{<block_content> <comment type="line">// Don't select things which we know will be more wasteful if the waste is increasing</comment>
+            <expr_stmt><expr><name>backtrack</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>curr_value</name> <operator>&gt;=</operator> <name>actual_target</name></expr>)</condition> <block>{<block_content>       <comment type="line">// Selected value is within range</comment>
+            <expr_stmt><expr><name>curr_waste</name> <operator>+=</operator> <operator>(</operator><name>curr_value</name> <operator>-</operator> <name>actual_target</name><operator>)</operator></expr>;</expr_stmt> <comment type="line">// This is the excess value which is added to the waste for the below comparison</comment>
+            <comment type="line">// Adding another UTXO after this check could bring the waste down if the long term fee is higher than the current fee.</comment>
+            <comment type="line">// However we are not going to explore that because this optimization for the waste is only done when we have hit our target</comment>
+            <comment type="line">// value. Adding any more UTXOs will be just burning the UTXO; it will go entirely to fees. Thus we aren't going to</comment>
+            <comment type="line">// explore any more UTXOs to avoid burning money like that.</comment>
+            <if_stmt><if>if <condition>(<expr><name>curr_waste</name> <operator>&lt;=</operator> <name>best_waste</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>best_selection</name> <operator>=</operator> <name>curr_selection</name></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>best_selection</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>utxo_pool</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>best_waste</name> <operator>=</operator> <name>curr_waste</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name>curr_waste</name> <operator>-=</operator> <operator>(</operator><name>curr_value</name> <operator>-</operator> <name>actual_target</name><operator>)</operator></expr>;</expr_stmt> <comment type="line">// Remove the excess value as we will be selecting different coins now</comment>
+            <expr_stmt><expr><name>backtrack</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Backtracking, moving backwards</comment>
+        <if_stmt><if>if <condition>(<expr><name>backtrack</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Walk backwards to find the last included UTXO that still needs to have its omission branch traversed.</comment>
+            <while>while <condition>(<expr><operator>!</operator><call><name><name>curr_selection</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>curr_selection</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>curr_selection</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>curr_available_value</name> <operator>+=</operator> <call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><call><name><name>curr_selection</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><name>effective_value</name></expr>;</expr_stmt>
+            </block_content>}</block></while>
+
+            <if_stmt><if>if <condition>(<expr><call><name><name>curr_selection</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content> <comment type="line">// We have walked back to the first utxo and no branch is untraversed. All solutions searched</comment>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Output was included on previous iterations, try excluding now.</comment>
+            <expr_stmt><expr><call><name><name>curr_selection</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>OutputGroup</name><modifier>&amp;</modifier></type> <name>utxo</name> <init>= <expr><call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><call><name><name>curr_selection</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name>curr_value</name> <operator>-=</operator> <name><name>utxo</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>curr_waste</name> <operator>-=</operator> <name><name>utxo</name><operator>.</operator><name>fee</name></name> <operator>-</operator> <name><name>utxo</name><operator>.</operator><name>long_term_fee</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content> <comment type="line">// Moving forwards, continuing down this branch</comment>
+            <decl_stmt><decl><type><name>OutputGroup</name><modifier>&amp;</modifier></type> <name>utxo</name> <init>= <expr><call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><call><name><name>curr_selection</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Remove this utxo from the curr_available_value utxo amount</comment>
+            <expr_stmt><expr><name>curr_available_value</name> <operator>-=</operator> <name><name>utxo</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+
+            <comment type="line">// Avoid searching a branch if the previous UTXO has the same value and same waste and was excluded. Since the ratio of fee to</comment>
+            <comment type="line">// long term fee is the same, we only need to check if one of those values match in order to know that the waste is the same.</comment>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>curr_selection</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>curr_selection</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator>
+                <name><name>utxo</name><operator>.</operator><name>effective_value</name></name> <operator>==</operator> <call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><call><name><name>curr_selection</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call><operator>.</operator><name>effective_value</name> <operator>&amp;&amp;</operator>
+                <name><name>utxo</name><operator>.</operator><name>fee</name></name> <operator>==</operator> <call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><call><name><name>curr_selection</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call><operator>.</operator><name>fee</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>curr_selection</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <comment type="line">// Inclusion branch first (Largest First Exploration)</comment>
+                <expr_stmt><expr><call><name><name>curr_selection</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>curr_value</name> <operator>+=</operator> <name><name>utxo</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>curr_waste</name> <operator>+=</operator> <name><name>utxo</name><operator>.</operator><name>fee</name></name> <operator>-</operator> <name><name>utxo</name><operator>.</operator><name>long_term_fee</name></name></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Check for solution</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>best_selection</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Set output set</comment>
+    <expr_stmt><expr><name>value_ret</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>best_selection</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>best_selection</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>insert</name></name><argument_list>(<argument><expr><name>out_set</name></expr></argument>, <argument><expr><call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>m_outputs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>value_ret</name> <operator>+=</operator> <call><name><name>utxo_pool</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call><operator>.</operator><name>m_value</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>ApproximateBestSubset</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>OutputGroup</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>groups</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>nTotalLower</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>nTargetValue</name></decl></parameter>,
+                                  <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vfBest</name></decl></parameter>, <parameter><decl><type><name>CAmount</name><modifier>&amp;</modifier></type> <name>nBest</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>iterations</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vfIncluded</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>vfBest</name><operator>.</operator><name>assign</name></name><argument_list>(<argument><expr><call><name><name>groups</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nBest</name> <operator>=</operator> <name>nTotalLower</name></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>FastRandomContext</name></type> <name>insecure_rand</name></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>nRep</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>nRep</name> <operator>&lt;</operator> <name>iterations</name> <operator>&amp;&amp;</operator> <name>nBest</name> <operator>!=</operator> <name>nTargetValue</name></expr>;</condition> <incr><expr><name>nRep</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vfIncluded</name><operator>.</operator><name>assign</name></name><argument_list>(<argument><expr><call><name><name>groups</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CAmount</name></type> <name>nTotal</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>fReachedTarget</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>int</name></type> <name>nPass</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>nPass</name> <operator>&lt;</operator> <literal type="number">2</literal> <operator>&amp;&amp;</operator> <operator>!</operator><name>fReachedTarget</name></expr>;</condition> <incr><expr><name>nPass</name><operator>++</operator></expr></incr>)</control>
+        <block>{<block_content>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>groups</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+            <block>{<block_content>
+                <comment type="line">//The solver here uses a randomized algorithm,</comment>
+                <comment type="line">//the randomness serves no real security purpose but is just</comment>
+                <comment type="line">//needed to prevent degenerate behavior and it is important</comment>
+                <comment type="line">//that the rng is fast. We do not use a constant random sequence,</comment>
+                <comment type="line">//because there may be some privacy improvement by making</comment>
+                <comment type="line">//the selection random.</comment>
+                <if_stmt><if>if <condition>(<expr><ternary><condition><expr><name>nPass</name> <operator>==</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><call><name><name>insecure_rand</name><operator>.</operator><name>randbool</name></name><argument_list>()</argument_list></call></expr> </then><else>: <expr><operator>!</operator><name><name>vfIncluded</name><index>[<expr><name>i</name></expr>]</index></name></expr></else></ternary></expr>)</condition>
+                <block>{<block_content>
+                    <expr_stmt><expr><name>nTotal</name> <operator>+=</operator> <name><name>groups</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>m_value</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>vfIncluded</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>nTotal</name> <operator>&gt;=</operator> <name>nTargetValue</name></expr>)</condition>
+                    <block>{<block_content>
+                        <expr_stmt><expr><name>fReachedTarget</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                        <if_stmt><if>if <condition>(<expr><name>nTotal</name> <operator>&lt;</operator> <name>nBest</name></expr>)</condition>
+                        <block>{<block_content>
+                            <expr_stmt><expr><name>nBest</name> <operator>=</operator> <name>nTotal</name></expr>;</expr_stmt>
+                            <expr_stmt><expr><name>vfBest</name> <operator>=</operator> <name>vfIncluded</name></expr>;</expr_stmt>
+                        </block_content>}</block></if></if_stmt>
+                        <expr_stmt><expr><name>nTotal</name> <operator>-=</operator> <name><name>groups</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>m_value</name></expr>;</expr_stmt>
+                        <expr_stmt><expr><name><name>vfIncluded</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></for>
+        </block_content>}</block></for>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>KnapsackSolver</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>nTargetValue</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>OutputGroup</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>groups</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CInputCoin</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>setCoinsRet</name></decl></parameter>, <parameter><decl><type><name>CAmount</name><modifier>&amp;</modifier></type> <name>nValueRet</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>setCoinsRet</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nValueRet</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <comment type="line">// List of values less than target</comment>
+    <decl_stmt><decl><type><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>OutputGroup</name></expr></argument>&gt;</argument_list></name></type> <name>lowest_larger</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>OutputGroup</name></expr></argument>&gt;</argument_list></name></type> <name>applicable_groups</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>nTotalLower</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>Shuffle</name><argument_list>(<argument><expr><call><name><name>groups</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>groups</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>FastRandomContext</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>OutputGroup</name><modifier>&amp;</modifier></type> <name>group</name> <range>: <expr><name>groups</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>group</name><operator>.</operator><name>m_value</name></name> <operator>==</operator> <name>nTargetValue</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>insert</name></name><argument_list>(<argument><expr><name>setCoinsRet</name></expr></argument>, <argument><expr><name><name>group</name><operator>.</operator><name>m_outputs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>nValueRet</name> <operator>+=</operator> <name><name>group</name><operator>.</operator><name>m_value</name></name></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>group</name><operator>.</operator><name>m_value</name></name> <operator>&lt;</operator> <name>nTargetValue</name> <operator>+</operator> <name>MIN_CHANGE</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>applicable_groups</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>group</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>nTotalLower</name> <operator>+=</operator> <name><name>group</name><operator>.</operator><name>m_value</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><name>lowest_larger</name> <operator>||</operator> <name><name>group</name><operator>.</operator><name>m_value</name></name> <operator>&lt;</operator> <name><name>lowest_larger</name><operator>-&gt;</operator><name>m_value</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>lowest_larger</name> <operator>=</operator> <name>group</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <if_stmt><if>if <condition>(<expr><name>nTotalLower</name> <operator>==</operator> <name>nTargetValue</name></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>group</name> <range>: <expr><name>applicable_groups</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>insert</name></name><argument_list>(<argument><expr><name>setCoinsRet</name></expr></argument>, <argument><expr><name><name>group</name><operator>.</operator><name>m_outputs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>nValueRet</name> <operator>+=</operator> <name><name>group</name><operator>.</operator><name>m_value</name></name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>nTotalLower</name> <operator>&lt;</operator> <name>nTargetValue</name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>lowest_larger</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>insert</name></name><argument_list>(<argument><expr><name>setCoinsRet</name></expr></argument>, <argument><expr><name><name>lowest_larger</name><operator>-&gt;</operator><name>m_outputs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nValueRet</name> <operator>+=</operator> <name><name>lowest_larger</name><operator>-&gt;</operator><name>m_value</name></name></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Solve subset sum by stochastic approximation</comment>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>sort</name></name><argument_list>(<argument><expr><call><name><name>applicable_groups</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>applicable_groups</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>descending</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vfBest</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>nBest</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>ApproximateBestSubset</name><argument_list>(<argument><expr><name>applicable_groups</name></expr></argument>, <argument><expr><name>nTotalLower</name></expr></argument>, <argument><expr><name>nTargetValue</name></expr></argument>, <argument><expr><name>vfBest</name></expr></argument>, <argument><expr><name>nBest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nBest</name> <operator>!=</operator> <name>nTargetValue</name> <operator>&amp;&amp;</operator> <name>nTotalLower</name> <operator>&gt;=</operator> <name>nTargetValue</name> <operator>+</operator> <name>MIN_CHANGE</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>ApproximateBestSubset</name><argument_list>(<argument><expr><name>applicable_groups</name></expr></argument>, <argument><expr><name>nTotalLower</name></expr></argument>, <argument><expr><name>nTargetValue</name> <operator>+</operator> <name>MIN_CHANGE</name></expr></argument>, <argument><expr><name>vfBest</name></expr></argument>, <argument><expr><name>nBest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// If we have a bigger coin and (either the stochastic approximation didn't find a good solution,</comment>
+    <comment type="line">//                                   or the next bigger coin is closer), return the bigger coin</comment>
+    <if_stmt><if>if <condition>(<expr><name>lowest_larger</name> <operator>&amp;&amp;</operator>
+        <operator>(</operator><operator>(</operator><name>nBest</name> <operator>!=</operator> <name>nTargetValue</name> <operator>&amp;&amp;</operator> <name>nBest</name> <operator>&lt;</operator> <name>nTargetValue</name> <operator>+</operator> <name>MIN_CHANGE</name><operator>)</operator> <operator>||</operator> <name><name>lowest_larger</name><operator>-&gt;</operator><name>m_value</name></name> <operator>&lt;=</operator> <name>nBest</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>insert</name></name><argument_list>(<argument><expr><name>setCoinsRet</name></expr></argument>, <argument><expr><name><name>lowest_larger</name><operator>-&gt;</operator><name>m_outputs</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nValueRet</name> <operator>+=</operator> <name><name>lowest_larger</name><operator>-&gt;</operator><name>m_value</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>applicable_groups</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>vfBest</name><index>[<expr><name>i</name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>util</name><operator>::</operator><name>insert</name></name><argument_list>(<argument><expr><name>setCoinsRet</name></expr></argument>, <argument><expr><name><name>applicable_groups</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>m_outputs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>nValueRet</name> <operator>+=</operator> <name><name>applicable_groups</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>m_value</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+
+        <if_stmt><if>if <condition>(<expr><call><name>LogAcceptCategory</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>SELECTCOINS</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>SELECTCOINS</name></name></expr></argument>, <argument><expr><literal type="string">"SelectCoins() best subset: "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>applicable_groups</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name><name>vfBest</name><index>[<expr><name>i</name></expr>]</index></name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>SELECTCOINS</name></name></expr></argument>, <argument><expr><literal type="string">"%s "</literal></expr></argument>, <argument><expr><call><name>FormatMoney</name><argument_list>(<argument><expr><name><name>applicable_groups</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>m_value</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></for>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>SELECTCOINS</name></name></expr></argument>, <argument><expr><literal type="string">"total %s\n"</literal></expr></argument>, <argument><expr><call><name>FormatMoney</name><argument_list>(<argument><expr><name>nBest</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/******************************************************************************
+
+ OutputGroup
+
+ ******************************************************************************/</comment>
+
+<function><type><name>void</name></type> <name><name>OutputGroup</name><operator>::</operator><name>Insert</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CInputCoin</name><modifier>&amp;</modifier></type> <name>output</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>depth</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>from_me</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>ancestors</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>descendants</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>m_outputs</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>output</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_from_me</name> <operator>&amp;=</operator> <name>from_me</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_value</name> <operator>+=</operator> <name><name>output</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_depth</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>m_depth</name></expr></argument>, <argument><expr><name>depth</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// ancestors here express the number of ancestors the new coin will end up having, which is</comment>
+    <comment type="line">// the sum, rather than the max; this will overestimate in the cases where multiple inputs</comment>
+    <comment type="line">// have common ancestors</comment>
+    <expr_stmt><expr><name>m_ancestors</name> <operator>+=</operator> <name>ancestors</name></expr>;</expr_stmt>
+    <comment type="line">// descendants is the count as seen from the top ancestor, not the descendants as seen from the</comment>
+    <comment type="line">// coin itself; thus, this value is counted as the max, not the sum</comment>
+    <expr_stmt><expr><name>m_descendants</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>m_descendants</name></expr></argument>, <argument><expr><name>descendants</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>effective_value</name> <operator>=</operator> <name>m_value</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CInputCoin</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name><name>OutputGroup</name><operator>::</operator><name>Discard</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CInputCoin</name><modifier>&amp;</modifier></type> <name>output</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>m_outputs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>it</name> <operator>!=</operator> <call><name><name>m_outputs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>it</name><operator>-&gt;</operator><name>outpoint</name></name> <operator>!=</operator> <name><name>output</name><operator>.</operator><name>outpoint</name></name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><operator>++</operator><name>it</name></expr>;</expr_stmt></block_content></block></while>
+    <if_stmt><if>if <condition>(<expr><name>it</name> <operator>==</operator> <call><name><name>m_outputs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>it</name></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>m_value</name> <operator>-=</operator> <name><name>output</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>effective_value</name> <operator>-=</operator> <name><name>output</name><operator>.</operator><name>effective_value</name></name></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>m_outputs</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>OutputGroup</name><operator>::</operator><name>EligibleForSpending</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CoinEligibilityFilter</name><modifier>&amp;</modifier></type> <name>eligibility_filter</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><name>m_depth</name> <operator>&gt;=</operator> <operator>(</operator><ternary><condition><expr><name>m_from_me</name></expr> ?</condition><then> <expr><name><name>eligibility_filter</name><operator>.</operator><name>conf_mine</name></name></expr> </then><else>: <expr><name><name>eligibility_filter</name><operator>.</operator><name>conf_theirs</name></name></expr></else></ternary><operator>)</operator>
+        <operator>&amp;&amp;</operator> <name>m_ancestors</name> <operator>&lt;=</operator> <name><name>eligibility_filter</name><operator>.</operator><name>max_ancestors</name></name>
+        <operator>&amp;&amp;</operator> <name>m_descendants</name> <operator>&lt;=</operator> <name><name>eligibility_filter</name><operator>.</operator><name>max_descendants</name></name></expr>;</return>
+</block_content>}</block></function>
+</unit>

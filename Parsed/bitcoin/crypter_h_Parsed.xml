@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/wallet/crypter.h"><comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_WALLET_CRYPTER_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_WALLET_CRYPTER_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;support/allocators/secure.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/signingprovider.h&gt;</cpp:file></cpp:include>
+
+
+<decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>WALLET_CRYPTO_KEY_SIZE</name> <init>= <expr><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>WALLET_CRYPTO_SALT_SIZE</name> <init>= <expr><literal type="number">8</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>WALLET_CRYPTO_IV_SIZE</name> <init>= <expr><literal type="number">16</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Private key encryption is done based on a CMasterKey,
+ * which holds a salt and random encryption key.
+ *
+ * CMasterKeys are encrypted using AES-256-CBC using a key
+ * derived using derivation method nDerivationMethod
+ * (0 == EVP_sha512()) and derivation iterations nDeriveIterations.
+ * vchOtherDerivationParameters is provided for alternative algorithms
+ * which may require more parameters (such as scrypt).
+ *
+ * Wallet Private Keys are then encrypted using AES-256-CBC
+ * with the double-sha256 of the public key as the IV, and the
+ * master key's key as the encryption key (see keystore.[ch]).
+ */</comment>
+
+<comment type="block" format="doxygen">/** Master key for wallet encryption */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CMasterKey</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>vchCryptedKey</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>vchSalt</name></expr>;</expr_stmt>
+    <comment type="line" format="doxygen">//! 0 = EVP_sha512()</comment>
+    <comment type="line" format="doxygen">//! 1 = scrypt()</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nDerivationMethod</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nDeriveIterations</name></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">//! Use this for more parameters to key derivation,</comment>
+    <comment type="line" format="doxygen">//! such as the various parameters to scrypt</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>vchOtherDerivationParameters</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vchCryptedKey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vchSalt</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nDerivationMethod</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nDeriveIterations</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>vchOtherDerivationParameters</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <macro><name>CMasterKey</name><argument_list>()</argument_list></macro>
+    <block>{<block_content>
+        <comment type="line">// 25000 rounds is just under 0.1 seconds on a 1.86 GHz Pentium M</comment>
+        <comment type="line">// ie slightly lower than the lowest hardware we need bother supporting</comment>
+        <expr_stmt><expr><name>nDeriveIterations</name> <operator>=</operator> <literal type="number">25000</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nDerivationMethod</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>vchOtherDerivationParameters</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name><name>secure_allocator</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name> <name>CKeyingMaterial</name></expr>;</expr_stmt></typedef>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>wallet_crypto_tests</name>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>class</name></type> <name>TestCrypter</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="block" format="doxygen">/** Encryption/decryption context with key information */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCrypter</name>
+<block>{<block_content>
+<expr_stmt><expr><name>friend</name> <name>class</name> <name>wallet_crypto_tests</name><operator>::</operator><name>TestCrypter</name></expr>;</expr_stmt> <comment type="line">// for test access to chKey/chIV</comment>
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name><name>secure_allocator</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>vchKey</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name><name>secure_allocator</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>vchIV</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fKeySet</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>BytesToKeySHA512AES</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>chSalt</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>SecureString</name><operator>&amp;</operator> <name>strKeyData</name></expr></argument>, <argument><expr><name>int</name> <name>count</name></expr></argument>, <argument><expr><name>unsigned</name> <name>char</name> <operator>*</operator><name>key</name></expr></argument>,<argument><expr><name>unsigned</name> <name>char</name> <operator>*</operator><name>iv</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>bool</name></type> <name>SetKeyFromPassphrase</name><argument_list>(<argument><expr><specifier>const</specifier> <name>SecureString</name> <operator>&amp;</operator><name>strKeyData</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>chSalt</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <name>int</name> <name>nRounds</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>unsigned</name> <name>int</name> <name>nDerivationMethod</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>Encrypt</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyingMaterial</name><operator>&amp;</operator> <name>vchPlaintext</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vchCiphertext</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>Decrypt</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchCiphertext</name></expr></argument>, <argument><expr><name>CKeyingMaterial</name><operator>&amp;</operator> <name>vchPlaintext</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>SetKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyingMaterial</name><operator>&amp;</operator> <name>chNewKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>chNewIV</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <function><type><name>void</name></type> <name>CleanKey</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>memory_cleanse</name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>memory_cleanse</name><argument_list>(<argument><expr><call><name><name>vchIV</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchIV</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fKeySet</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <macro><name>CCrypter</name><argument_list>()</argument_list></macro>
+    <block>{<block_content>
+        <expr_stmt><expr><name>fKeySet</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>WALLET_CRYPTO_KEY_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vchIV</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>WALLET_CRYPTO_IV_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <expr_stmt><expr><operator>~</operator><macro><name>CCrypter</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><call><name>CleanKey</name><argument_list>()</argument_list></call></expr>;
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>EncryptSecret</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyingMaterial</name><operator>&amp;</operator> <name>vMasterKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CKeyingMaterial</name> <operator>&amp;</operator><name>vchPlaintext</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>nIV</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>vchCiphertext</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>bool</name></type> <name>DecryptSecret</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyingMaterial</name><operator>&amp;</operator> <name>vMasterKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchCiphertext</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>nIV</name></expr></argument>, <argument><expr><name>CKeyingMaterial</name><operator>&amp;</operator> <name>vchPlaintext</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>bool</name></type> <name>DecryptKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CKeyingMaterial</name><operator>&amp;</operator> <name>vMasterKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchCryptedSecret</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>vchPubKey</name></expr></argument>, <argument><expr><name>CKey</name><operator>&amp;</operator> <name>key</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_WALLET_CRYPTER_H</comment>
+</unit>

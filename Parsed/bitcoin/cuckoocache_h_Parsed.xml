@@ -1,0 +1,484 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/cuckoocache.h"><comment type="line">// Copyright (c) 2016 Jeremy Rubin</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_CUCKOOCACHE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_CUCKOOCACHE_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;array&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;atomic&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cmath&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cstring&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+
+<comment type="block" format="doxygen">/** High-performance cache primitives.
+ *
+ * Summary:
+ *
+ * 1. @ref bit_packed_atomic_flags is bit-packed atomic flags for garbage collection
+ *
+ * 2. @ref cache is a cache which is performant in memory usage and lookup speed. It
+ * is lockfree for erase operations. Elements are lazily erased on the next insert.
+ */</comment>
+<decl_stmt><decl><type><name>namespace</name></type> <name>CuckooCache</name>
+<block>{<block_content>
+<comment type="block" format="doxygen">/** @ref bit_packed_atomic_flags implements a container for garbage collection flags
+ * that is only thread unsafe on calls to setup. This class bit-packs collection
+ * flags for memory efficiency.
+ *
+ * All operations are `std::memory_order_relaxed` so external mechanisms must
+ * ensure that writes and reads are properly synchronized.
+ *
+ * On setup(n), all bits up to `n` are marked as collected.
+ *
+ * Under the hood, because it is an 8-bit type, it makes sense to use a multiple
+ * of 8 for setup, but it will be safe if that is not the case as well.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>bit_packed_atomic_flags</name>
+<block>{<block_content>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name><index>[]</index></name></expr></argument>&gt;</argument_list></name> <name>mem</name></expr>;</expr_stmt>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** No default constructor, as there must be some size. */</comment>
+    <expr_stmt><expr><call><name>bit_packed_atomic_flags</name><argument_list>()</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * bit_packed_atomic_flags constructor creates memory to sufficiently
+     * keep track of garbage collection information for `size` entries.
+     *
+     * @param size the number of elements to allocate space for
+     *
+     * @post bit_set, bit_unset, and bit_is_set function properly forall x. x &lt;
+     * size
+     * @post All calls to bit_is_set (without subsequent bit_unset) will return
+     * true.
+     */</comment>
+    <function><type><name>explicit</name></type> <name>bit_packed_atomic_flags</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>size</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <comment type="line">// pad out the size if needed</comment>
+        <expr_stmt><expr><name>size</name> <operator>=</operator> <operator>(</operator><name>size</name> <operator>+</operator> <literal type="number">7</literal><operator>)</operator> <operator>/</operator> <literal type="number">8</literal></expr>;</expr_stmt>
+        <macro><name>mem</name></macro><expr_stmt><expr><operator>.</operator><macro><name>reset</name><argument_list>(<argument>new std::atomic&lt;uint8_t&gt;[size]</argument>)</argument_list></macro></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>size</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>mem</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>store</name><argument_list>(<argument><expr><literal type="number">0xFF</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block></function><empty_stmt>;</empty_stmt>
+
+    <comment type="block" format="doxygen">/** setup marks all entries and ensures that bit_packed_atomic_flags can store
+     * at least `b` entries.
+     *
+     * @param b the number of elements to allocate space for
+     * @post bit_set, bit_unset, and bit_is_set function properly forall x. x &lt;
+     * b
+     * @post All calls to bit_is_set (without subsequent bit_unset) will return
+     * true.
+     */</comment>
+    <function><type><specifier>inline</specifier> <name>void</name></type> <name>setup</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>b</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>bit_packed_atomic_flags</name></type> <name>d</name><argument_list>(<argument><expr><name>b</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name>std</name><operator>::</operator><call><name>swap</name><argument_list>(<argument><expr><name>mem</name></expr></argument>, <argument><expr><name><name>d</name><operator>.</operator><name>mem</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** bit_set sets an entry as discardable.
+     *
+     * @param s the index of the entry to bit_set
+     * @post immediately subsequent call (assuming proper external memory
+     * ordering) to bit_is_set(s) == true.
+     */</comment>
+    <function><type><specifier>inline</specifier> <name>void</name></type> <name>bit_set</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>s</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name><name>mem</name><index>[<expr><name>s</name> <operator>&gt;&gt;</operator> <literal type="number">3</literal></expr>]</index></name><operator>.</operator><call><name>fetch_or</name><argument_list>(<argument><expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <operator>(</operator><name>s</name> <operator>&amp;</operator> <literal type="number">7</literal><operator>)</operator></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>memory_order_relaxed</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** bit_unset marks an entry as something that should not be overwritten.
+     *
+     * @param s the index of the entry to bit_unset
+     * @post immediately subsequent call (assuming proper external memory
+     * ordering) to bit_is_set(s) == false.
+     */</comment>
+    <function><type><specifier>inline</specifier> <name>void</name></type> <name>bit_unset</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>s</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name><name>mem</name><index>[<expr><name>s</name> <operator>&gt;&gt;</operator> <literal type="number">3</literal></expr>]</index></name><operator>.</operator><call><name>fetch_and</name><argument_list>(<argument><expr><operator>~</operator><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <operator>(</operator><name>s</name> <operator>&amp;</operator> <literal type="number">7</literal><operator>)</operator><operator>)</operator></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>memory_order_relaxed</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** bit_is_set queries the table for discardability at `s`.
+     *
+     * @param s the index of the entry to read
+     * @returns true if the bit at index `s` was set, false otherwise
+     * */</comment>
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>bool</name></type> <name>bit_is_set</name><argument_list>(<argument><expr><name>uint32_t</name> <name>s</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <return>return <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <operator>(</operator><name>s</name> <operator>&amp;</operator> <literal type="number">7</literal><operator>)</operator><operator>)</operator> <operator>&amp;</operator> <name><name>mem</name><index>[<expr><name>s</name> <operator>&gt;&gt;</operator> <literal type="number">3</literal></expr>]</index></name><operator>.</operator><call><name>load</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name>memory_order_relaxed</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** @ref cache implements a cache with properties similar to a cuckoo-set.
+ *
+ *  The cache is able to hold up to `(~(uint32_t)0) - 1` elements.
+ *
+ *  Read Operations:
+ *      - contains() for `erase=false`
+ *
+ *  Read+Erase Operations:
+ *      - contains() for `erase=true`
+ *
+ *  Erase Operations:
+ *      - allow_erase()
+ *
+ *  Write Operations:
+ *      - setup()
+ *      - setup_bytes()
+ *      - insert()
+ *      - please_keep()
+ *
+ *  Synchronization Free Operations:
+ *      - invalid()
+ *      - compute_hashes()
+ *
+ * User Must Guarantee:
+ *
+ * 1. Write requires synchronized access (e.g. a lock)
+ * 2. Read requires no concurrent Write, synchronized with last insert.
+ * 3. Erase requires no concurrent Write, synchronized with last insert.
+ * 4. An Erase caller must release all memory before allowing a new Writer.
+ *
+ *
+ * Note on function names:
+ *   - The name "allow_erase" is used because the real discard happens later.
+ *   - The name "please_keep" is used because elements may be erased anyways on insert.
+ *
+ * @tparam Element should be a movable and copyable type
+ * @tparam Hash should be a function/callable which takes a template parameter
+ * hash_select and an Element and extracts a hash from it. Should return
+ * high-entropy uint32_t hashes for `Hash h; h&lt;0&gt;(e) ... h&lt;7&gt;(e)`.
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Element</name></expr></argument>, <argument><expr><name>typename</name> <name>Hash</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>cache</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <comment type="block" format="doxygen">/** table stores all the elements */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>Element</name></expr></argument>&gt;</argument_list></name> <name>table</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** size stores the total available slots in the hash table */</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>size</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** The bit_packed_atomic_flags array is marked mutable because we want
+     * garbage collection to be allowed to occur from const methods */</comment>
+    <decl_stmt><decl><type><name>mutable</name> <name>bit_packed_atomic_flags</name></type> <name>collection_flags</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** epoch_flags tracks how recently an element was inserted into
+     * the cache. true denotes recent, false denotes not-recent. See insert()
+     * method for full semantics.
+     */</comment>
+    <expr_stmt><expr><name>mutable</name> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <name>epoch_flags</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** epoch_heuristic_counter is used to determine when an epoch might be aged
+     * &amp; an expensive scan should be done. epoch_heuristic_counter is
+     * decremented on insert and reset to the new number of inserts which would
+     * cause the epoch to reach epoch_size when it reaches zero.
+     */</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>epoch_heuristic_counter</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** epoch_size is set to be the number of elements supposed to be in a
+     * epoch. When the number of non-erased elements in an epoch
+     * exceeds epoch_size, a new epoch should be started and all
+     * current entries demoted. epoch_size is set to be 45% of size because
+     * we want to keep load around 90%, and we support 3 epochs at once --
+     * one "dead" which has been erased, one "dying" which has been marked to be
+     * erased next, and one "living" which new inserts add to.
+     */</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>epoch_size</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** depth_limit determines how many elements insert should try to replace.
+     * Should be set to log2(n).
+     */</comment>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>depth_limit</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** hash_function is a const instance of the hash function. It cannot be
+     * static or initialized at call time as it may have internal state (such as
+     * a nonce).
+     */</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>Hash</name></type> <name>hash_function</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** compute_hashes is convenience for not having to write out this
+     * expression everywhere we use the hash values of an Element.
+     *
+     * We need to map the 32-bit input hash onto a hash bucket in a range [0, size) in a
+     *  manner which preserves as much of the hash's uniformity as possible. Ideally
+     *  this would be done by bitmasking but the size is usually not a power of two.
+     *
+     * The naive approach would be to use a mod -- which isn't perfectly uniform but so
+     *  long as the hash is much larger than size it is not that bad. Unfortunately,
+     *  mod/division is fairly slow on ordinary microprocessors (e.g. 90-ish cycles on
+     *  haswell, ARM doesn't even have an instruction for it.); when the divisor is a
+     *  constant the compiler will do clever tricks to turn it into a multiply+add+shift,
+     *  but size is a run-time value so the compiler can't do that here.
+     *
+     * One option would be to implement the same trick the compiler uses and compute the
+     *  constants for exact division based on the size, as described in "{N}-bit Unsigned
+     *  Division via {N}-bit Multiply-Add" by Arch D. Robison in 2005. But that code is
+     *  somewhat complicated and the result is still slower than other options:
+     *
+     * Instead we treat the 32-bit random number as a Q32 fixed-point number in the range
+     *  [0, 1) and simply multiply it by the size. Then we just shift the result down by
+     *  32-bits to get our bucket number. The result has non-uniformity the same as a
+     *  mod, but it is much faster to compute. More about this technique can be found at
+     *  http://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/ .
+     *
+     * The resulting non-uniformity is also more equally distributed which would be
+     *  advantageous for something like linear probing, though it shouldn't matter
+     *  one way or the other for a cuckoo table.
+     *
+     * The primary disadvantage of this approach is increased intermediate precision is
+     *  required but for a 32-bit random number we only need the high 32 bits of a
+     *  32*32-&gt;64 multiply, which means the operation is reasonably fast even on a
+     *  typical 32-bit processor.
+     *
+     * @param e The element whose hashes will be returned
+     * @returns Deterministic hashes derived from `e` uniformly mapped onto the range [0, size)
+     */</comment>
+    <expr_stmt><expr><specifier>inline</specifier> <name>std</name><operator>::</operator><name><name>array</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>&gt;</argument_list></name> <macro><name>compute_hashes</name><argument_list>(<argument>const Element&amp; e</argument>)</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><block>{<expr><block>{<expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">0</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">1</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">2</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">3</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">4</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">5</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">6</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>,
+                 <expr><operator>(</operator><name>uint32_t</name><operator>)</operator><operator>(</operator><operator>(</operator><operator>(</operator><name>uint64_t</name><operator>)</operator><name><name>hash_function</name><operator>.</operator><name>template</name></name> <call><name>operator</name><argument_list>()</argument_list></call><operator>&lt;</operator><literal type="number">7</literal><operator>&gt;</operator><operator>(</operator><name>e</name><operator>)</operator> <operator>*</operator> <operator>(</operator><name>uint64_t</name><operator>)</operator><name>size</name><operator>)</operator> <operator>&gt;&gt;</operator> <literal type="number">32</literal><operator>)</operator></expr>}</block></expr>}</block></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="block" format="doxygen">/** invalid returns a special index that can never be inserted to
+     * @returns the special constexpr index that can never be inserted to */</comment>
+    <expr_stmt><expr><name>constexpr</name> <name>uint32_t</name> <macro><name>invalid</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><operator>~</operator><operator>(</operator><name>uint32_t</name><operator>)</operator><literal type="number">0</literal></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="block" format="doxygen">/** allow_erase marks the element at index `n` as discardable. Threadsafe
+     * without any concurrent insert.
+     * @param n the index to allow erasure of
+     */</comment>
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>void</name></type> <name>allow_erase</name><argument_list>(<argument><expr><name>uint32_t</name> <name>n</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>collection_flags</name><operator>.</operator><name>bit_set</name></name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <comment type="block" format="doxygen">/** please_keep marks the element at index `n` as an entry that should be kept.
+     * Threadsafe without any concurrent insert.
+     * @param n the index to prioritize keeping
+     */</comment>
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>void</name></type> <name>please_keep</name><argument_list>(<argument><expr><name>uint32_t</name> <name>n</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>collection_flags</name><operator>.</operator><name>bit_unset</name></name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <comment type="block" format="doxygen">/** epoch_check handles the changing of epochs for elements stored in the
+     * cache. epoch_check should be run before every insert.
+     *
+     * First, epoch_check decrements and checks the cheap heuristic, and then does
+     * a more expensive scan if the cheap heuristic runs out. If the expensive
+     * scan succeeds, the epochs are aged and old elements are allow_erased. The
+     * cheap heuristic is reset to retrigger after the worst case growth of the
+     * current epoch's elements would exceed the epoch_size.
+     */</comment>
+    <function><type><name>void</name></type> <name>epoch_check</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>epoch_heuristic_counter</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><operator>--</operator><name>epoch_heuristic_counter</name></expr>;</expr_stmt>
+            <return>return;</return>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// count the number of elements from the latest epoch which</comment>
+        <comment type="line">// have not been erased.</comment>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>epoch_unused_count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>size</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>epoch_unused_count</name> <operator>+=</operator> <name><name>epoch_flags</name><index>[<expr><name>i</name></expr>]</index></name> <operator>&amp;&amp;</operator>
+                                  <operator>!</operator><call><name><name>collection_flags</name><operator>.</operator><name>bit_is_set</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+        <comment type="line">// If there are more non-deleted entries in the current epoch than the</comment>
+        <comment type="line">// epoch size, then allow_erase on all elements in the old epoch (marked</comment>
+        <comment type="line">// false) and move all elements in the current epoch to the old epoch</comment>
+        <comment type="line">// but do not call allow_erase on their indices.</comment>
+        <if_stmt><if>if <condition>(<expr><name>epoch_unused_count</name> <operator>&gt;=</operator> <name>epoch_size</name></expr>)</condition> <block>{<block_content>
+            <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>size</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+                <if_stmt><if>if <condition>(<expr><name><name>epoch_flags</name><index>[<expr><name>i</name></expr>]</index></name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><name><name>epoch_flags</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if>
+                <else>else<block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name>allow_erase</name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt></block_content></block></for>
+            <expr_stmt><expr><name>epoch_heuristic_counter</name> <operator>=</operator> <name>epoch_size</name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else<block type="pseudo"><block_content>
+            <comment type="line">// reset the epoch_heuristic_counter to next do a scan when worst</comment>
+            <comment type="line">// case behavior (no intermittent erases) would exceed epoch size,</comment>
+            <comment type="line">// with a reasonable minimum scan size.</comment>
+            <comment type="line">// Ordinarily, we would have to sanity check std::min(epoch_size,</comment>
+            <comment type="line">// epoch_unused_count), but we already know that `epoch_unused_count</comment>
+            <comment type="line">// &lt; epoch_size` in this branch</comment>
+            <expr_stmt><expr><name>epoch_heuristic_counter</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>max</name><argument_list>(<argument><expr><literal type="number">1u</literal></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>max</name><argument_list>(<argument><expr><name>epoch_size</name> <operator>/</operator> <literal type="number">16</literal></expr></argument>,
+                        <argument><expr><name>epoch_size</name> <operator>-</operator> <name>epoch_unused_count</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    </block_content>}</block></function>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** You must always construct a cache with some elements via a subsequent
+     * call to setup or setup_bytes, otherwise operations may segfault.
+     */</comment>
+    <expr_stmt><expr><call><name>cache</name><argument_list>()</argument_list></call> <operator>:</operator> <call><name>table</name><argument_list>()</argument_list></call></expr><operator>,</operator> <expr><call><name>size</name><argument_list>()</argument_list></call></expr><operator>,</operator> <expr><call><name>collection_flags</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>epoch_flags</name><argument_list>()</argument_list></call></expr><operator>,</operator>
+    <expr><call><name>epoch_heuristic_counter</name><argument_list>()</argument_list></call></expr><operator>,</operator> <expr><call><name>epoch_size</name><argument_list>()</argument_list></call></expr><operator>,</operator> <expr><call><name>depth_limit</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>hash_function</name><argument_list>()</argument_list></macro>
+    <expr><block>{
+    }</block>
+
+    <comment type="block" format="doxygen">/** setup initializes the container to store no more than new_size
+     * elements.
+     *
+     * setup should only be called once.
+     *
+     * @param new_size the desired number of elements to store
+     * @returns the maximum number of elements storable
+     */</comment>
+    <name>uint32_t</name> <macro><name>setup</name><argument_list>(<argument>uint32_t new_size</argument>)</argument_list></macro>
+    <block>{
+        <comment type="line">// depth_limit must be at least one otherwise errors can occur.</comment>
+        <expr><name>depth_limit</name> <operator>=</operator> <call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>log2</name><argument_list>(<argument><expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>float</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>max</name><argument_list>(<argument><expr><operator>(</operator><name>uint32_t</name><operator>)</operator><literal type="number">2</literal></expr></argument>, <argument><expr><name>new_size</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+        <expr><name>size</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name><name>max</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>, <argument><expr><name>new_size</name></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name><name>table</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name><name>collection_flags</name><operator>.</operator><name>setup</name></name><argument_list>(<argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name><name>epoch_flags</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;
+        <comment type="line">// Set to 45% as described above</comment>
+        <expr><name>epoch_size</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>max</name><argument_list>(<argument><expr><operator>(</operator><name>uint32_t</name><operator>)</operator><literal type="number">1</literal></expr></argument>, <argument><expr><operator>(</operator><literal type="number">45</literal> <operator>*</operator> <name>size</name><operator>)</operator> <operator>/</operator> <literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;
+        <comment type="line">// Initially set to wait for a whole epoch</comment>
+        <expr><name>epoch_heuristic_counter</name> <operator>=</operator> <name>epoch_size</name></expr>;
+        <return>return <expr><name>size</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="block" format="doxygen">/** setup_bytes is a convenience function which accounts for internal memory
+     * usage when deciding how many elements to store. It isn't perfect because
+     * it doesn't account for any overhead (struct size, MallocUsage, collection
+     * and epoch flags). This was done to simplify selecting a power of two
+     * size. In the expected use case, an extra two bits per entry should be
+     * negligible compared to the size of the elements.
+     *
+     * @param bytes the approximate number of bytes to use for this data
+     * structure
+     * @returns the maximum number of elements storable (see setup()
+     * documentation for more detail)
+     */</comment>
+    <function><type><name>uint32_t</name></type> <name>setup_bytes</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>bytes</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><call><name>setup</name><argument_list>(<argument><expr><name>bytes</name><operator>/</operator><sizeof>sizeof<argument_list>(<argument><expr><name>Element</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** insert loops at most depth_limit times trying to insert a hash
+     * at various locations in the table via a variant of the Cuckoo Algorithm
+     * with eight hash locations.
+     *
+     * It drops the last tried element if it runs out of depth before
+     * encountering an open slot.
+     *
+     * Thus:
+     *
+     * ```
+     * insert(x);
+     * return contains(x, false);
+     * ```
+     *
+     * is not guaranteed to return true.
+     *
+     * @param e the element to insert
+     * @post one of the following: All previously inserted elements and e are
+     * now in the table, one previously inserted element is evicted from the
+     * table, the entry attempted to be inserted is evicted.
+     */</comment>
+    <function><type><specifier>inline</specifier> <name>void</name></type> <name>insert</name><parameter_list>(<parameter><decl><type><name>Element</name></type> <name>e</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>epoch_check</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>last_loc</name> <init>= <expr><call><name>invalid</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>last_epoch</name> <init>= <expr><name>true</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>array</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>&gt;</argument_list></name> <name>locs</name> <operator>=</operator> <call><name>compute_hashes</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Make sure we have not already inserted this element</comment>
+        <comment type="line">// If we have, make sure that it does not get deleted</comment>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>loc</name> <range>: <expr><name>locs</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>table</name><index>[<expr><name>loc</name></expr>]</index></name> <operator>==</operator> <name>e</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>please_keep</name><argument_list>(<argument><expr><name>loc</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>epoch_flags</name><index>[<expr><name>loc</name></expr>]</index></name> <operator>=</operator> <name>last_epoch</name></expr>;</expr_stmt>
+                <return>return;</return>
+            </block_content>}</block></if></if_stmt></block_content></block></for>
+        <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>depth</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>depth</name> <operator>&lt;</operator> <name>depth_limit</name></expr>;</condition> <incr><expr><operator>++</operator><name>depth</name></expr></incr>)</control> <block>{<block_content>
+            <comment type="line">// First try to insert to an empty slot, if one exists</comment>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>loc</name> <range>: <expr><name>locs</name></expr></range></decl></init>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>collection_flags</name><operator>.</operator><name>bit_is_set</name></name><argument_list>(<argument><expr><name>loc</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <continue>continue;</continue></block_content></block></if></if_stmt>
+                <expr_stmt><expr><name><name>table</name><index>[<expr><name>loc</name></expr>]</index></name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>please_keep</name><argument_list>(<argument><expr><name>loc</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>epoch_flags</name><index>[<expr><name>loc</name></expr>]</index></name> <operator>=</operator> <name>last_epoch</name></expr>;</expr_stmt>
+                <return>return;</return>
+            </block_content>}</block></for>
+            <comment type="block" format="doxygen">/** Swap with the element at the location that was
+            * not the last one looked at. Example:
+            *
+            * 1. On first iteration, last_loc == invalid(), find returns last, so
+            *    last_loc defaults to locs[0].
+            * 2. On further iterations, where last_loc == locs[k], last_loc will
+            *    go to locs[k+1 % 8], i.e., next of the 8 indices wrapping around
+            *    to 0 if needed.
+            *
+            * This prevents moving the element we just put in.
+            *
+            * The swap is not a move -- we must switch onto the evicted element
+            * for the next iteration.
+            */</comment>
+            <expr_stmt><expr><name>last_loc</name> <operator>=</operator> <name><name>locs</name><index>[<expr><operator>(</operator><literal type="number">1</literal> <operator>+</operator> <operator>(</operator><name>std</name><operator>::</operator><call><name>find</name><argument_list>(<argument><expr><call><name><name>locs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>locs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>last_loc</name></expr></argument>)</argument_list></call> <operator>-</operator> <call><name><name>locs</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>)</operator><operator>)</operator> <operator>&amp;</operator> <literal type="number">7</literal></expr>]</index></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>std</name><operator>::</operator><call><name>swap</name><argument_list>(<argument><expr><name><name>table</name><index>[<expr><name>last_loc</name></expr>]</index></name></expr></argument>, <argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <comment type="line">// Can't std::swap a std::vector&lt;bool&gt;::reference and a bool&amp;.</comment>
+            <decl_stmt><decl><type><name>bool</name></type> <name>epoch</name> <init>= <expr><name>last_epoch</name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><name>last_epoch</name> <operator>=</operator> <name><name>epoch_flags</name><index>[<expr><name>last_loc</name></expr>]</index></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>epoch_flags</name><index>[<expr><name>last_loc</name></expr>]</index></name> <operator>=</operator> <name>epoch</name></expr>;</expr_stmt>
+
+            <comment type="line">// Recompute the locs -- unfortunately happens one too many times!</comment>
+            <expr_stmt><expr><name>locs</name> <operator>=</operator> <call><name>compute_hashes</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></function>
+
+    <comment type="block" format="doxygen">/** contains iterates through the hash locations for a given element
+     * and checks to see if it is present.
+     *
+     * contains does not check garbage collected state (in other words,
+     * garbage is only collected when the space is needed), so:
+     *
+     * ```
+     * insert(x);
+     * if (contains(x, true))
+     *     return contains(x, false);
+     * else
+     *     return true;
+     * ```
+     *
+     * executed on a single thread will always return true!
+     *
+     * This is a great property for re-org performance for example.
+     *
+     * contains returns a bool set true if the element was found.
+     *
+     * @param e the element to check
+     * @param erase whether to attempt setting the garbage collect flag
+     *
+     * @post if erase is true and the element is found, then the garbage collect
+     * flag is set
+     * @returns true if the element is found, false otherwise
+     */</comment>
+    <decl_stmt><decl><type><specifier>inline</specifier> <name>bool</name></type> <name>contains</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Element</name><operator>&amp;</operator> <name>e</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>bool</name> <name>erase</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>array</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>&gt;</argument_list></name> <name>locs</name> <operator>=</operator> <call><name>compute_hashes</name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>loc</name> <range>: <expr><name>locs</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>table</name><index>[<expr><name>loc</name></expr>]</index></name> <operator>==</operator> <name>e</name></expr>)</condition> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name>erase</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name>allow_erase</name><argument_list>(<argument><expr><name>loc</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                <return>return <expr><name>true</name></expr>;</return>
+            </block_content>}</block></if></if_stmt></block_content></block></for>
+        <return>return <expr><name>false</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+</block_content>}</block></decl></decl_stmt> <comment type="line">// namespace CuckooCache</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_CUCKOOCACHE_H</comment>
+</unit>

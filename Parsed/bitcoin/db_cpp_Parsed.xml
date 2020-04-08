@@ -1,0 +1,920 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/wallet/db.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/db.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>WIN32</name></cpp:ifndef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/stat.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+
+<namespace>namespace <block>{
+
+<comment type="line" format="doxygen">//! Make sure database has a unique fileid within the environment. If it</comment>
+<comment type="line" format="doxygen">//! doesn't, throw an error. BDB caches do not work properly when more than one</comment>
+<comment type="line" format="doxygen">//! open database has the same fileid (values written to one database may show</comment>
+<comment type="line" format="doxygen">//! up in reads to other databases).</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! BerkeleyDB generates unique fileids by default</comment>
+<comment type="line" format="doxygen">//! (https://docs.oracle.com/cd/E17275_01/html/programmer_reference/program_copy.html),</comment>
+<comment type="line" format="doxygen">//! so bitcoin should never create different databases with the same fileid, but</comment>
+<comment type="line" format="doxygen">//! this error can be triggered if users manually copy database files.</comment>
+<function><type><name>void</name></type> <name>CheckUniqueFileid</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>BerkeleyEnvironment</name><modifier>&amp;</modifier></type> <name>env</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>filename</name></decl></parameter>, <parameter><decl><type><name>Db</name><modifier>&amp;</modifier></type> <name>db</name></decl></parameter>, <parameter><decl><type><name>WalletDatabaseFileId</name><modifier>&amp;</modifier></type> <name>fileid</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>env</name><operator>.</operator><name>IsMock</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>get_mpf</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>get_fileid</name><argument_list>(<argument><expr><name><name>fileid</name><operator>.</operator><name>value</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch: Can't open database %s (get_fileid failed with %d)"</literal></expr></argument>, <argument><expr><name>filename</name></expr></argument>, <argument><expr><name>ret</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>item</name> <range>: <expr><name><name>env</name><operator>.</operator><name>m_fileids</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>fileid</name> <operator>==</operator> <name><name>item</name><operator>.</operator><name>second</name></name> <operator>&amp;&amp;</operator> <operator>&amp;</operator><name>fileid</name> <operator>!=</operator> <operator>&amp;</operator><name><name>item</name><operator>.</operator><name>second</name></name></expr>)</condition> <block>{<block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch: Can't open database %s (duplicates fileid %s from %s)"</literal></expr></argument>, <argument><expr><name>filename</name></expr></argument>,
+                <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>begin</name></name><argument_list>(<argument><expr><name><name>item</name><operator>.</operator><name>second</name><operator>.</operator><name>value</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>end</name></name><argument_list>(<argument><expr><name><name>item</name><operator>.</operator><name>second</name><operator>.</operator><name>value</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>item</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name>CCriticalSection</name></type> <name>cs_db</name></decl>;</decl_stmt>
+<function_decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>weak_ptr</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>g_dbenvs</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_db</name></type></decl></parameter>)</parameter_list>;</function_decl> <comment type="line" format="doxygen">//!&lt; Map from directory name to db environment.</comment>
+}</block></namespace> <comment type="line">// namespace</comment>
+
+<function type="operator"><type><name>bool</name></type> <name><name>WalletDatabaseFileId</name><operator>::</operator><name>operator<name>==</name></name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>WalletDatabaseFileId</name><modifier>&amp;</modifier></type> <name>rhs</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name>memcmp</name><argument_list>(<argument><expr><name>value</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>rhs</name><operator>.</operator><name>value</name></name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SplitWalletPath</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>, <parameter><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>env_directory</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>database_filename</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>fs</name><operator>::</operator><name>is_regular_file</name></name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Special case for backwards compatibility: if wallet path points to an</comment>
+        <comment type="line">// existing file, treat it as the path to a BDB data file in a parent</comment>
+        <comment type="line">// directory that also contains BDB log files.</comment>
+        <expr_stmt><expr><name>env_directory</name> <operator>=</operator> <call><name><name>wallet_path</name><operator>.</operator><name>parent_path</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>database_filename</name> <operator>=</operator> <call><name><name>wallet_path</name><operator>.</operator><name>filename</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <comment type="line">// Normal case: Interpret wallet path as a directory path containing</comment>
+        <comment type="line">// data and log files.</comment>
+        <expr_stmt><expr><name>env_directory</name> <operator>=</operator> <name>wallet_path</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>database_filename</name> <operator>=</operator> <literal type="string">"wallet.dat"</literal></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>IsWalletLoaded</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>env_directory</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>database_filename</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SplitWalletPath</name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><name>env_directory</name></expr></argument>, <argument><expr><name>database_filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>env</name> <init>= <expr><call><name><name>g_dbenvs</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><call><name><name>env_directory</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>env</name> <operator>==</operator> <call><name><name>g_dbenvs</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>database</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><name>database</name> <operator>&amp;&amp;</operator> <call><name><name>database</name><operator>-&gt;</operator><name>IsDatabaseLoaded</name></name><argument_list>(<argument><expr><name>database_filename</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>WalletDataFilePath</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>env_directory</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>database_filename</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SplitWalletPath</name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><name>env_directory</name></expr></argument>, <argument><expr><name>database_filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>env_directory</name> <operator>/</operator> <name>database_filename</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/**
+ * @param[in] wallet_path Path to wallet directory. Or (for backwards compatibility only) a path to a berkeley btree data file inside a wallet directory.
+ * @param[out] database_filename Filename of berkeley btree data file inside the wallet directory.
+ * @return A shared pointer to the BerkeleyEnvironment object for the wallet directory, never empty because ~BerkeleyEnvironment
+ * erases the weak pointer from the g_dbenvs map.
+ * @post A new BerkeleyEnvironment weak pointer is inserted into g_dbenvs if the directory path key was not already in the map.
+ */</comment>
+<function><type><name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name></type> <name>GetWalletEnv</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>database_filename</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>env_directory</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SplitWalletPath</name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><name>env_directory</name></expr></argument>, <argument><expr><name>database_filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>inserted</name> <init>= <expr><call><name><name>g_dbenvs</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><call><name><name>env_directory</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>weak_ptr</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>inserted</name><operator>.</operator><name>second</name></name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>env</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_shared</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>env_directory</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>inserted</name><operator>.</operator><name>first</name><operator>-&gt;</operator><name>second</name></name> <operator>=</operator> <name>env</name></expr>;</expr_stmt>
+        <return>return <expr><name>env</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name><name>inserted</name><operator>.</operator><name>first</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">//</comment>
+<comment type="line">// BerkeleyBatch</comment>
+<comment type="line">//</comment>
+
+<function><type><name>void</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>Close</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fDbEnvInit</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><name>fDbEnvInit</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+
+    <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>db</name> <operator>:</operator> <name>m_databases</name></expr></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>count</name> <init>= <expr><call><name><name>mapFileUseCount</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name><name>db</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>count</name> <operator>==</operator> <call><name><name>mapFileUseCount</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>||</operator> <name><name>count</name><operator>-&gt;</operator><name>second</name></name> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>BerkeleyDatabase</name><modifier>&amp;</modifier></type> <name>database</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>second</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>database</name><operator>.</operator><name>m_db</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>database</name><operator>.</operator><name>m_db</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>database</name><operator>.</operator><name>m_db</name><operator>.</operator><name>reset</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <decl_stmt><decl><type><name>FILE</name><modifier>*</modifier></type> <name>error_file</name> <init>= <expr><literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>get_errfile</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>error_file</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Close: Error %d closing database environment: %s\n"</literal></expr></argument>, <argument><expr><name>ret</name></expr></argument>, <argument><expr><call><name><name>DbEnv</name><operator>::</operator><name>strerror</name></name><argument_list>(<argument><expr><name>ret</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fMockDb</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>DbEnv</name><argument_list>(<argument><expr><operator>(</operator><name>u_int32_t</name><operator>)</operator><literal type="number">0</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>remove</name><argument_list>(<argument><expr><call><name><name>strPath</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>error_file</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>fclose</name><argument_list>(<argument><expr><name>error_file</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>UnlockDirectory</name><argument_list>(<argument><expr><name>strPath</name></expr></argument>, <argument><expr><literal type="string">".walletlock"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>Reset</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>.</operator><name>reset</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>DbEnv</name><argument_list>(<argument><expr><name>DB_CXX_NO_EXCEPTIONS</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fDbEnvInit</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fMockDb</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<constructor><name><name>BerkeleyEnvironment</name><operator>::</operator><name>BerkeleyEnvironment</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>dir_path</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>strPath</name><argument_list>(<argument><expr><call><name><name>dir_path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><call><name>Reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>BerkeleyEnvironment</name><operator>::</operator><name>~BerkeleyEnvironment</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>g_dbenvs</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>strPath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Close</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>Open</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>retry</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>fDbEnvInit</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathIn</name> <init>= <expr><name>strPath</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>TryCreateDirectories</name><argument_list>(<argument><expr><name>pathIn</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>LockDirectory</name><argument_list>(<argument><expr><name>pathIn</name></expr></argument>, <argument><expr><literal type="string">".walletlock"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Cannot obtain a lock on wallet directory %s. Another instance of bitcoin may be using it.\n"</literal></expr></argument>, <argument><expr><name>strPath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathLogDir</name> <init>= <expr><name>pathIn</name> <operator>/</operator> <literal type="string">"database"</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>TryCreateDirectories</name><argument_list>(<argument><expr><name>pathLogDir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathErrorFile</name> <init>= <expr><name>pathIn</name> <operator>/</operator> <literal type="string">"db.log"</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Open: LogDir=%s ErrorFile=%s\n"</literal></expr></argument>, <argument><expr><call><name><name>pathLogDir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>pathErrorFile</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nEnvFlags</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-privdb"</literal></expr></argument>, <argument><expr><name>DEFAULT_WALLET_PRIVDB</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nEnvFlags</name> <operator>|=</operator> <name>DB_PRIVATE</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lg_dir</name></name><argument_list>(<argument><expr><call><name><name>pathLogDir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>c_str</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_cachesize</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0x100000</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// 1 MiB should be enough for just the wallet</comment>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lg_bsize</name></name><argument_list>(<argument><expr><literal type="number">0x10000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lg_max</name></name><argument_list>(<argument><expr><literal type="number">1048576</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lk_max_locks</name></name><argument_list>(<argument><expr><literal type="number">40000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lk_max_objects</name></name><argument_list>(<argument><expr><literal type="number">40000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_errfile</name></name><argument_list>(<argument><expr><call><name><name>fsbridge</name><operator>::</operator><name>fopen</name></name><argument_list>(<argument><expr><name>pathErrorFile</name></expr></argument>, <argument><expr><literal type="string">"a"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line" format="doxygen">/// debug</comment>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_flags</name></name><argument_list>(<argument><expr><name>DB_AUTO_COMMIT</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_flags</name></name><argument_list>(<argument><expr><name>DB_TXN_WRITE_NOSYNC</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>log_set_config</name></name><argument_list>(<argument><expr><name>DB_LOG_AUTO_REMOVE</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>open</name></name><argument_list>(<argument><expr><call><name><name>strPath</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>,
+                         <argument><expr><name>DB_CREATE</name> <operator>|</operator>
+                             <name>DB_INIT_LOCK</name> <operator>|</operator>
+                             <name>DB_INIT_LOG</name> <operator>|</operator>
+                             <name>DB_INIT_MPOOL</name> <operator>|</operator>
+                             <name>DB_INIT_TXN</name> <operator>|</operator>
+                             <name>DB_THREAD</name> <operator>|</operator>
+                             <name>DB_RECOVER</name> <operator>|</operator>
+                             <name>nEnvFlags</name></expr></argument>,
+                         <argument><expr><name>S_IRUSR</name> <operator>|</operator> <name>S_IWUSR</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Open: Error %d opening database environment: %s\n"</literal></expr></argument>, <argument><expr><name>ret</name></expr></argument>, <argument><expr><call><name><name>DbEnv</name><operator>::</operator><name>strerror</name></name><argument_list>(<argument><expr><name>ret</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>ret2</name> <init>= <expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>ret2</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Open: Error %d closing failed database environment: %s\n"</literal></expr></argument>, <argument><expr><name>ret2</name></expr></argument>, <argument><expr><call><name><name>DbEnv</name><operator>::</operator><name>strerror</name></name><argument_list>(<argument><expr><name>ret2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>Reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>retry</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// try moving the database env out of the way</comment>
+            <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathDatabaseBak</name> <init>= <expr><name>pathIn</name> <operator>/</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"database.%d.bak"</literal></expr></argument>, <argument><expr><call><name>GetTime</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <try>try <block>{<block_content>
+                <expr_stmt><expr><call><name><name>fs</name><operator>::</operator><name>rename</name></name><argument_list>(<argument><expr><name>pathLogDir</name></expr></argument>, <argument><expr><name>pathDatabaseBak</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Moved old %s to %s. Retrying.\n"</literal></expr></argument>, <argument><expr><call><name><name>pathLogDir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>pathDatabaseBak</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>filesystem_error</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+                <comment type="line">// failure is ok (well, not really, but it's not worse than what we started with)</comment>
+            </block_content>}</block></catch></try>
+            <comment type="line">// try opening it again one more time</comment>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>Open</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument> <comment type="block">/* retry */</comment>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <comment type="line">// if it still fails, it probably means we can't even create the database env</comment>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>fDbEnvInit</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fMockDb</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line" format="doxygen">//! Construct an in-memory mock Berkeley environment for testing</comment>
+<constructor><name><name>BerkeleyEnvironment</name><operator>::</operator><name>BerkeleyEnvironment</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::MakeMock\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_cachesize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lg_bsize</name></name><argument_list>(<argument><expr><literal type="number">10485760</literal> <operator>*</operator> <literal type="number">4</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lg_max</name></name><argument_list>(<argument><expr><literal type="number">10485760</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lk_max_locks</name></name><argument_list>(<argument><expr><literal type="number">10000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_lk_max_objects</name></name><argument_list>(<argument><expr><literal type="number">10000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>set_flags</name></name><argument_list>(<argument><expr><name>DB_AUTO_COMMIT</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>log_set_config</name></name><argument_list>(<argument><expr><name>DB_LOG_IN_MEMORY</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>open</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>,
+                         <argument><expr><name>DB_CREATE</name> <operator>|</operator>
+                             <name>DB_INIT_LOCK</name> <operator>|</operator>
+                             <name>DB_INIT_LOG</name> <operator>|</operator>
+                             <name>DB_INIT_MPOOL</name> <operator>|</operator>
+                             <name>DB_INIT_TXN</name> <operator>|</operator>
+                             <name>DB_THREAD</name> <operator>|</operator>
+                             <name>DB_PRIVATE</name></expr></argument>,
+                         <argument><expr><name>S_IRUSR</name> <operator>|</operator> <name>S_IWUSR</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::MakeMock: Error %d opening database environment."</literal></expr></argument>, <argument><expr><name>ret</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>fDbEnvInit</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fMockDb</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name><name>BerkeleyEnvironment</name><operator>::</operator><name>VerifyResult</name></name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>Verify</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strFile</name></decl></parameter>, <parameter><decl><type><name>recoverFunc_type</name></type> <name>recoverFunc</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>out_backup_filename</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>mapFileUseCount</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>Db</name></type> <name>db</name><argument_list>(<argument><expr><call><name><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>result</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>verify</name></name><argument_list>(<argument><expr><call><name><name>strFile</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>result</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>VerifyResult</name><operator>::</operator><name>VERIFY_OK</name></name></expr>;</return></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>recoverFunc</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>VerifyResult</name><operator>::</operator><name>RECOVER_FAIL</name></name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Try to recover:</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fRecovered</name> <init>= <expr><call>(<modifier>*</modifier><name>recoverFunc</name>)<argument_list>(<argument><expr><call><name><name>fs</name><operator>::</operator><name>path</name></name><argument_list>(<argument><expr><name>strPath</name></expr></argument>)</argument_list></call> <operator>/</operator> <name>strFile</name></expr></argument>, <argument><expr><name>out_backup_filename</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <return>return <expr><operator>(</operator><ternary><condition><expr><name>fRecovered</name></expr> ?</condition><then> <expr><name><name>VerifyResult</name><operator>::</operator><name>RECOVER_OK</name></name></expr> </then><else>: <expr><name><name>VerifyResult</name><operator>::</operator><name>RECOVER_FAIL</name></name></expr></else></ternary><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>BerkeleyBatch</name><operator>::</operator><name>SafeDbt</name><operator>::</operator><name>SafeDbt</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>m_dbt</name><operator>.</operator><name>set_flags</name></name><argument_list>(<argument><expr><name>DB_DBT_MALLOC</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<constructor><name><name>BerkeleyBatch</name><operator>::</operator><name>SafeDbt</name><operator>::</operator><name>SafeDbt</name></name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>data</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_dbt</name><argument_list>(<argument><expr><name>data</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<destructor><name><name>BerkeleyBatch</name><operator>::</operator><name>SafeDbt</name><operator>::</operator><name>~SafeDbt</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>m_dbt</name><operator>.</operator><name>get_data</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">nullptr</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Clear memory, e.g. in case it was a private key</comment>
+        <expr_stmt><expr><call><name>memory_cleanse</name><argument_list>(<argument><expr><call><name><name>m_dbt</name><operator>.</operator><name>get_data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>m_dbt</name><operator>.</operator><name>get_size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// under DB_DBT_MALLOC, data is malloced by the Dbt, but must be</comment>
+        <comment type="line">// freed by the caller.</comment>
+        <comment type="line">// https://docs.oracle.com/cd/E17275_01/html/api_reference/C/dbt.html</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_dbt</name><operator>.</operator><name>get_flags</name></name><argument_list>()</argument_list></call> <operator>&amp;</operator> <name>DB_DBT_MALLOC</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>free</name><argument_list>(<argument><expr><call><name><name>m_dbt</name><operator>.</operator><name>get_data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></destructor>
+
+<function><type><specifier>const</specifier> <name>void</name><modifier>*</modifier></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>SafeDbt</name><operator>::</operator><name>get_data</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>m_dbt</name><operator>.</operator><name>get_data</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>u_int32_t</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>SafeDbt</name><operator>::</operator><name>get_size</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>m_dbt</name><operator>.</operator><name>get_size</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function type="operator"><name><name>BerkeleyBatch</name><operator>::</operator><name>SafeDbt</name><operator>::</operator><name>operator <name>Dbt</name><modifier>*</modifier></name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>&amp;</operator><name>m_dbt</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>Recover</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>file_path</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>callbackDataIn</name></decl></parameter>, <parameter><function_decl><type><name>bool</name></type> (<modifier>*</modifier><name>recoverKVcallback</name>)<parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>callbackData</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssKey</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssValue</name></decl></parameter>)</parameter_list></function_decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>newFilename</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>filename</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name></type> <name>env</name> <init>= <expr><call><name>GetWalletEnv</name><argument_list>(<argument><expr><name>file_path</name></expr></argument>, <argument><expr><name>filename</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Recovery procedure:</comment>
+    <comment type="line">// move wallet file to walletfilename.timestamp.bak</comment>
+    <comment type="line">// Call Salvage with fAggressive=true to</comment>
+    <comment type="line">// get as much data as possible.</comment>
+    <comment type="line">// Rewrite salvaged data to fresh wallet file</comment>
+    <comment type="line">// Set -rescan so any missing transactions will be</comment>
+    <comment type="line">// found.</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>now</name> <init>= <expr><call><name>GetTime</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>newFilename</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%s.%d.bak"</literal></expr></argument>, <argument><expr><name>filename</name></expr></argument>, <argument><expr><name>now</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>result</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>-&gt;</operator><name>dbrename</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><call><name><name>filename</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>,
+                                       <argument><expr><call><name><name>newFilename</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>DB_AUTO_COMMIT</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>result</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Renamed %s to %s\n"</literal></expr></argument>, <argument><expr><name>filename</name></expr></argument>, <argument><expr><name>newFilename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+    <else>else
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Failed to rename %s to %s\n"</literal></expr></argument>, <argument><expr><name>filename</name></expr></argument>, <argument><expr><name>newFilename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>BerkeleyEnvironment</name><operator>::</operator><name>KeyValPair</name></name></expr></argument>&gt;</argument_list></name></type> <name>salvagedData</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fSuccess</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>Salvage</name></name><argument_list>(<argument><expr><name>newFilename</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name>salvagedData</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>salvagedData</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Salvage(aggressive) found no records in %s.\n"</literal></expr></argument>, <argument><expr><name>newFilename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Salvage(aggressive) found %u records\n"</literal></expr></argument>, <argument><expr><call><name><name>salvagedData</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Db</name></expr></argument>&gt;</argument_list></name></type> <name>pdbCopy</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Db</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>open</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>,               <comment type="line">// Txn pointer</comment>
+                            <argument><expr><call><name><name>filename</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>,   <comment type="line">// Filename</comment>
+                            <argument><expr><literal type="string">"main"</literal></expr></argument>,             <comment type="line">// Logical db name</comment>
+                            <argument><expr><name>DB_BTREE</name></expr></argument>,           <comment type="line">// Database type</comment>
+                            <argument><expr><name>DB_CREATE</name></expr></argument>,          <comment type="line">// Flags</comment>
+                            <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Cannot create database file %s\n"</literal></expr></argument>, <argument><expr><name>filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>DbTxn</name><modifier>*</modifier></type> <name>ptxn</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>TxnBegin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name><name>BerkeleyEnvironment</name><operator>::</operator><name>KeyValPair</name></name><modifier>&amp;</modifier></type> <name>row</name> <range>: <expr><name>salvagedData</name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>recoverKVcallback</name></expr>)</condition>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssKey</name><argument_list>(<argument><expr><name><name>row</name><operator>.</operator><name>first</name></name></expr></argument>, <argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssValue</name><argument_list>(<argument><expr><name><name>row</name><operator>.</operator><name>second</name></name></expr></argument>, <argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call>(<modifier>*</modifier><name>recoverKVcallback</name>)<argument_list>(<argument><expr><name>callbackDataIn</name></expr></argument>, <argument><expr><name>ssKey</name></expr></argument>, <argument><expr><name>ssValue</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <continue>continue;</continue></block_content></block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <decl_stmt><decl><type><name>Dbt</name></type> <name>datKey</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>row</name><operator>.</operator><name>first</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><call><name><name>row</name><operator>.</operator><name>first</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>Dbt</name></type> <name>datValue</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>row</name><operator>.</operator><name>second</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><call><name><name>row</name><operator>.</operator><name>second</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>ret2</name> <init>= <expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>put</name></name><argument_list>(<argument><expr><name>ptxn</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>datKey</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>datValue</name></expr></argument>, <argument><expr><name>DB_NOOVERWRITE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>ret2</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>ptxn</name><operator>-&gt;</operator><name>commit</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><name>fSuccess</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>VerifyEnvironment</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>file_path</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>errorStr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>walletFile</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name></type> <name>env</name> <init>= <expr><call><name>GetWalletEnv</name><argument_list>(<argument><expr><name>file_path</name></expr></argument>, <argument><expr><name>walletFile</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>walletDir</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>Directory</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using BerkeleyDB version %s\n"</literal></expr></argument>, <argument><expr><call><name><name>DbEnv</name><operator>::</operator><name>version</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using wallet %s\n"</literal></expr></argument>, <argument><expr><call><name><name>file_path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>env</name><operator>-&gt;</operator><name>Open</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument> <comment type="block">/* retry */</comment>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>errorStr</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Error initializing wallet database environment %s!"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><name>walletDir</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>VerifyDatabaseFile</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>file_path</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>warnings</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>errorStr</name></decl></parameter>, <parameter><decl><type><name><name>BerkeleyEnvironment</name><operator>::</operator><name>recoverFunc_type</name></name></type> <name>recoverFunc</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>walletFile</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>BerkeleyEnvironment</name></expr></argument>&gt;</argument_list></name></type> <name>env</name> <init>= <expr><call><name>GetWalletEnv</name><argument_list>(<argument><expr><name>file_path</name></expr></argument>, <argument><expr><name>walletFile</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>walletDir</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>Directory</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>fs</name><operator>::</operator><name>exists</name></name><argument_list>(<argument><expr><name>walletDir</name> <operator>/</operator> <name>walletFile</name></expr></argument>)</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>backup_filename</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>BerkeleyEnvironment</name><operator>::</operator><name>VerifyResult</name></name></type> <name>r</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>Verify</name></name><argument_list>(<argument><expr><name>walletFile</name></expr></argument>, <argument><expr><name>recoverFunc</name></expr></argument>, <argument><expr><name>backup_filename</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>r</name> <operator>==</operator> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>VerifyResult</name><operator>::</operator><name>RECOVER_OK</name></name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name><name>warnings</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Warning: Wallet file corrupt, data salvaged!"</literal>
+                                     <literal type="string">" Original %s saved as %s in %s; if"</literal>
+                                     <literal type="string">" your balance or transactions are incorrect you should"</literal>
+                                     <literal type="string">" restore from a backup."</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>,
+                <argument><expr><name>walletFile</name></expr></argument>, <argument><expr><name>backup_filename</name></expr></argument>, <argument><expr><name>walletDir</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>r</name> <operator>==</operator> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>VerifyResult</name><operator>::</operator><name>RECOVER_FAIL</name></name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><name>errorStr</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"%s corrupt, salvage failed"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><name>walletFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// also return true if files does not exists</comment>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block">/* End of headers, beginning of key/value data */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>HEADER_END</name> <init>= <expr><literal type="string">"HEADER=END"</literal></expr></init></decl>;</decl_stmt>
+<comment type="block">/* End of key/value data */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>DATA_END</name> <init>= <expr><literal type="string">"DATA=END"</literal></expr></init></decl>;</decl_stmt>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>Salvage</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strFile</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fAggressive</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>BerkeleyEnvironment</name><operator>::</operator><name>KeyValPair</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vResult</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>mapFileUseCount</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>u_int32_t</name></type> <name>flags</name> <init>= <expr><name>DB_SALVAGE</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>fAggressive</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>flags</name> <operator>|=</operator> <name>DB_AGGRESSIVE</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>stringstream</name></name></type> <name>strDump</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>Db</name></type> <name>db</name><argument_list>(<argument><expr><call><name><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>result</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>verify</name></name><argument_list>(<argument><expr><call><name><name>strFile</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>strDump</name></expr></argument>, <argument><expr><name>flags</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>result</name> <operator>==</operator> <name>DB_VERIFY_BAD</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Salvage: Database salvage found errors, all data may not be recoverable.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fAggressive</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Salvage: Rerun with aggressive mode to ignore errors and continue.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>result</name> <operator>!=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>result</name> <operator>!=</operator> <name>DB_VERIFY_BAD</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Salvage: Database salvage failed with result %d.\n"</literal></expr></argument>, <argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Format of bdb dump is ascii lines:</comment>
+    <comment type="line">// header lines...</comment>
+    <comment type="line">// HEADER=END</comment>
+    <comment type="line">//  hexadecimal key</comment>
+    <comment type="line">//  hexadecimal value</comment>
+    <comment type="line">//  ... repeated</comment>
+    <comment type="line">// DATA=END</comment>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strLine</name></decl>;</decl_stmt>
+    <while>while <condition>(<expr><operator>!</operator><call><name><name>strDump</name><operator>.</operator><name>eof</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name>strLine</name> <operator>!=</operator> <name>HEADER_END</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>getline</name><argument_list>(<argument><expr><name>strDump</name></expr></argument>, <argument><expr><name>strLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></while> <comment type="line">// Skip past header</comment>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>keyHex</name></decl>, <decl><type ref="prev"/><name>valueHex</name></decl>;</decl_stmt>
+    <while>while <condition>(<expr><operator>!</operator><call><name><name>strDump</name><operator>.</operator><name>eof</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name>keyHex</name> <operator>!=</operator> <name>DATA_END</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>getline</name><argument_list>(<argument><expr><name>strDump</name></expr></argument>, <argument><expr><name>keyHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>keyHex</name> <operator>!=</operator> <name>DATA_END</name></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>strDump</name><operator>.</operator><name>eof</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <break>break;</break></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name>getline</name><argument_list>(<argument><expr><name>strDump</name></expr></argument>, <argument><expr><name>valueHex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>valueHex</name> <operator>==</operator> <name>DATA_END</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Salvage: WARNING: Number of keys in data does not match number of values.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>vResult</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>make_pair</name><argument_list>(<argument><expr><call><name>ParseHex</name><argument_list>(<argument><expr><name>keyHex</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>ParseHex</name><argument_list>(<argument><expr><name>valueHex</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></while>
+
+    <if_stmt><if>if <condition>(<expr><name>keyHex</name> <operator>!=</operator> <name>DATA_END</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyEnvironment::Salvage: WARNING: Unexpected end of file while reading salvage output.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><operator>(</operator><name>result</name> <operator>==</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+
+<function><type><name>void</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>CheckpointLSN</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strFile</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>txn_checkpoint</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>fMockDb</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>lsn_reset</name></name><argument_list>(<argument><expr><call><name><name>strFile</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+
+<constructor><name><name>BerkeleyBatch</name><operator>::</operator><name>BerkeleyBatch</name></name><parameter_list>(<parameter><decl><type><name>BerkeleyDatabase</name><modifier>&amp;</modifier></type> <name>database</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszMode</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fFlushOnCloseIn</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>pdb</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>, <call><name>activeTxn</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>fReadOnly</name> <operator>=</operator> <operator>(</operator><operator>!</operator><call><name>strchr</name><argument_list>(<argument><expr><name>pszMode</name></expr></argument>, <argument><expr><literal type="char">'+'</literal></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name>strchr</name><argument_list>(<argument><expr><name>pszMode</name></expr></argument>, <argument><expr><literal type="char">'w'</literal></expr></argument>)</argument_list></call><operator>)</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fFlushOnClose</name> <operator>=</operator> <name>fFlushOnCloseIn</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>env</name> <operator>=</operator> <call><name><name>database</name><operator>.</operator><name>env</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>database</name><operator>.</operator><name>IsDummy</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>strFilename</name> <init>= <expr><name><name>database</name><operator>.</operator><name>strFile</name></name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>fCreate</name> <init>= <expr><call><name>strchr</name><argument_list>(<argument><expr><name>pszMode</name></expr></argument>, <argument><expr><literal type="char">'c'</literal></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="null">nullptr</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nFlags</name> <init>= <expr><name>DB_THREAD</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>fCreate</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nFlags</name> <operator>|=</operator> <name>DB_CREATE</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>env</name><operator>-&gt;</operator><name>Open</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument> <comment type="block">/* retry */</comment>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch: Failed to open database environment."</literal></expr></argument>)</argument_list></call></expr>;</throw></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><name>pdb</name> <operator>=</operator> <call><name><name>database</name><operator>.</operator><name>m_db</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>pdb</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>int</name></type> <name>ret</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Db</name></expr></argument>&gt;</argument_list></name></type> <name>pdb_temp</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Db</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+            <decl_stmt><decl><type><name>bool</name></type> <name>fMockDb</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>IsMock</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>fMockDb</name></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>DbMpoolFile</name><modifier>*</modifier></type> <name>mpf</name> <init>= <expr><call><name><name>pdb_temp</name><operator>-&gt;</operator><name>get_mpf</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name><name>mpf</name><operator>-&gt;</operator><name>set_flags</name></name><argument_list>(<argument><expr><name>DB_MPOOL_NOFILE</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                    <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch: Failed to configure for no temp file backing for database %s"</literal></expr></argument>, <argument><expr><name>strFilename</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name><name>pdb_temp</name><operator>-&gt;</operator><name>open</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>,                             <comment type="line">// Txn pointer</comment>
+                            <argument><expr><ternary><condition><expr><name>fMockDb</name></expr> ?</condition><then> <expr><literal type="null">nullptr</literal></expr> </then><else>: <expr><call><name><name>strFilename</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr></argument>,  <comment type="line">// Filename</comment>
+                            <argument><expr><ternary><condition><expr><name>fMockDb</name></expr> ?</condition><then> <expr><call><name><name>strFilename</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr> </then><else>: <expr><literal type="string">"main"</literal></expr></else></ternary></expr></argument>,   <comment type="line">// Logical db name</comment>
+                            <argument><expr><name>DB_BTREE</name></expr></argument>,                                 <comment type="line">// Database type</comment>
+                            <argument><expr><name>nFlags</name></expr></argument>,                                   <comment type="line">// Flags</comment>
+                            <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>runtime_error</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch: Error %d, can't open database %s"</literal></expr></argument>, <argument><expr><name>ret</name></expr></argument>, <argument><expr><name>strFilename</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</throw>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Call CheckUniqueFileid on the containing BDB environment to</comment>
+            <comment type="line">// avoid BDB data consistency bugs that happen when different data</comment>
+            <comment type="line">// files in the same environment have the same fileid.</comment>
+            <comment type="line">//</comment>
+            <comment type="line">// Also call CheckUniqueFileid on all the other g_dbenvs to prevent</comment>
+            <comment type="line">// bitcoin from opening the same data file through another</comment>
+            <comment type="line">// environment when the file is referenced through equivalent but</comment>
+            <comment type="line">// not obviously identical symlinked or hard linked or bind mounted</comment>
+            <comment type="line">// paths. In the future a more relaxed check for equal inode and</comment>
+            <comment type="line">// device ids could be done instead, which would allow opening</comment>
+            <comment type="line">// different backup copies of a wallet at the same time. Maybe even</comment>
+            <comment type="line">// more ideally, an exclusive lock for accessing the database could</comment>
+            <comment type="line">// be implemented, so no equality checks are needed at all. (Newer</comment>
+            <comment type="line">// versions of BDB have an set_lk_exclusive method for this</comment>
+            <comment type="line">// purpose, but the older version we use does not.)</comment>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>env</name> <range>: <expr><name>g_dbenvs</name></expr></range></decl></init>)</control> <block>{<block_content>
+                <expr_stmt><expr><call><name>CheckUniqueFileid</name><argument_list>(<argument><expr><operator>*</operator><call><name><name>env</name><operator>.</operator><name>second</name><operator>.</operator><name>lock</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>get</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>strFilename</name></expr></argument>, <argument><expr><operator>*</operator><name>pdb_temp</name></expr></argument>, <argument><expr><name><name>this</name><operator>-&gt;</operator><name>env</name><operator>-&gt;</operator><name>m_fileids</name><index>[<expr><name>strFilename</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+
+            <expr_stmt><expr><name>pdb</name> <operator>=</operator> <call><name><name>pdb_temp</name><operator>.</operator><name>release</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>database</name><operator>.</operator><name>m_db</name><operator>.</operator><name>reset</name></name><argument_list>(<argument><expr><name>pdb</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>fCreate</name> <operator>&amp;&amp;</operator> <operator>!</operator><call><name>Exists</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><literal type="string">"version"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>bool</name></type> <name>fTmp</name> <init>= <expr><name>fReadOnly</name></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><name>fReadOnly</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>Write</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><literal type="string">"version"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>fReadOnly</name> <operator>=</operator> <name>fTmp</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><operator>++</operator><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><index>[<expr><name>strFilename</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>strFile</name> <operator>=</operator> <name>strFilename</name></expr>;</expr_stmt>
+    </block_content>}</block>
+</block_content>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>Flush</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>activeTxn</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Flush database activity from memory pool to disk log</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nMinutes</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>fReadOnly</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>nMinutes</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>env</name></expr>)</condition> <block>{<block_content> <comment type="line">// env is nullptr for dummy databases (i.e. in tests). Don't actually flush if env is nullptr so we don't segfault</comment>
+        <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>-&gt;</operator><name>txn_checkpoint</name></name><argument_list>(<argument><expr><ternary><condition><expr><name>nMinutes</name></expr> ?</condition><then> <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-dblogsize"</literal></expr></argument>, <argument><expr><name>DEFAULT_WALLET_DBLOGSIZE</name></expr></argument>)</argument_list></call> <operator>*</operator> <literal type="number">1024</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></argument>, <argument><expr><name>nMinutes</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyDatabase</name><operator>::</operator><name>IncrementUpdateCounter</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>++</operator><name>nUpdateCounter</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>Close</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>pdb</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>activeTxn</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>activeTxn</name><operator>-&gt;</operator><name>abort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>activeTxn</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>pdb</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>fFlushOnClose</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>Flush</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>--</operator><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><index>[<expr><name>strFile</name></expr>]</index></name></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>m_db_in_use</name><operator>.</operator><name>notify_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>CloseDb</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strFile</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>m_databases</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>it</name> <operator>!=</operator> <call><name><name>m_databases</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>BerkeleyDatabase</name><modifier>&amp;</modifier></type> <name>database</name> <init>= <expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>database</name><operator>.</operator><name>m_db</name></name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Close the database handle</comment>
+            <expr_stmt><expr><call><name><name>database</name><operator>.</operator><name>m_db</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>database</name><operator>.</operator><name>m_db</name><operator>.</operator><name>reset</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>ReloadDbEnv</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Make sure that no Db's are in use</comment>
+    <expr_stmt><expr><call><name>AssertLockNotHeld</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name>CCriticalSection</name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>m_db_in_use</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>lock</name></expr></argument>, <argument><expr><lambda><capture>[<argument><name>this</name></argument>]</capture><parameter_list>()</parameter_list><block>{<block_content>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>count</name> <operator>:</operator> <name>mapFileUseCount</name></expr></init>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>count</name><operator>.</operator><name>second</name></name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block></for>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>filenames</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>it</name> <range>: <expr><name>m_databases</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>filenames</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>it</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// Close the individual Db's</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>filename</name> <range>: <expr><name>filenames</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>CloseDb</name><argument_list>(<argument><expr><name>filename</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// Reset the environment</comment>
+    <expr_stmt><expr><call><name>Flush</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// This will flush and close the environment</comment>
+    <expr_stmt><expr><call><name>Reset</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Open</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>Rewrite</name></name><parameter_list>(<parameter><decl><type><name>BerkeleyDatabase</name><modifier>&amp;</modifier></type> <name>database</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszSkip</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>database</name><operator>.</operator><name>IsDummy</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>BerkeleyEnvironment</name> <modifier>*</modifier></type><name>env</name> <init>= <expr><call><name><name>database</name><operator>.</operator><name>env</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strFile</name> <init>= <expr><name><name>database</name><operator>.</operator><name>strFile</name></name></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition> <block>{<block_content>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call> <operator>||</operator> <name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><index>[<expr><name>strFile</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Flush log data to the dat file</comment>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CloseDb</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CheckpointLSN</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+                <decl_stmt><decl><type><name>bool</name></type> <name>fSuccess</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch::Rewrite: Rewriting %s...\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strFileRes</name> <init>= <expr><name>strFile</name> <operator>+</operator> <literal type="string">".rewrite"</literal></expr></init></decl>;</decl_stmt>
+                <block>{<block_content> <comment type="line">// surround usage of db with extra {}</comment>
+                    <decl_stmt><decl><type><name>BerkeleyBatch</name></type> <name>db</name><argument_list>(<argument><expr><name>database</name></expr></argument>, <argument><expr><literal type="string">"r"</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>Db</name></expr></argument>&gt;</argument_list></name></type> <name>pdbCopy</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Db</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+                    <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>open</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>,               <comment type="line">// Txn pointer</comment>
+                                            <argument><expr><call><name><name>strFileRes</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <comment type="line">// Filename</comment>
+                                            <argument><expr><literal type="string">"main"</literal></expr></argument>,             <comment type="line">// Logical db name</comment>
+                                            <argument><expr><name>DB_BTREE</name></expr></argument>,           <comment type="line">// Database type</comment>
+                                            <argument><expr><name>DB_CREATE</name></expr></argument>,          <comment type="line">// Flags</comment>
+                                            <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch::Rewrite: Can't create database file %s\n"</literal></expr></argument>, <argument><expr><name>strFileRes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                        <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+
+                    <decl_stmt><decl><type><name>Dbc</name><modifier>*</modifier></type> <name>pcursor</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>GetCursor</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>pcursor</name></expr>)</condition><block type="pseudo"><block_content>
+                        <while>while <condition>(<expr><name>fSuccess</name></expr>)</condition> <block>{<block_content>
+                            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssKey</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssValue</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                            <decl_stmt><decl><type><name>int</name></type> <name>ret1</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>ReadAtCursor</name></name><argument_list>(<argument><expr><name>pcursor</name></expr></argument>, <argument><expr><name>ssKey</name></expr></argument>, <argument><expr><name>ssValue</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                            <if_stmt><if>if <condition>(<expr><name>ret1</name> <operator>==</operator> <name>DB_NOTFOUND</name></expr>)</condition> <block>{<block_content>
+                                <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                                <break>break;</break>
+                            </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>ret1</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                                <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                                <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+                                <break>break;</break>
+                            </block_content>}</block></if></if_stmt>
+                            <if_stmt><if>if <condition>(<expr><name>pszSkip</name> <operator>&amp;&amp;</operator>
+                                <call><name>strncmp</name><argument_list>(<argument><expr><call><name><name>ssKey</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>pszSkip</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><call><name><name>ssKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>strlen</name><argument_list>(<argument><expr><name>pszSkip</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+                                <continue>continue;</continue></block_content></block></if></if_stmt>
+                            <if_stmt><if>if <condition>(<expr><call><name>strncmp</name><argument_list>(<argument><expr><call><name><name>ssKey</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">"\x07version"</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                                <comment type="line">// Update version:</comment>
+                                <expr_stmt><expr><call><name><name>ssValue</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                                <expr_stmt><expr><name>ssValue</name> <operator>&lt;&lt;</operator> <name>CLIENT_VERSION</name></expr>;</expr_stmt>
+                            </block_content>}</block></if></if_stmt>
+                            <decl_stmt><decl><type><name>Dbt</name></type> <name>datKey</name><argument_list>(<argument><expr><call><name><name>ssKey</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ssKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+                            <decl_stmt><decl><type><name>Dbt</name></type> <name>datValue</name><argument_list>(<argument><expr><call><name><name>ssValue</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ssValue</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+                            <decl_stmt><decl><type><name>int</name></type> <name>ret2</name> <init>= <expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>put</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>datKey</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>datValue</name></expr></argument>, <argument><expr><name>DB_NOOVERWRITE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                            <if_stmt><if>if <condition>(<expr><name>ret2</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+                                <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                        </block_content>}</block></while></block_content></block></if></if_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>fSuccess</name></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>db</name><operator>.</operator><name>Close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                        <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CloseDb</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                        <if_stmt><if>if <condition>(<expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                            <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                    </block_content>}</block></if> <else>else <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>pdbCopy</name><operator>-&gt;</operator><name>close</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></else></if_stmt>
+                </block_content>}</block>
+                <if_stmt><if>if <condition>(<expr><name>fSuccess</name></expr>)</condition> <block>{<block_content>
+                    <decl_stmt><decl><type><name>Db</name></type> <name>dbA</name><argument_list>(<argument><expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>dbA</name><operator>.</operator><name>remove</name></name><argument_list>(<argument><expr><call><name><name>strFile</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                        <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                    <decl_stmt><decl><type><name>Db</name></type> <name>dbB</name><argument_list>(<argument><expr><call><name><name>env</name><operator>-&gt;</operator><name>dbenv</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>dbB</name><operator>.</operator><name>rename</name></name><argument_list>(<argument><expr><call><name><name>strFileRes</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><call><name><name>strFile</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                        <expr_stmt><expr><name>fSuccess</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                </block_content>}</block></if></if_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fSuccess</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"BerkeleyBatch::Rewrite: Failed to rewrite database file %s\n"</literal></expr></argument>, <argument><expr><name>strFileRes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                <return>return <expr><name>fSuccess</name></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block>
+        <expr_stmt><expr><call><name>MilliSleep</name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+
+<function><type><name>void</name></type> <name><name>BerkeleyEnvironment</name><operator>::</operator><name>Flush</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>fShutdown</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nStart</name> <init>= <expr><call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Flush log data to the actual data file on all files that are not in use</comment>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::Flush: [%s] Flush(%s)%s\n"</literal></expr></argument>, <argument><expr><name>strPath</name></expr></argument>, <argument><expr><ternary><condition><expr><name>fShutdown</name></expr> ?</condition><then> <expr><literal type="string">"true"</literal></expr> </then><else>: <expr><literal type="string">"false"</literal></expr></else></ternary></expr></argument>, <argument><expr><ternary><condition><expr><name>fDbEnvInit</name></expr> ?</condition><then> <expr><literal type="string">""</literal></expr> </then><else>: <expr><literal type="string">" database not started"</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fDbEnvInit</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>int</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>mi</name> <init>= <expr><call><name><name>mapFileUseCount</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>mi</name> <operator>!=</operator> <call><name><name>mapFileUseCount</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strFile</name> <init>= <expr><name><operator>(</operator><operator>*</operator><name>mi</name><operator>)</operator><operator>.</operator><name>first</name></name></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>nRefCount</name> <init>= <expr><name><operator>(</operator><operator>*</operator><name>mi</name><operator>)</operator><operator>.</operator><name>second</name></name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::Flush: Flushing %s (refcount = %d)...\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>, <argument><expr><name>nRefCount</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>nRefCount</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Move log data to the dat file</comment>
+                <expr_stmt><expr><call><name>CloseDb</name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::Flush: %s checkpoint\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>txn_checkpoint</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::Flush: %s detach\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fMockDb</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>lsn_reset</name></name><argument_list>(<argument><expr><call><name><name>strFile</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::Flush: %s closed\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>mapFileUseCount</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>mi</name><operator>++</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><name>mi</name><operator>++</operator></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        </block_content>}</block></while>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"BerkeleyEnvironment::Flush: Flush(%s)%s took %15dms\n"</literal></expr></argument>, <argument><expr><ternary><condition><expr><name>fShutdown</name></expr> ?</condition><then> <expr><literal type="string">"true"</literal></expr> </then><else>: <expr><literal type="string">"false"</literal></expr></else></ternary></expr></argument>, <argument><expr><ternary><condition><expr><name>fDbEnvInit</name></expr> ?</condition><then> <expr><literal type="string">""</literal></expr> </then><else>: <expr><literal type="string">" database not started"</literal></expr></else></ternary></expr></argument>, <argument><expr><call><name>GetTimeMillis</name><argument_list>()</argument_list></call> <operator>-</operator> <name>nStart</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>fShutdown</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>char</name><modifier>*</modifier><modifier>*</modifier></type> <name>listp</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>mapFileUseCount</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>dbenv</name><operator>-&gt;</operator><name>log_archive</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>listp</name></expr></argument>, <argument><expr><name>DB_ARCH_REMOVE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>Close</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fMockDb</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name><name>fs</name><operator>::</operator><name>remove_all</name></name><argument_list>(<argument><expr><call><name><name>fs</name><operator>::</operator><name>path</name></name><argument_list>(<argument><expr><name>strPath</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="string">"database"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyBatch</name><operator>::</operator><name>PeriodicFlush</name></name><parameter_list>(<parameter><decl><type><name>BerkeleyDatabase</name><modifier>&amp;</modifier></type> <name>database</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>database</name><operator>.</operator><name>IsDummy</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ret</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>BerkeleyEnvironment</name> <modifier>*</modifier></type><name>env</name> <init>= <expr><call><name><name>database</name><operator>.</operator><name>env</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strFile</name> <init>= <expr><name><name>database</name><operator>.</operator><name>strFile</name></name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>TRY_LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>, <argument><expr><name>lockDb</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>lockDb</name></expr>)</condition>
+    <block>{<block_content>
+        <comment type="line">// Don't do this if any databases are in use</comment>
+        <decl_stmt><decl><type><name>int</name></type> <name>nRefCount</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>int</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>mit</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>mit</name> <operator>!=</operator> <call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><name>nRefCount</name> <operator>+=</operator> <name><operator>(</operator><operator>*</operator><name>mit</name><operator>)</operator><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>mit</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+
+        <if_stmt><if>if <condition>(<expr><name>nRefCount</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>interruption_point</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>int</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>mi</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>mi</name> <operator>!=</operator> <call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"Flushing %s\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <decl_stmt><decl><type><name>int64_t</name></type> <name>nStart</name> <init>= <expr><call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+                <comment type="line">// Flush wallet file so it's self contained</comment>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CloseDb</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CheckpointLSN</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>mi</name><operator>++</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"Flushed %s %dms\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>, <argument><expr><call><name>GetTimeMillis</name><argument_list>()</argument_list></call> <operator>-</operator> <name>nStart</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>ret</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyDatabase</name><operator>::</operator><name>Rewrite</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszSkip</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>BerkeleyBatch</name><operator>::</operator><name>Rewrite</name></name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>, <argument><expr><name>pszSkip</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>BerkeleyDatabase</name><operator>::</operator><name>Backup</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strDest</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name>IsDummy</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition>
+    <block>{<block_content>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call> <operator>||</operator> <name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><index>[<expr><name>strFile</name></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <comment type="line">// Flush log data to the dat file</comment>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CloseDb</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>CheckpointLSN</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>mapFileUseCount</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+                <comment type="line">// Copy wallet file</comment>
+                <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathSrc</name> <init>= <expr><call><name><name>env</name><operator>-&gt;</operator><name>Directory</name></name><argument_list>()</argument_list></call> <operator>/</operator> <name>strFile</name></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>pathDest</name><argument_list>(<argument><expr><name>strDest</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><call><name><name>fs</name><operator>::</operator><name>is_directory</name></name><argument_list>(<argument><expr><name>pathDest</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><name>pathDest</name> <operator>/=</operator> <name>strFile</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+                <try>try <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><call><name><name>fs</name><operator>::</operator><name>equivalent</name></name><argument_list>(<argument><expr><name>pathSrc</name></expr></argument>, <argument><expr><name>pathDest</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"cannot backup to wallet source file %s\n"</literal></expr></argument>, <argument><expr><call><name><name>pathDest</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+                    </block_content>}</block></if></if_stmt>
+
+                    <expr_stmt><expr><call><name><name>fs</name><operator>::</operator><name>copy_file</name></name><argument_list>(<argument><expr><name>pathSrc</name></expr></argument>, <argument><expr><name>pathDest</name></expr></argument>, <argument><expr><name><name>fs</name><operator>::</operator><name>copy_option</name><operator>::</operator><name>overwrite_if_exists</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"copied %s to %s\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>, <argument><expr><call><name><name>pathDest</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+                </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>filesystem_error</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"error copying %s to %s - %s\n"</literal></expr></argument>, <argument><expr><name>strFile</name></expr></argument>, <argument><expr><call><name><name>pathDest</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>fsbridge</name><operator>::</operator><name>get_filesystem_error_message</name></name><argument_list>(<argument><expr><name>e</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+                </block_content>}</block></catch></try>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block>
+        <expr_stmt><expr><call><name>MilliSleep</name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyDatabase</name><operator>::</operator><name>Flush</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>shutdown</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsDummy</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>Flush</name></name><argument_list>(<argument><expr><name>shutdown</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>shutdown</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_db</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>g_dbenvs</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><call><name><name>env</name><operator>-&gt;</operator><name>Directory</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>env</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <comment type="line">// TODO: To avoid g_dbenvs.erase erasing the environment prematurely after the</comment>
+            <comment type="line">// first database shutdown when multiple databases are open in the same</comment>
+            <comment type="line">// environment, should replace raw database `env` pointers with shared or weak</comment>
+            <comment type="line">// pointers, or else separate the database and environment shutdowns so</comment>
+            <comment type="line">// environments can be shut down after databases.</comment>
+            <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>m_fileids</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>strFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>BerkeleyDatabase</name><operator>::</operator><name>ReloadDbEnv</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsDummy</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>env</name><operator>-&gt;</operator><name>ReloadDbEnv</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+</unit>

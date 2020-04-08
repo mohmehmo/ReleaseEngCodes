@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/cuckoocache_tests.cpp"><comment type="line">// Copyright (c) 2012-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cuckoocache.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/sigcache.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;thread&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** Test Suite for CuckooCache
+ *
+ *  1. All tests should have a deterministic result (using insecure rand
+ *  with deterministic seeds)
+ *  2. Some test methods are templated to allow for easier testing
+ *  against new versions / comparing
+ *  3. Results should be treated as a regression test, i.e., did the behavior
+ *  change significantly from what was expected. This can be OK, depending on
+ *  the nature of the change, but requires updating the tests to reflect the new
+ *  expected behavior. For example improving the hit rate may cause some tests
+ *  using BOOST_CHECK_CLOSE to fail.
+ *
+ */</comment>
+<expr_stmt><expr><call><name>BOOST_AUTO_TEST_SUITE</name><argument_list>(<argument><expr><name>cuckoocache_tests</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<comment type="block">/* Test that no values not inserted into the cache are read out of it.
+ *
+ * There are no repeats in the first 200000 insecure_GetRandHash calls
+ */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_cuckoocache_no_fakes</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>SeedInsecureRand</name><argument_list>(<argument><expr><name><name>SeedRand</name><operator>::</operator><name>ZEROS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>CuckooCache</name><operator>::</operator><name>cache</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>SignatureCacheHasher</name></expr></argument>&gt;</argument_list></name></type> <name>cc</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>megabytes</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>cc</name><operator>.</operator><name>setup_bytes</name></name><argument_list>(<argument><expr><name>megabytes</name> <operator>&lt;&lt;</operator> <literal type="number">20</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <literal type="number">100000</literal></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>cc</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name>InsecureRand256</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <literal type="number">100000</literal></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>cc</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><call><name>InsecureRand256</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** This helper returns the hit rate when megabytes*load worth of entries are
+ * inserted into a megabytes sized cache
+ */</comment>
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Cache</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>double</name></type> <name>test_cache</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>megabytes</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>load</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>SeedInsecureRand</name><argument_list>(<argument><expr><name><name>SeedRand</name><operator>::</operator><name>ZEROS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>hashes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Cache</name></type> <name>set</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>bytes</name> <init>= <expr><name>megabytes</name> <operator>*</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">20</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>setup_bytes</name></name><argument_list>(<argument><expr><name>bytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>n_insert</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>load</name> <operator>*</operator> <operator>(</operator><name>bytes</name> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint256</name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hashes</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>ptr</name> <init>= <expr><operator>(</operator><name>uint32_t</name><operator>*</operator><operator>)</operator><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><operator>*</operator><operator>(</operator><name>ptr</name><operator>++</operator><operator>)</operator> <operator>=</operator> <call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block></for>
+    <comment type="block" format="doxygen">/** We make a copy of the hashes because future optimizations of the
+     * cuckoocache may overwrite the inserted element, so the test is
+     * "future proofed".
+     */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>hashes_insert_copy</name> <init>= <expr><name>hashes</name></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Do the insert */</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>h</name> <range>: <expr><name>hashes_insert_copy</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>h</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <comment type="block" format="doxygen">/** Count the hits */</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>h</name> <range>: <expr><name>hashes</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name>h</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate</name> <init>= <expr><operator>(</operator><operator>(</operator><name>double</name><operator>)</operator><name>count</name><operator>)</operator> <operator>/</operator> <operator>(</operator><operator>(</operator><name>double</name><operator>)</operator><name>n_insert</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <return>return <expr><name>hit_rate</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** The normalized hit rate for a given load.
+ *
+ * The semantics are a little confusing, so please see the below
+ * explanation.
+ *
+ * Examples:
+ *
+ * 1. at load 0.5, we expect a perfect hit rate, so we multiply by
+ * 1.0
+ * 2. at load 2.0, we expect to see half the entries, so a perfect hit rate
+ * would be 0.5. Therefore, if we see a hit rate of 0.4, 0.4*2.0 = 0.8 is the
+ * normalized hit rate.
+ *
+ * This is basically the right semantics, but has a bit of a glitch depending on
+ * how you measure around load 1.0 as after load 1.0 your normalized hit rate
+ * becomes effectively perfect, ignoring freshness.
+ */</comment>
+<function><type><specifier>static</specifier> <name>double</name></type> <name>normalize_hit_rate</name><parameter_list>(<parameter><decl><type><name>double</name></type> <name>hits</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>load</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name>hits</name> <operator>*</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>load</name></expr></argument>, <argument><expr><literal type="number">1.0</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Check the hit rate on loads ranging from 0.1 to 1.6 */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>cuckoocache_hit_rate_ok</argument>)</argument_list></macro>
+<block>{<block_content>
+    <comment type="block" format="doxygen">/** Arbitrarily selected Hit Rate threshold that happens to work for this test
+     * as a lower bound on performance.
+     */</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>HitRateThresh</name> <init>= <expr><literal type="number">0.98</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>megabytes</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>double</name></type> <name>load</name> <init>= <expr><literal type="number">0.1</literal></expr></init></decl>;</init> <condition><expr><name>load</name> <operator>&lt;</operator> <literal type="number">2</literal></expr>;</condition> <incr><expr><name>load</name> <operator>*=</operator> <literal type="number">2</literal></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>double</name></type> <name>hits</name> <init>= <expr><call><name><name>test_cache</name><argument_list type="generic">&lt;<argument><expr><name><name>CuckooCache</name><operator>::</operator><name>cache</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>SignatureCacheHasher</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>megabytes</name></expr></argument>, <argument><expr><name>load</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>normalize_hit_rate</name><argument_list>(<argument><expr><name>hits</name></expr></argument>, <argument><expr><name>load</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <name>HitRateThresh</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block>
+
+
+<comment type="block" format="doxygen">/** This helper checks that erased elements are preferentially inserted onto and
+ * that the hit rate of "fresher" keys is reasonable*/</comment>
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Cache</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>void</name></type> <name>test_cache_erase</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>megabytes</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>double</name></type> <name>load</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SeedInsecureRand</name><argument_list>(<argument><expr><name><name>SeedRand</name><operator>::</operator><name>ZEROS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>hashes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Cache</name></type> <name>set</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>bytes</name> <init>= <expr><name>megabytes</name> <operator>*</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">20</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>setup_bytes</name></name><argument_list>(<argument><expr><name>bytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>n_insert</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>load</name> <operator>*</operator> <operator>(</operator><name>bytes</name> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint256</name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hashes</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>ptr</name> <init>= <expr><operator>(</operator><name>uint32_t</name><operator>*</operator><operator>)</operator><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><operator>*</operator><operator>(</operator><name>ptr</name><operator>++</operator><operator>)</operator> <operator>=</operator> <call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block></for>
+    <comment type="block" format="doxygen">/** We make a copy of the hashes because future optimizations of the
+     * cuckoocache may overwrite the inserted element, so the test is
+     * "future proofed".
+     */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>hashes_insert_copy</name> <init>= <expr><name>hashes</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Insert the first half */</comment>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name><name>hashes_insert_copy</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <comment type="block" format="doxygen">/** Erase the first quarter */</comment>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">4</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <comment type="block" format="doxygen">/** Insert the second half */</comment>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name><name>hashes_insert_copy</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <comment type="block" format="doxygen">/** elements that we marked as erased but are still there */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count_erased_but_contained</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** elements that we did not erase but are older */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count_stale</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** elements that were most recently inserted */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count_fresh</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">4</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count_erased_but_contained</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">4</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count_stale</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count_fresh</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate_erased_but_contained</name> <init>= <expr><call><name>double</name><argument_list>(<argument><expr><name>count_erased_but_contained</name></expr></argument>)</argument_list></call> <operator>/</operator> <operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">4.0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate_stale</name> <init>= <expr><call><name>double</name><argument_list>(<argument><expr><name>count_stale</name></expr></argument>)</argument_list></call> <operator>/</operator> <operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">4.0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate_fresh</name> <init>= <expr><call><name>double</name><argument_list>(<argument><expr><name>count_fresh</name></expr></argument>)</argument_list></call> <operator>/</operator> <operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">2.0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Check that our hit_rate_fresh is perfect</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><name>hit_rate_fresh</name></expr></argument>, <argument><expr><literal type="number">1.0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Check that we have a more than 2x better hit rate on stale elements than</comment>
+    <comment type="line">// erased elements.</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>hit_rate_stale</name> <operator>&gt;</operator> <literal type="number">2</literal> <operator>*</operator> <name>hit_rate_erased_but_contained</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>cuckoocache_erase_ok</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>megabytes</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>test_cache_erase</name><argument_list type="generic">&lt;<argument><expr><name><name>CuckooCache</name><operator>::</operator><name>cache</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>SignatureCacheHasher</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>megabytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Cache</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>void</name></type> <name>test_cache_erase_parallel</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>megabytes</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>double</name></type> <name>load</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SeedInsecureRand</name><argument_list>(<argument><expr><name><name>SeedRand</name><operator>::</operator><name>ZEROS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>hashes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Cache</name></type> <name>set</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>bytes</name> <init>= <expr><name>megabytes</name> <operator>*</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">20</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>setup_bytes</name></name><argument_list>(<argument><expr><name>bytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>n_insert</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>load</name> <operator>*</operator> <operator>(</operator><name>bytes</name> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint256</name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>hashes</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>ptr</name> <init>= <expr><operator>(</operator><name>uint32_t</name><operator>*</operator><operator>)</operator><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><operator>*</operator><operator>(</operator><name>ptr</name><operator>++</operator><operator>)</operator> <operator>=</operator> <call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block></for>
+    <comment type="block" format="doxygen">/** We make a copy of the hashes because future optimizations of the
+     * cuckoocache may overwrite the inserted element, so the test is
+     * "future proofed".
+     */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>hashes_insert_copy</name> <init>= <expr><name>hashes</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>shared_mutex</name></name></type> <name>mtx</name></decl>;</decl_stmt>
+
+    <block>{<block_content>
+        <comment type="block" format="doxygen">/** Grab lock to make sure we release inserts */</comment>
+        <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>shared_mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><argument_list>(<argument><expr><name>mtx</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <comment type="block" format="doxygen">/** Insert the first half */</comment>
+        <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name><name>hashes_insert_copy</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    </block_content>}</block>
+
+    <comment type="block" format="doxygen">/** Spin up 3 threads to run contains with erase.
+     */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>thread</name></name></expr></argument>&gt;</argument_list></name></type> <name>threads</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Erase the first quarter */</comment>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <literal type="number">3</literal></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <comment type="block" format="doxygen">/** Each thread is emplaced with x copy-by-value
+        */</comment>
+        <expr_stmt><expr><call><name><name>threads</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>, <argument><name>x</name></argument>]</capture> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>shared_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>shared_mutex</name></name></expr></argument>&gt;</argument_list></name> <name>l</name>(<name>mtx</name></type></decl>);</decl_stmt>
+            <decl_stmt><decl><type><name>size_t</name> <name>ntodo</name> = (<name>n_insert</name>/4</type></decl>)/3;</decl_stmt>
+            <decl_stmt><decl><type><name>size_t</name> <name>start</name> = <name>ntodo</name><modifier>*</modifier><name>x</name></type></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>size_t</name> <name>end</name> = <name>ntodo</name><modifier>*</modifier>(<name>x</name>+1</type></decl>);</decl_stmt>
+            <for>for <control>(<init><decl><type><name>uint32_t</name> <name>i</name> = <name>start</name></type></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>end</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+                <decl_stmt><decl><type><name>bool</name> <name>contains</name> = <name><name>set</name><operator>.</operator><name>contains</name></name>(<name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></type></decl>, true);</decl_stmt>
+                <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>contains</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+        </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <comment type="block" format="doxygen">/** Wait for all threads to finish
+     */</comment>
+    <for>for <control>(<init><decl><type><name><name>std</name><operator>::</operator><name>thread</name></name><modifier>&amp;</modifier></type> <name>t</name> <range>: <expr><name>threads</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>t</name><operator>.</operator><name>join</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <comment type="block" format="doxygen">/** Grab lock to make sure we observe erases */</comment>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>boost</name><operator>::</operator><name>shared_mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><argument_list>(<argument><expr><name>mtx</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Insert the second half */</comment>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name><name>hashes_insert_copy</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <comment type="block" format="doxygen">/** elements that we marked erased but that are still there */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count_erased_but_contained</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** elements that we did not erase but are older */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count_stale</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** elements that were most recently inserted */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count_fresh</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">4</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count_erased_but_contained</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">4</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count_stale</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>count_fresh</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><name><name>hashes</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate_erased_but_contained</name> <init>= <expr><call><name>double</name><argument_list>(<argument><expr><name>count_erased_but_contained</name></expr></argument>)</argument_list></call> <operator>/</operator> <operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">4.0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate_stale</name> <init>= <expr><call><name>double</name><argument_list>(<argument><expr><name>count_stale</name></expr></argument>)</argument_list></call> <operator>/</operator> <operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">4.0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>hit_rate_fresh</name> <init>= <expr><call><name>double</name><argument_list>(<argument><expr><name>count_fresh</name></expr></argument>)</argument_list></call> <operator>/</operator> <operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call> <operator>/</operator> <literal type="number">2.0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Check that our hit_rate_fresh is perfect</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><name>hit_rate_fresh</name></expr></argument>, <argument><expr><literal type="number">1.0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Check that we have a more than 2x better hit rate on stale elements than</comment>
+    <comment type="line">// erased elements.</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>hit_rate_stale</name> <operator>&gt;</operator> <literal type="number">2</literal> <operator>*</operator> <name>hit_rate_erased_but_contained</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>cuckoocache_erase_parallel_ok</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>megabytes</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>test_cache_erase_parallel</name><argument_list type="generic">&lt;<argument><expr><name><name>CuckooCache</name><operator>::</operator><name>cache</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>SignatureCacheHasher</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>megabytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Cache</name></parameter>&gt;</parameter_list></template>
+<type><specifier>static</specifier> <name>void</name></type> <name>test_cache_generations</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// This test checks that for a simulation of network activity, the fresh hit</comment>
+    <comment type="line">// rate is never below 99%, and the number of times that it is worse than</comment>
+    <comment type="line">// 99.9% are less than 1% of the time.</comment>
+    <decl_stmt><decl><type><name>double</name></type> <name>min_hit_rate</name> <init>= <expr><literal type="number">0.99</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>tight_hit_rate</name> <init>= <expr><literal type="number">0.999</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>max_rate_less_than_tight_hit_rate</name> <init>= <expr><literal type="number">0.01</literal></expr></init></decl>;</decl_stmt>
+    <comment type="line">// A cache that meets this specification is therefore shown to have a hit</comment>
+    <comment type="line">// rate of at least tight_hit_rate * (1 - max_rate_less_than_tight_hit_rate) +</comment>
+    <comment type="line">// min_hit_rate*max_rate_less_than_tight_hit_rate = 0.999*99%+0.99*1% == 99.89%</comment>
+    <comment type="line">// hit rate with low variance.</comment>
+
+    <comment type="line">// We use deterministic values, but this test has also passed on many</comment>
+    <comment type="line">// iterations with non-deterministic values, so it isn't "overfit" to the</comment>
+    <comment type="line">// specific entropy in FastRandomContext(true) and implementation of the</comment>
+    <comment type="line">// cache.</comment>
+    <expr_stmt><expr><call><name>SeedInsecureRand</name><argument_list>(<argument><expr><name><name>SeedRand</name><operator>::</operator><name>ZEROS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// block_activity models a chunk of network activity. n_insert elements are</comment>
+    <comment type="line">// added to the cache. The first and last n/4 are stored for removal later</comment>
+    <comment type="line">// and the middle n/2 are not stored. This models a network which uses half</comment>
+    <comment type="line">// the signatures of recently (since the last block) added transactions</comment>
+    <comment type="line">// immediately and never uses the other half.</comment>
+    <struct>struct <name>block_activity</name> <block>{<public type="default">
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>reads</name></decl>;</decl_stmt>
+        <constructor><name>block_activity</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>n_insert</name></decl></parameter>, <parameter><decl><type><name>Cache</name><modifier>&amp;</modifier></type> <name>c</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>reads</name><argument_list>()</argument_list></call>
+        </member_init_list><block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>inserts</name></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>inserts</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>n_insert</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>reads</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>n_insert</name> <operator>/</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+                <decl_stmt><decl><type><name>uint32_t</name><modifier>*</modifier></type> <name>ptr</name> <init>= <expr><operator>(</operator><name>uint32_t</name><operator>*</operator><operator>)</operator><name><name>inserts</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>begin</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+                <for>for <control>(<init><decl><type><name>uint8_t</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control><block type="pseudo"><block_content>
+                    <expr_stmt><expr><operator>*</operator><operator>(</operator><name>ptr</name><operator>++</operator><operator>)</operator> <operator>=</operator> <call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            </block_content>}</block></for>
+            <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name> <operator>/</operator> <literal type="number">4</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>reads</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>inserts</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><name>n_insert</name> <operator>-</operator> <operator>(</operator><name>n_insert</name> <operator>/</operator> <literal type="number">4</literal><operator>)</operator></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>n_insert</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>reads</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>inserts</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>h</name> <range>: <expr><name>inserts</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>c</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>h</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+        </block_content>}</block></constructor>
+    </public>}</block>;</struct>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>BLOCK_SIZE</name> <init>= <expr><literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+    <comment type="line">// We expect window size 60 to perform reasonably given that each epoch</comment>
+    <comment type="line">// stores 45% of the cache size (~472k).</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>WINDOW_SIZE</name> <init>= <expr><literal type="number">60</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>POP_AMOUNT</name> <init>= <expr><operator>(</operator><name>BLOCK_SIZE</name> <operator>/</operator> <name>WINDOW_SIZE</name><operator>)</operator> <operator>/</operator> <literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>double</name></type> <name>load</name> <init>= <expr><literal type="number">10</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>megabytes</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>bytes</name> <init>= <expr><name>megabytes</name> <operator>*</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">20</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint32_t</name></type> <name>n_insert</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>load</name> <operator>*</operator> <operator>(</operator><name>bytes</name> <operator>/</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>uint256</name></expr></argument>)</argument_list></sizeof><operator>)</operator></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>block_activity</name></expr></argument>&gt;</argument_list></name></type> <name>hashes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Cache</name></type> <name>set</name><argument_list>{}</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>set</name><operator>.</operator><name>setup_bytes</name></name><argument_list>(<argument><expr><name>bytes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>hashes</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>n_insert</name> <operator>/</operator> <name>BLOCK_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>deque</name><argument_list type="generic">&lt;<argument><expr><name>block_activity</name></expr></argument>&gt;</argument_list></name></type> <name>last_few</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>out_of_tight_tolerance</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>total</name> <init>= <expr><name>n_insert</name> <operator>/</operator> <name>BLOCK_SIZE</name></expr></init></decl>;</decl_stmt>
+    <comment type="line">// we use the deque last_few to model a sliding window of blocks. at each</comment>
+    <comment type="line">// step, each of the last WINDOW_SIZE block_activities checks the cache for</comment>
+    <comment type="line">// POP_AMOUNT of the hashes that they inserted, and marks these erased.</comment>
+    <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>total</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name><name>last_few</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>WINDOW_SIZE</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>last_few</name><operator>.</operator><name>pop_front</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>last_few</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>BLOCK_SIZE</name></expr></argument>, <argument><expr><name>set</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>uint32_t</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <for>for <control>(<init><expr><name>auto</name><operator>&amp;</operator> <name>act</name> <operator>:</operator> <name>last_few</name></expr></init>)</control><block type="pseudo"><block_content>
+            <for>for <control>(<init><decl><type><name>uint32_t</name></type> <name>k</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>k</name> <operator>&lt;</operator> <name>POP_AMOUNT</name></expr>;</condition> <incr><expr><operator>++</operator><name>k</name></expr></incr>)</control> <block>{<block_content>
+                <expr_stmt><expr><name>count</name> <operator>+=</operator> <call><name><name>set</name><operator>.</operator><name>contains</name></name><argument_list>(<argument><expr><call><name><name>act</name><operator>.</operator><name>reads</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>act</name><operator>.</operator><name>reads</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for></block_content></block></for>
+        <comment type="line">// We use last_few.size() rather than WINDOW_SIZE for the correct</comment>
+        <comment type="line">// behavior on the first WINDOW_SIZE iterations where the deque is not</comment>
+        <comment type="line">// full yet.</comment>
+        <decl_stmt><decl><type><name>double</name></type> <name>hit</name> <init>= <expr><operator>(</operator><call><name>double</name><argument_list>(<argument><expr><name>count</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>/</operator> <operator>(</operator><call><name><name>last_few</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>*</operator> <name>POP_AMOUNT</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Loose Check that hit rate is above min_hit_rate</comment>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>hit</name> <operator>&gt;</operator> <name>min_hit_rate</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Tighter check, count number of times we are less than tight_hit_rate</comment>
+        <comment type="line">// (and implicitly, greater than min_hit_rate)</comment>
+        <expr_stmt><expr><name>out_of_tight_tolerance</name> <operator>+=</operator> <name>hit</name> <operator>&lt;</operator> <name>tight_hit_rate</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// Check that being out of tolerance happens less than</comment>
+    <comment type="line">// max_rate_less_than_tight_hit_rate of the time</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>double</name><argument_list>(<argument><expr><name>out_of_tight_tolerance</name></expr></argument>)</argument_list></call> <operator>/</operator> <call><name>double</name><argument_list>(<argument><expr><name>total</name></expr></argument>)</argument_list></call> <operator>&lt;</operator> <name>max_rate_less_than_tight_hit_rate</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>cuckoocache_generations</argument>)</argument_list></macro>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>test_cache_generations</name><argument_list type="generic">&lt;<argument><expr><name><name>CuckooCache</name><operator>::</operator><name>cache</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>SignatureCacheHasher</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<expr_stmt><expr><call><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</unit>

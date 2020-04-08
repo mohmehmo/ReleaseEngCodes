@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/dbwrapper.cpp"><comment type="line">// Copyright (c) 2012-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;dbwrapper.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;leveldb/cache.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;leveldb/env.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;leveldb/filter_policy.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memenv.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+
+<class>class <name>CBitcoinLevelDBLogger</name> <super_list>: <super><specifier>public</specifier> <name><name>leveldb</name><operator>::</operator><name>Logger</name></name></super></super_list> <block>{<private type="default">
+</private><public>public:
+    <comment type="line">// This code is adapted from posix_logger.h, which is why it is using vsprintf.</comment>
+    <comment type="line">// Please do not do this in normal code</comment>
+    <function><type><name>void</name></type> <name>Logv</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type> <name>format</name></decl></parameter>, <parameter><decl><type><name>va_list</name></type> <name>ap</name></decl></parameter>)</parameter_list> <specifier>override</specifier> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>LogAcceptCategory</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LEVELDB</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <return>return;</return>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name>char</name></type> <name><name>buffer</name><index>[<expr><literal type="number">500</literal></expr>]</index></name></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>int</name></type> <name>iter</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>iter</name> <operator>&lt;</operator> <literal type="number">2</literal></expr>;</condition> <incr><expr><name>iter</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                <decl_stmt><decl><type><name>char</name><modifier>*</modifier></type> <name>base</name></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>int</name></type> <name>bufsize</name></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><name>iter</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>bufsize</name> <operator>=</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></sizeof></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>base</name> <operator>=</operator> <name>buffer</name></expr>;</expr_stmt>
+                </block_content>}</block></if>
+                <else>else <block>{<block_content>
+                    <expr_stmt><expr><name>bufsize</name> <operator>=</operator> <literal type="number">30000</literal></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>base</name> <operator>=</operator> <operator>new</operator> <name><name>char</name><index>[<expr><name>bufsize</name></expr>]</index></name></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+                <decl_stmt><decl><type><name>char</name><modifier>*</modifier></type> <name>p</name> <init>= <expr><name>base</name></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>char</name><modifier>*</modifier></type> <name>limit</name> <init>= <expr><name>base</name> <operator>+</operator> <name>bufsize</name></expr></init></decl>;</decl_stmt>
+
+                <comment type="line">// Print the message</comment>
+                <if_stmt><if>if <condition>(<expr><name>p</name> <operator>&lt;</operator> <name>limit</name></expr>)</condition> <block>{<block_content>
+                    <decl_stmt><decl><type><name>va_list</name></type> <name>backup_ap</name></decl>;</decl_stmt>
+                    <expr_stmt><expr><call><name>va_copy</name><argument_list>(<argument><expr><name>backup_ap</name></expr></argument>, <argument><expr><name>ap</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <comment type="line">// Do not use vsnprintf elsewhere in bitcoin source code, see above.</comment>
+                    <expr_stmt><expr><name>p</name> <operator>+=</operator> <call><name>vsnprintf</name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><name>limit</name> <operator>-</operator> <name>p</name></expr></argument>, <argument><expr><name>format</name></expr></argument>, <argument><expr><name>backup_ap</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name>va_end</name><argument_list>(<argument><expr><name>backup_ap</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+
+                <comment type="line">// Truncate to available space if necessary</comment>
+                <if_stmt><if>if <condition>(<expr><name>p</name> <operator>&gt;=</operator> <name>limit</name></expr>)</condition> <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><name>iter</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <continue>continue;</continue>       <comment type="line">// Try again with larger buffer</comment>
+                    </block_content>}</block></if>
+                    <else>else <block>{<block_content>
+                        <expr_stmt><expr><name>p</name> <operator>=</operator> <name>limit</name> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+                    </block_content>}</block></else></if_stmt>
+                </block_content>}</block></if></if_stmt>
+
+                <comment type="line">// Add newline if necessary</comment>
+                <if_stmt><if>if <condition>(<expr><name>p</name> <operator>==</operator> <name>base</name> <operator>||</operator> <name><name>p</name><index>[<expr><operator>-</operator><literal type="number">1</literal></expr>]</index></name> <operator>!=</operator> <literal type="char">'\n'</literal></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><operator>*</operator><name>p</name><operator>++</operator> <operator>=</operator> <literal type="char">'\n'</literal></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+
+                <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>p</name> <operator>&lt;=</operator> <name>limit</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>base</name><index>[<expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>bufsize</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name>p</name> <operator>-</operator> <name>base</name><operator>)</operator></expr></argument>)</argument_list></call></expr>]</index></name> <operator>=</operator> <literal type="char">'\0'</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"leveldb: %s"</literal></expr></argument>, <argument><expr><name>base</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>  <comment type="block">/* Continued */</comment>
+                <if_stmt><if>if <condition>(<expr><name>base</name> <operator>!=</operator> <name>buffer</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><operator>delete</operator><index>[]</index> <name>base</name></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+                <break>break;</break>
+            </block_content>}</block></for>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SetMaxOpenFiles</name><parameter_list>(<parameter><decl><type><name><name>leveldb</name><operator>::</operator><name>Options</name></name> <modifier>*</modifier></type><name>options</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <comment type="line">// On most platforms the default setting of max_open_files (which is 1000)</comment>
+    <comment type="line">// is optimal. On Windows using a large file count is OK because the handles</comment>
+    <comment type="line">// do not interfere with select() loops. On 64-bit Unix hosts this value is</comment>
+    <comment type="line">// also OK, because up to that amount LevelDB will use an mmap</comment>
+    <comment type="line">// implementation that does not use extra file descriptors (the fds are</comment>
+    <comment type="line">// closed after being mmap'ed).</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// Increasing the value beyond the default is dangerous because LevelDB will</comment>
+    <comment type="line">// fall back to a non-mmap implementation when the file count is too large.</comment>
+    <comment type="line">// On 32-bit Unix host we should decrease the value because the handles use</comment>
+    <comment type="line">// up real fds, and we want to avoid fd exhaustion issues.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// See PR #12495 for further discussion.</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>default_open_files</name> <init>= <expr><name><name>options</name><operator>-&gt;</operator><name>max_open_files</name></name></expr></init></decl>;</decl_stmt>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>WIN32</name></cpp:ifndef>
+    <if_stmt><if>if <condition>(<expr><sizeof>sizeof<argument_list>(<argument><expr><name>void</name><operator>*</operator></expr></argument>)</argument_list></sizeof> <operator>&lt;</operator> <literal type="number">8</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>options</name><operator>-&gt;</operator><name>max_open_files</name></name> <operator>=</operator> <literal type="number">64</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LEVELDB</name></name></expr></argument>, <argument><expr><literal type="string">"LevelDB using max_open_files=%d (default=%d)\n"</literal></expr></argument>,
+             <argument><expr><name><name>options</name><operator>-&gt;</operator><name>max_open_files</name></name></expr></argument>, <argument><expr><name>default_open_files</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name><name>leveldb</name><operator>::</operator><name>Options</name></name></type> <name>GetOptions</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>nCacheSize</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>leveldb</name><operator>::</operator><name>Options</name></name></type> <name>options</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>block_cache</name></name> <operator>=</operator> <call><name><name>leveldb</name><operator>::</operator><name>NewLRUCache</name></name><argument_list>(<argument><expr><name>nCacheSize</name> <operator>/</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>write_buffer_size</name></name> <operator>=</operator> <name>nCacheSize</name> <operator>/</operator> <literal type="number">4</literal></expr>;</expr_stmt> <comment type="line">// up to two write buffers may be held in memory simultaneously</comment>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>filter_policy</name></name> <operator>=</operator> <call><name><name>leveldb</name><operator>::</operator><name>NewBloomFilterPolicy</name></name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>compression</name></name> <operator>=</operator> <name><name>leveldb</name><operator>::</operator><name>kNoCompression</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>info_log</name></name> <operator>=</operator> <operator>new</operator> <call><name>CBitcoinLevelDBLogger</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>leveldb</name><operator>::</operator><name>kMajorVersion</name></name> <operator>&gt;</operator> <literal type="number">1</literal> <operator>||</operator> <operator>(</operator><name><name>leveldb</name><operator>::</operator><name>kMajorVersion</name></name> <operator>==</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <name><name>leveldb</name><operator>::</operator><name>kMinorVersion</name></name> <operator>&gt;=</operator> <literal type="number">16</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+        <comment type="line">// LevelDB versions before 1.16 consider short writes to be corruption. Only trigger error</comment>
+        <comment type="line">// on corruption in later versions.</comment>
+        <expr_stmt><expr><name><name>options</name><operator>.</operator><name>paranoid_checks</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>SetMaxOpenFiles</name><argument_list>(<argument><expr><operator>&amp;</operator><name>options</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>options</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>CDBWrapper</name><operator>::</operator><name>CDBWrapper</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>path</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>nCacheSize</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fMemory</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fWipe</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>obfuscate</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_name</name><argument_list>{<argument><expr><call><name><name>path</name><operator>.</operator><name>stem</name></name><argument_list>()</argument_list></call><operator>.</operator><macro><name>string</name><argument_list>()</argument_list></macro></expr></argument>}</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>penv</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>readoptions</name><operator>.</operator><name>verify_checksums</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>iteroptions</name><operator>.</operator><name>verify_checksums</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>iteroptions</name><operator>.</operator><name>fill_cache</name></name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>syncoptions</name><operator>.</operator><name>sync</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>options</name> <operator>=</operator> <call><name>GetOptions</name><argument_list>(<argument><expr><name>nCacheSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>create_if_missing</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>fMemory</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>penv</name> <operator>=</operator> <call><name><name>leveldb</name><operator>::</operator><name>NewMemEnv</name></name><argument_list>(<argument><expr><call><name><name>leveldb</name><operator>::</operator><name>Env</name><operator>::</operator><name>Default</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>options</name><operator>.</operator><name>env</name></name> <operator>=</operator> <name>penv</name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>fWipe</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Wiping LevelDB in %s\n"</literal></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name><name>leveldb</name><operator>::</operator><name>Status</name></name></type> <name>result</name> <init>= <expr><call><name><name>leveldb</name><operator>::</operator><name>DestroyDB</name></name><argument_list>(<argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>options</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>dbwrapper_private</name><operator>::</operator><name>HandleError</name></name><argument_list>(<argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>TryCreateDirectories</name><argument_list>(<argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Opening LevelDB in %s\n"</literal></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <decl_stmt><decl><type><name><name>leveldb</name><operator>::</operator><name>Status</name></name></type> <name>status</name> <init>= <expr><call><name><name>leveldb</name><operator>::</operator><name>DB</name><operator>::</operator><name>Open</name></name><argument_list>(<argument><expr><name>options</name></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>&amp;</operator><name>pdb</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dbwrapper_private</name><operator>::</operator><name>HandleError</name></name><argument_list>(<argument><expr><name>status</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Opened LevelDB successfully\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-forcecompactdb"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Starting database compaction of %s\n"</literal></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>pdb</name><operator>-&gt;</operator><name>CompactRange</name></name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Finished database compaction of %s\n"</literal></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// The base-case obfuscation key, which is a noop.</comment>
+    <expr_stmt><expr><name>obfuscate_key</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>OBFUSCATE_KEY_NUM_BYTES</name></expr></argument>, <argument><expr><literal type="char">'\000'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>key_exists</name> <init>= <expr><call><name>Read</name><argument_list>(<argument><expr><name>OBFUSCATE_KEY_KEY</name></expr></argument>, <argument><expr><name>obfuscate_key</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>key_exists</name> <operator>&amp;&amp;</operator> <name>obfuscate</name> <operator>&amp;&amp;</operator> <call><name>IsEmpty</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Initialize non-degenerate obfuscation if it won't upset</comment>
+        <comment type="line">// existing, non-obfuscated data.</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>new_key</name> <init>= <expr><call><name>CreateObfuscateKey</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <comment type="line">// Write `new_key` so we don't obfuscate the key with itself</comment>
+        <expr_stmt><expr><call><name>Write</name><argument_list>(<argument><expr><name>OBFUSCATE_KEY_KEY</name></expr></argument>, <argument><expr><name>new_key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>obfuscate_key</name> <operator>=</operator> <name>new_key</name></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Wrote new obfuscate key for %s: %s\n"</literal></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><name>obfuscate_key</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Using obfuscation key for %s: %s\n"</literal></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><name>obfuscate_key</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>CDBWrapper</name><operator>::</operator><name>~CDBWrapper</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>delete</operator> <name>pdb</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>pdb</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>delete</operator> <name><name>options</name><operator>.</operator><name>filter_policy</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>filter_policy</name></name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>delete</operator> <name><name>options</name><operator>.</operator><name>info_log</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>info_log</name></name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>delete</operator> <name><name>options</name><operator>.</operator><name>block_cache</name></name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>block_cache</name></name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>delete</operator> <name>penv</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>env</name></name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+
+<function><type><name>bool</name></type> <name><name>CDBWrapper</name><operator>::</operator><name>WriteBatch</name></name><parameter_list>(<parameter><decl><type><name>CDBBatch</name><modifier>&amp;</modifier></type> <name>batch</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fSync</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>bool</name></type> <name>log_memory</name> <init>= <expr><call><name>LogAcceptCategory</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LEVELDB</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>double</name></type> <name>mem_before</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>log_memory</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>mem_before</name> <operator>=</operator> <call><name>DynamicMemoryUsage</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="number">1024.0</literal> <operator>/</operator> <literal type="number">1024</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>leveldb</name><operator>::</operator><name>Status</name></name></type> <name>status</name> <init>= <expr><call><name><name>pdb</name><operator>-&gt;</operator><name>Write</name></name><argument_list>(<argument><expr><ternary><condition><expr><name>fSync</name></expr> ?</condition><then> <expr><name>syncoptions</name></expr> </then><else>: <expr><name>writeoptions</name></expr></else></ternary></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>batch</name><operator>.</operator><name>batch</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dbwrapper_private</name><operator>::</operator><name>HandleError</name></name><argument_list>(<argument><expr><name>status</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>log_memory</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>double</name></type> <name>mem_after</name> <init>= <expr><call><name>DynamicMemoryUsage</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="number">1024.0</literal> <operator>/</operator> <literal type="number">1024</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LEVELDB</name></name></expr></argument>, <argument><expr><literal type="string">"WriteBatch memory usage: db=%s, before=%.1fMiB, after=%.1fMiB\n"</literal></expr></argument>,
+                 <argument><expr><name>m_name</name></expr></argument>, <argument><expr><name>mem_before</name></expr></argument>, <argument><expr><name>mem_after</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>size_t</name></type> <name><name>CDBWrapper</name><operator>::</operator><name>DynamicMemoryUsage</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>memory</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pdb</name><operator>-&gt;</operator><name>GetProperty</name></name><argument_list>(<argument><expr><literal type="string">"leveldb.approximate-memory-usage"</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>memory</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>LEVELDB</name></name></expr></argument>, <argument><expr><literal type="string">"Failed to get approximate-memory-usage property\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>stoul</name><argument_list>(<argument><expr><name>memory</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// Prefixed with null character to avoid collisions with other keys</comment>
+<comment type="line">//</comment>
+<comment type="line">// We must use a string constructor which specifies length so that we copy</comment>
+<comment type="line">// past the null-terminator.</comment>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name><name>CDBWrapper</name><operator>::</operator><name>OBFUSCATE_KEY_KEY</name></name><argument_list>(<argument><expr><literal type="string">"\000obfuscate_key"</literal></expr></argument>, <argument><expr><literal type="number">14</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name><name>CDBWrapper</name><operator>::</operator><name>OBFUSCATE_KEY_NUM_BYTES</name></name> <init>= <expr><literal type="number">8</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Returns a string (consisting of 8 random bytes) suitable for use as an
+ * obfuscating XOR key.
+ */</comment>
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name><name>CDBWrapper</name><operator>::</operator><name>CreateObfuscateKey</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>buff</name><index>[<expr><name>OBFUSCATE_KEY_NUM_BYTES</name></expr>]</index></name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>GetRandBytes</name><argument_list>(<argument><expr><name>buff</name></expr></argument>, <argument><expr><name>OBFUSCATE_KEY_NUM_BYTES</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>buff</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>buff</name><index>[<expr><name>OBFUSCATE_KEY_NUM_BYTES</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</return>
+
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CDBWrapper</name><operator>::</operator><name>IsEmpty</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CDBIterator</name></expr></argument>&gt;</argument_list></name></type> <name>it</name><argument_list>(<argument><expr><call><name>NewIterator</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>it</name><operator>-&gt;</operator><name>SeekToFirst</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><operator>!</operator><operator>(</operator><call><name><name>it</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<destructor><name><name>CDBIterator</name><operator>::</operator><name>~CDBIterator</name></name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><operator>delete</operator> <name>piter</name></expr>;</expr_stmt> </block_content>}</block></destructor>
+<function><type><name>bool</name></type> <name><name>CDBIterator</name><operator>::</operator><name>Valid</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content> <return>return <expr><call><name><name>piter</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></function>
+<function><type><name>void</name></type> <name><name>CDBIterator</name><operator>::</operator><name>SeekToFirst</name></name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>piter</name><operator>-&gt;</operator><name>SeekToFirst</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+<function><type><name>void</name></type> <name><name>CDBIterator</name><operator>::</operator><name>Next</name></name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>piter</name><operator>-&gt;</operator><name>Next</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+<namespace>namespace <name>dbwrapper_private</name> <block>{
+
+<function><type><name>void</name></type> <name>HandleError</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>leveldb</name><operator>::</operator><name>Status</name></name><modifier>&amp;</modifier></type> <name>status</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>status</name><operator>.</operator><name>ok</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>errmsg</name> <init>= <expr><literal type="string">"Fatal LevelDB error: "</literal> <operator>+</operator> <call><name><name>status</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>errmsg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"You can use -debug=leveldb to get more complete diagnostic messages\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <throw>throw <expr><call><name>dbwrapper_error</name><argument_list>(<argument><expr><name>errmsg</name></expr></argument>)</argument_list></call></expr>;</throw>
+</block_content>}</block></function>
+
+<function><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>GetObfuscateKey</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CDBWrapper</name> <modifier>&amp;</modifier></type><name>w</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name><name>w</name><operator>.</operator><name>obfuscate_key</name></name></expr>;</return>
+</block_content>}</block></function>
+
+}</block></namespace> <comment type="line">// namespace dbwrapper_private</comment>
+</unit>

@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/secp256k1/src/ecdsa_impl.h"><comment type="block" format="doxygen">/**********************************************************************
+ * Copyright (c) 2013-2015 Pieter Wuille                              *
+ * Distributed under the MIT software license, see the accompanying   *
+ * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
+ **********************************************************************/</comment>
+
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SECP256K1_ECDSA_IMPL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SECP256K1_ECDSA_IMPL_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"scalar.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"field.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"group.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"ecmult.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"ecmult_gen.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"ecdsa.h"</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** Group order for secp256k1 defined as 'n' in "Standards for Efficient Cryptography" (SEC2) 2.7.1
+ *  sage: for t in xrange(1023, -1, -1):
+ *     ..   p = 2**256 - 2**32 - t
+ *     ..   if p.is_prime():
+ *     ..     print '%x'%p
+ *     ..     break
+ *   'fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f'
+ *  sage: a = 0
+ *  sage: b = 7
+ *  sage: F = FiniteField (p)
+ *  sage: '%x' % (EllipticCurve ([F (a), F (b)]).order())
+ *   'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141'
+ */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>secp256k1_fe</name></type> <name>secp256k1_ecdsa_const_order_as_fe</name> <init>= <expr><call><name>SECP256K1_FE_CONST</name><argument_list>(
+    <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFFUL</literal></expr></argument>, <argument><expr><literal type="number">0xFFFFFFFEUL</literal></expr></argument>,
+    <argument><expr><literal type="number">0xBAAEDCE6UL</literal></expr></argument>, <argument><expr><literal type="number">0xAF48A03BUL</literal></expr></argument>, <argument><expr><literal type="number">0xBFD25E8CUL</literal></expr></argument>, <argument><expr><literal type="number">0xD0364141UL</literal></expr></argument>
+)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Difference between field and order, values 'p' and 'n' values defined in
+ *  "Standards for Efficient Cryptography" (SEC2) 2.7.1.
+ *  sage: p = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+ *  sage: a = 0
+ *  sage: b = 7
+ *  sage: F = FiniteField (p)
+ *  sage: '%x' % (p - EllipticCurve ([F (a), F (b)]).order())
+ *   '14551231950b75fc4402da1722fc9baee'
+ */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>secp256k1_fe</name></type> <name>secp256k1_ecdsa_const_p_minus_order</name> <init>= <expr><call><name>SECP256K1_FE_CONST</name><argument_list>(
+    <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0x45512319UL</literal></expr></argument>, <argument><expr><literal type="number">0x50B75FC4UL</literal></expr></argument>, <argument><expr><literal type="number">0x402DA172UL</literal></expr></argument>, <argument><expr><literal type="number">0x2FC9BAEEUL</literal></expr></argument>
+)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_der_read_len</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier><modifier>*</modifier></type><name>sigp</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>sigend</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>lenleft</name></decl>, <decl><type ref="prev"/><name>b1</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>ret</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>*</operator><name>sigp</name> <operator>&gt;=</operator> <name>sigend</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>b1</name> <operator>=</operator> <operator>*</operator><operator>(</operator><operator>(</operator><operator>*</operator><name>sigp</name><operator>)</operator><operator>++</operator><operator>)</operator></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>b1</name> <operator>==</operator> <literal type="number">0xFF</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* X.690-0207 8.1.3.5.c the value 0xFF shall not be used. */</comment>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>b1</name> <operator>&amp;</operator> <literal type="number">0x80</literal><operator>)</operator> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* X.690-0207 8.1.3.4 short form length octets */</comment>
+        <return>return <expr><name>b1</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>b1</name> <operator>==</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Indefinite length is not allowed in DER. */</comment>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <comment type="block">/* X.690-207 8.1.3.5 long form length octets */</comment>
+    <expr_stmt><expr><name>lenleft</name> <operator>=</operator> <name>b1</name> <operator>&amp;</operator> <literal type="number">0x7F</literal></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>lenleft</name> <operator>&gt;</operator> <name>sigend</name> <operator>-</operator> <operator>*</operator><name>sigp</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>*</operator><operator>*</operator><name>sigp</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Not the shortest possible length encoding. */</comment>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>size_t</name><operator>)</operator><name>lenleft</name> <operator>&gt;</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>size_t</name></expr></argument>)</argument_list></sizeof></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* The resulting length would exceed the range of a size_t, so
+         * certainly longer than the passed array size.
+         */</comment>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <while>while <condition>(<expr><name>lenleft</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <operator>(</operator><name>ret</name> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>|</operator> <operator>*</operator><operator>*</operator><name>sigp</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>+</operator> <name>lenleft</name> <operator>&gt;</operator> <operator>(</operator><name>size_t</name><operator>)</operator><operator>(</operator><name>sigend</name> <operator>-</operator> <operator>*</operator><name>sigp</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <comment type="block">/* Result exceeds the length of the passed array. */</comment>
+            <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><operator>(</operator><operator>*</operator><name>sigp</name><operator>)</operator><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>lenleft</name><operator>--</operator></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>&lt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Not the shortest possible length encoding. */</comment>
+        <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_der_parse_integer</name><parameter_list>(<parameter><decl><type><name>secp256k1_scalar</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier><modifier>*</modifier></type><name>sig</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>sigend</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>overflow</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>ra</name><index>[<expr><literal type="number">32</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>rlen</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>*</operator><name>sig</name> <operator>==</operator> <name>sigend</name> <operator>||</operator> <operator>*</operator><operator>*</operator><name>sig</name> <operator>!=</operator> <literal type="number">0x02</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Not a primitive integer (X.690-0207 8.3.1). */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><operator>(</operator><operator>*</operator><name>sig</name><operator>)</operator><operator>++</operator></expr>;</expr_stmt>
+    <expr_stmt><expr><name>rlen</name> <operator>=</operator> <call><name>secp256k1_der_read_len</name><argument_list>(<argument><expr><name>sig</name></expr></argument>, <argument><expr><name>sigend</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>rlen</name> <operator>&lt;=</operator> <literal type="number">0</literal> <operator>||</operator> <operator>(</operator><operator>*</operator><name>sig</name><operator>)</operator> <operator>+</operator> <name>rlen</name> <operator>&gt;</operator> <name>sigend</name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Exceeds bounds or not at least length 1 (X.690-0207 8.3.1).  */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>*</operator><operator>*</operator><name>sig</name> <operator>==</operator> <literal type="number">0x00</literal> <operator>&amp;&amp;</operator> <name>rlen</name> <operator>&gt;</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <operator>(</operator><operator>(</operator><operator>(</operator><operator>*</operator><name>sig</name><operator>)</operator><index>[<expr><literal type="number">1</literal></expr>]</index><operator>)</operator> <operator>&amp;</operator> <literal type="number">0x80</literal><operator>)</operator> <operator>==</operator> <literal type="number">0x00</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Excessive 0x00 padding. */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>*</operator><operator>*</operator><name>sig</name> <operator>==</operator> <literal type="number">0xFF</literal> <operator>&amp;&amp;</operator> <name>rlen</name> <operator>&gt;</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <operator>(</operator><operator>(</operator><operator>(</operator><operator>*</operator><name>sig</name><operator>)</operator><index>[<expr><literal type="number">1</literal></expr>]</index><operator>)</operator> <operator>&amp;</operator> <literal type="number">0x80</literal><operator>)</operator> <operator>==</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Excessive 0xFF padding. */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>*</operator><operator>*</operator><name>sig</name> <operator>&amp;</operator> <literal type="number">0x80</literal><operator>)</operator> <operator>==</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Negative. */</comment>
+        <expr_stmt><expr><name>overflow</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <while>while <condition>(<expr><name>rlen</name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>*</operator><operator>*</operator><name>sig</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Skip leading zero bytes */</comment>
+        <expr_stmt><expr><name>rlen</name><operator>--</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>(</operator><operator>*</operator><name>sig</name><operator>)</operator><operator>++</operator></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <if_stmt><if>if <condition>(<expr><name>rlen</name> <operator>&gt;</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>overflow</name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>overflow</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>ra</name> <operator>+</operator> <literal type="number">32</literal> <operator>-</operator> <name>rlen</name></expr></argument>, <argument><expr><operator>*</operator><name>sig</name></expr></argument>, <argument><expr><name>rlen</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_scalar_set_b32</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>ra</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>overflow</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>overflow</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_scalar_set_int</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><operator>(</operator><operator>*</operator><name>sig</name><operator>)</operator> <operator>+=</operator> <name>rlen</name></expr>;</expr_stmt>
+    <return>return <expr><literal type="number">1</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_ecdsa_sig_parse</name><parameter_list>(<parameter><decl><type><name>secp256k1_scalar</name> <modifier>*</modifier></type><name>rr</name></decl></parameter>, <parameter><decl><type><name>secp256k1_scalar</name> <modifier>*</modifier></type><name>rs</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>sig</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>sigend</name> <init>= <expr><name>sig</name> <operator>+</operator> <name>size</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>rlen</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>sig</name> <operator>==</operator> <name>sigend</name> <operator>||</operator> <operator>*</operator><operator>(</operator><name>sig</name><operator>++</operator><operator>)</operator> <operator>!=</operator> <literal type="number">0x30</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* The encoding doesn't start with a constructed sequence (X.690-0207 8.9.1). */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>rlen</name> <operator>=</operator> <call><name>secp256k1_der_read_len</name><argument_list>(<argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><name>sigend</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>rlen</name> <argument_list type="generic">&lt; <argument><expr><literal type="number">0</literal> <operator>||</operator> <name>sig</name> <operator>+</operator> <name>rlen</name></expr></argument> &gt;</argument_list></name> <name>sigend</name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Tuple exceeds bounds */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>sig</name> <operator>+</operator> <name>rlen</name> <operator>!=</operator> <name>sigend</name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Garbage after tuple. */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_der_parse_integer</name><argument_list>(<argument><expr><name>rr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><name>sigend</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>secp256k1_der_parse_integer</name><argument_list>(<argument><expr><name>rs</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sig</name></expr></argument>, <argument><expr><name>sigend</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>sig</name> <operator>!=</operator> <name>sigend</name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* Trailing garbage inside tuple. */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="number">1</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_ecdsa_sig_serialize</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>sig</name></decl></parameter>, <parameter><decl><type><name>size_t</name> <modifier>*</modifier></type><name>size</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name><modifier>*</modifier></type> <name>ar</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name><modifier>*</modifier></type> <name>as</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>r</name><index>[<expr><literal type="number">33</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init></decl>, <decl><type ref="prev"/><name><name>s</name><index>[<expr><literal type="number">33</literal></expr>]</index></name> <init>= <expr><block>{<expr><literal type="number">0</literal></expr>}</block></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name> <modifier>*</modifier></type><name>rp</name> <init>= <expr><name>r</name></expr></init></decl>, <decl><type ref="prev"><modifier>*</modifier></type><name>sp</name> <init>= <expr><name>s</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>lenR</name> <init>= <expr><literal type="number">33</literal></expr></init></decl>, <decl><type ref="prev"/><name>lenS</name> <init>= <expr><literal type="number">33</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_get_b32</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>, <argument><expr><name>ar</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_get_b32</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>s</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>, <argument><expr><name>as</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <while>while <condition>(<expr><name>lenR</name> <operator>&gt;</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <name><name>rp</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>rp</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>&lt;</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content> <expr_stmt><expr><name>lenR</name><operator>--</operator></expr>;</expr_stmt> <expr_stmt><expr><name>rp</name><operator>++</operator></expr>;</expr_stmt> </block_content>}</block></while>
+    <while>while <condition>(<expr><name>lenS</name> <operator>&gt;</operator> <literal type="number">1</literal> <operator>&amp;&amp;</operator> <name><name>sp</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name><name>sp</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>&lt;</operator> <literal type="number">0x80</literal></expr>)</condition> <block>{<block_content> <expr_stmt><expr><name>lenS</name><operator>--</operator></expr>;</expr_stmt> <expr_stmt><expr><name>sp</name><operator>++</operator></expr>;</expr_stmt> </block_content>}</block></while>
+    <if_stmt><if>if <condition>(<expr><operator>*</operator><name>size</name> <operator>&lt;</operator> <literal type="number">6</literal><operator>+</operator><name>lenS</name><operator>+</operator><name>lenR</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><operator>*</operator><name>size</name> <operator>=</operator> <literal type="number">6</literal> <operator>+</operator> <name>lenS</name> <operator>+</operator> <name>lenR</name></expr>;</expr_stmt>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><operator>*</operator><name>size</name> <operator>=</operator> <literal type="number">6</literal> <operator>+</operator> <name>lenS</name> <operator>+</operator> <name>lenR</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>sig</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0x30</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>sig</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <literal type="number">4</literal> <operator>+</operator> <name>lenS</name> <operator>+</operator> <name>lenR</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>sig</name><index>[<expr><literal type="number">2</literal></expr>]</index></name> <operator>=</operator> <literal type="number">0x02</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>sig</name><index>[<expr><literal type="number">3</literal></expr>]</index></name> <operator>=</operator> <name>lenR</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>sig</name><operator>+</operator><literal type="number">4</literal></expr></argument>, <argument><expr><name>rp</name></expr></argument>, <argument><expr><name>lenR</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>sig</name><index>[<expr><literal type="number">4</literal><operator>+</operator><name>lenR</name></expr>]</index></name> <operator>=</operator> <literal type="number">0x02</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>sig</name><index>[<expr><literal type="number">5</literal><operator>+</operator><name>lenR</name></expr>]</index></name> <operator>=</operator> <name>lenS</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>sig</name><operator>+</operator><name>lenR</name><operator>+</operator><literal type="number">6</literal></expr></argument>, <argument><expr><name>sp</name></expr></argument>, <argument><expr><name>lenS</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="number">1</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_ecdsa_sig_verify</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>secp256k1_ecmult_context</name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>sigr</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>sigs</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_ge</name> <modifier>*</modifier></type><name>pubkey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>message</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>c</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_scalar</name></type> <name>sn</name></decl>, <decl><type ref="prev"/><name>u1</name></decl>, <decl><type ref="prev"/><name>u2</name></decl>;</decl_stmt>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><operator>!</operator><call><name>defined</name><argument_list>(<argument><expr><name>EXHAUSTIVE_TEST_ORDER</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>xr</name></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <decl_stmt><decl><type><name>secp256k1_gej</name></type> <name>pubkeyj</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_gej</name></type> <name>pr</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_scalar_is_zero</name><argument_list>(<argument><expr><name>sigr</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>secp256k1_scalar_is_zero</name><argument_list>(<argument><expr><name>sigs</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>secp256k1_scalar_inverse_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>sn</name></expr></argument>, <argument><expr><name>sigs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>u1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sn</name></expr></argument>, <argument><expr><name>message</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>u2</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sn</name></expr></argument>, <argument><expr><name>sigr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_gej_set_ge</name><argument_list>(<argument><expr><operator>&amp;</operator><name>pubkeyj</name></expr></argument>, <argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ecmult</name><argument_list>(<argument><expr><name>ctx</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pubkeyj</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>u2</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>u1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_gej_is_infinity</name><argument_list>(<argument><expr><operator>&amp;</operator><name>pr</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>EXHAUSTIVE_TEST_ORDER</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_scalar</name></type> <name>computed_r</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_ge</name></type> <name>pr_ge</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ge_set_gej</name><argument_list>(<argument><expr><operator>&amp;</operator><name>pr_ge</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_normalize</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>pr_ge</name><operator>.</operator><name>x</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_get_b32</name><argument_list>(<argument><expr><name>c</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>pr_ge</name><operator>.</operator><name>x</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_set_b32</name><argument_list>(<argument><expr><operator>&amp;</operator><name>computed_r</name></expr></argument>, <argument><expr><name>c</name></expr></argument>, <argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name>secp256k1_scalar_eq</name><argument_list>(<argument><expr><name>sigr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>computed_r</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <expr_stmt><expr><call><name>secp256k1_scalar_get_b32</name><argument_list>(<argument><expr><name>c</name></expr></argument>, <argument><expr><name>sigr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_set_b32</name><argument_list>(<argument><expr><operator>&amp;</operator><name>xr</name></expr></argument>, <argument><expr><name>c</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** We now have the recomputed R point in pr, and its claimed x coordinate (modulo n)
+     *  in xr. Naively, we would extract the x coordinate from pr (requiring a inversion modulo p),
+     *  compute the remainder modulo n, and compare it to xr. However:
+     *
+     *        xr == X(pr) mod n
+     *    &lt;=&gt; exists h. (xr + h * n &lt; p &amp;&amp; xr + h * n == X(pr))
+     *    [Since 2 * n &gt; p, h can only be 0 or 1]
+     *    &lt;=&gt; (xr == X(pr)) || (xr + n &lt; p &amp;&amp; xr + n == X(pr))
+     *    [In Jacobian coordinates, X(pr) is pr.x / pr.z^2 mod p]
+     *    &lt;=&gt; (xr == pr.x / pr.z^2 mod p) || (xr + n &lt; p &amp;&amp; xr + n == pr.x / pr.z^2 mod p)
+     *    [Multiplying both sides of the equations by pr.z^2 mod p]
+     *    &lt;=&gt; (xr * pr.z^2 mod p == pr.x) || (xr + n &lt; p &amp;&amp; (xr + n) * pr.z^2 mod p == pr.x)
+     *
+     *  Thus, we can avoid the inversion, but we have to check both cases separately.
+     *  secp256k1_gej_eq_x implements the (xr * pr.z^2 mod p == pr.x) test.
+     */</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_gej_eq_x_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>xr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pr</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* xr * pr.z^2 mod p == pr.x, so the signature is valid. */</comment>
+        <return>return <expr><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_fe_cmp_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>xr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>secp256k1_ecdsa_const_p_minus_order</name></expr></argument>)</argument_list></call> <operator>&gt;=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* xr + n &gt;= p, so we can skip testing the second case. */</comment>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_add</name><argument_list>(<argument><expr><operator>&amp;</operator><name>xr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>secp256k1_ecdsa_const_order_as_fe</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_gej_eq_x_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>xr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>pr</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* (xr + n) * pr.z^2 mod p == pr.x, so the signature is valid. */</comment>
+        <return>return <expr><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="number">0</literal></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_ecdsa_sig_sign</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>secp256k1_ecmult_gen_context</name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name>secp256k1_scalar</name> <modifier>*</modifier></type><name>sigr</name></decl></parameter>, <parameter><decl><type><name>secp256k1_scalar</name> <modifier>*</modifier></type><name>sigs</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>seckey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>message</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>nonce</name></decl></parameter>, <parameter><decl><type><name>int</name> <modifier>*</modifier></type><name>recid</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>b</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_gej</name></type> <name>rp</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_ge</name></type> <name>r</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_scalar</name></type> <name>n</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>overflow</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>secp256k1_ecmult_gen</name><argument_list>(<argument><expr><name>ctx</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>rp</name></expr></argument>, <argument><expr><name>nonce</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ge_set_gej</name><argument_list>(<argument><expr><operator>&amp;</operator><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>rp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_normalize</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><operator>.</operator><name>x</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_normalize</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><operator>.</operator><name>y</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_fe_get_b32</name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>r</name><operator>.</operator><name>x</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_set_b32</name><argument_list>(<argument><expr><name>sigr</name></expr></argument>, <argument><expr><name>b</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>overflow</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* These two conditions should be checked before calling */</comment>
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name>secp256k1_scalar_is_zero</name><argument_list>(<argument><expr><name>sigr</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>overflow</name> <operator>==</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>recid</name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* The overflow condition is cryptographically unreachable as hitting it requires finding the discrete log
+         * of some P where P.x &gt;= order, and only 1 in about 2^127 points meet this criteria.
+         */</comment>
+        <expr_stmt><expr><operator>*</operator><name>recid</name> <operator>=</operator> <operator>(</operator><ternary><condition><expr><name>overflow</name></expr> ?</condition><then> <expr><literal type="number">2</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary><operator>)</operator> <operator>|</operator> <operator>(</operator><ternary><condition><expr><call><name>secp256k1_fe_is_odd</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><operator>.</operator><name>y</name></name></expr></argument>)</argument_list></call></expr> ?</condition><then> <expr><literal type="number">1</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><name>sigr</name></expr></argument>, <argument><expr><name>seckey</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_add</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>n</name></expr></argument>, <argument><expr><name>message</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_inverse</name><argument_list>(<argument><expr><name>sigs</name></expr></argument>, <argument><expr><name>nonce</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_mul</name><argument_list>(<argument><expr><name>sigs</name></expr></argument>, <argument><expr><name>sigs</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_clear</name><argument_list>(<argument><expr><operator>&amp;</operator><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_gej_clear</name><argument_list>(<argument><expr><operator>&amp;</operator><name>rp</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ge_clear</name><argument_list>(<argument><expr><operator>&amp;</operator><name>r</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_scalar_is_zero</name><argument_list>(<argument><expr><name>sigs</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>secp256k1_scalar_is_high</name><argument_list>(<argument><expr><name>sigs</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_scalar_negate</name><argument_list>(<argument><expr><name>sigs</name></expr></argument>, <argument><expr><name>sigs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>recid</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><operator>*</operator><name>recid</name> <operator>^=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="number">1</literal></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* SECP256K1_ECDSA_IMPL_H */</comment>
+</unit>

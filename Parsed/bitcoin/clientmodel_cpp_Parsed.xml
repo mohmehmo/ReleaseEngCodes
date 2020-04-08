@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/clientmodel.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/clientmodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/bantablemodel.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiconstants.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiutil.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/peertablemodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;clientversion.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/handler.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/node.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;net.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netbase.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QDebug&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QThread&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QTimer&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>int64_t</name></type> <name>nLastHeaderTipUpdateNotification</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name>int64_t</name></type> <name>nLastBlockTipUpdateNotification</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<constructor><name><name>ClientModel</name><operator>::</operator><name>ClientModel</name></name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Node</name></name><modifier>&amp;</modifier></type> <name>node</name></decl></parameter>, <parameter><decl><type><name>OptionsModel</name> <modifier>*</modifier></type><name>_optionsModel</name></decl></parameter>, <parameter><decl><type><name>QObject</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QObject</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>,
+    <call><name>m_node</name><argument_list>(<argument><expr><name>node</name></expr></argument>)</argument_list></call>,
+    <call><name>optionsModel</name><argument_list>(<argument><expr><name>_optionsModel</name></expr></argument>)</argument_list></call>,
+    <call><name>peerTableModel</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>,
+    <call><name>banTableModel</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>,
+    <call><name>m_thread</name><argument_list>(<argument><expr><operator>new</operator> <call><name>QThread</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>cachedBestHeaderHeight</name> <operator>=</operator> <operator>-</operator><literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>cachedBestHeaderTime</name> <operator>=</operator> <operator>-</operator><literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>peerTableModel</name> <operator>=</operator> <operator>new</operator> <call><name>PeerTableModel</name><argument_list>(<argument><expr><name>m_node</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>banTableModel</name> <operator>=</operator> <operator>new</operator> <call><name>BanTableModel</name><argument_list>(<argument><expr><name>m_node</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>QTimer</name><modifier>*</modifier></type> <name>timer</name> <init>= <expr><operator>new</operator> <name>QTimer</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>setInterval</name></name><argument_list>(<argument><expr><name>MODEL_UPDATE_DELAY</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>timer</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QTimer</name><operator>::</operator><name>timeout</name></name></expr></argument>, <argument><expr><lambda><capture>[<argument><name>this</name></argument>]</capture> <block>{<block_content>
+        <comment type="line">// no locking required at this point</comment>
+        <comment type="line">// the following calls will acquire the required lock</comment>
+        <decl_stmt><decl><type><name>Q_EMIT</name> <name>mempoolSizeChanged</name>(<name><name>m_node</name><operator>.</operator><name>getMempoolSize</name></name>(</type></decl>)<operator>,</operator> m_node.getMempoolDynamicUsage(</decl_stmt>)</block_content></block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>bytesChanged</name><argument_list>(<argument><expr><call><name><name>m_node</name><operator>.</operator><name>getTotalBytesRecv</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>m_node</name><operator>.</operator><name>getTotalBytesSent</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    </block_content>}</block></constructor>)<empty_stmt>;</empty_stmt>
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>m_thread</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QThread</name><operator>::</operator><name>finished</name></name></expr></argument>, <argument><expr><name>timer</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QObject</name><operator>::</operator><name>deleteLater</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>m_thread</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QThread</name><operator>::</operator><name>started</name></name></expr></argument>, <argument><expr><lambda><capture>[<argument><name>timer</name></argument>]</capture> <block>{<block_content> <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>start</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// move timer to thread so that polling doesn't disturb main event loop</comment>
+    <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>moveToThread</name></name><argument_list>(<argument><expr><name>m_thread</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_thread</name><operator>-&gt;</operator><name>start</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>subscribeToCoreSignals</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+}
+
+ClientModel<destructor><name><operator>::</operator><name>~ClientModel</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>unsubscribeFromCoreSignals</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>m_thread</name><operator>-&gt;</operator><name>quit</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_thread</name><operator>-&gt;</operator><name>wait</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+
+<function><type><name>int</name></type> <name><name>ClientModel</name><operator>::</operator><name>getNumConnections</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>flags</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>CConnman</name><operator>::</operator><name>NumConnections</name></name></type> <name>connections</name> <init>= <expr><name><name>CConnman</name><operator>::</operator><name>CONNECTIONS_NONE</name></name></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if<condition>(<expr><name>flags</name> <operator>==</operator> <name>CONNECTIONS_IN</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>connections</name> <operator>=</operator> <name><name>CConnman</name><operator>::</operator><name>CONNECTIONS_IN</name></name></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>flags</name> <operator>==</operator> <name>CONNECTIONS_OUT</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>connections</name> <operator>=</operator> <name><name>CConnman</name><operator>::</operator><name>CONNECTIONS_OUT</name></name></expr>;</expr_stmt></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><name>flags</name> <operator>==</operator> <name>CONNECTIONS_ALL</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>connections</name> <operator>=</operator> <name><name>CConnman</name><operator>::</operator><name>CONNECTIONS_ALL</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <return>return <expr><call><name><name>m_node</name><operator>.</operator><name>getNodeCount</name></name><argument_list>(<argument><expr><name>connections</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>ClientModel</name><operator>::</operator><name>getHeaderTipHeight</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>cachedBestHeaderHeight</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// make sure we initially populate the cache via a cs_main lock</comment>
+        <comment type="line">// otherwise we need to wait for a tip update</comment>
+        <decl_stmt><decl><type><name>int</name></type> <name>height</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>blockTime</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_node</name><operator>.</operator><name>getHeaderTip</name></name><argument_list>(<argument><expr><name>height</name></expr></argument>, <argument><expr><name>blockTime</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>cachedBestHeaderHeight</name> <operator>=</operator> <name>height</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>cachedBestHeaderTime</name> <operator>=</operator> <name>blockTime</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>cachedBestHeaderHeight</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name><name>ClientModel</name><operator>::</operator><name>getHeaderTipTime</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>cachedBestHeaderTime</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>height</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>blockTime</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_node</name><operator>.</operator><name>getHeaderTip</name></name><argument_list>(<argument><expr><name>height</name></expr></argument>, <argument><expr><name>blockTime</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>cachedBestHeaderHeight</name> <operator>=</operator> <name>height</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>cachedBestHeaderTime</name> <operator>=</operator> <name>blockTime</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>cachedBestHeaderTime</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>ClientModel</name><operator>::</operator><name>updateNumConnections</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>numConnections</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>numConnectionsChanged</name><argument_list>(<argument><expr><name>numConnections</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>ClientModel</name><operator>::</operator><name>updateNetworkActive</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>networkActive</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>networkActiveChanged</name><argument_list>(<argument><expr><name>networkActive</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>ClientModel</name><operator>::</operator><name>updateAlert</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>alertsChanged</name><argument_list>(<argument><expr><call><name>getStatusBarWarnings</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>enum</name> <name>BlockSource</name></name></type> <name><name>ClientModel</name><operator>::</operator><name>getBlockSource</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>m_node</name><operator>.</operator><name>getReindex</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>BlockSource</name><operator>::</operator><name>REINDEX</name></name></expr>;</return></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><call><name><name>m_node</name><operator>.</operator><name>getImporting</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>BlockSource</name><operator>::</operator><name>DISK</name></name></expr>;</return></block_content></block></if>
+    <if type="elseif">else if <condition>(<expr><call><name>getNumConnections</name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>BlockSource</name><operator>::</operator><name>NETWORK</name></name></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><name><name>BlockSource</name><operator>::</operator><name>NONE</name></name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>ClientModel</name><operator>::</operator><name>getStatusBarWarnings</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><call><name><name>m_node</name><operator>.</operator><name>getWarnings</name></name><argument_list>(<argument><expr><literal type="string">"gui"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>OptionsModel</name> <modifier>*</modifier></type><name><name>ClientModel</name><operator>::</operator><name>getOptionsModel</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name>optionsModel</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>PeerTableModel</name> <modifier>*</modifier></type><name><name>ClientModel</name><operator>::</operator><name>getPeerTableModel</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name>peerTableModel</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>BanTableModel</name> <modifier>*</modifier></type><name><name>ClientModel</name><operator>::</operator><name>getBanTableModel</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><name>banTableModel</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>ClientModel</name><operator>::</operator><name>formatFullVersion</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><call><name>FormatFullVersion</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>ClientModel</name><operator>::</operator><name>formatSubVersion</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name>strSubVersion</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>ClientModel</name><operator>::</operator><name>isReleaseVersion</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><name>CLIENT_VERSION_IS_RELEASE</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>ClientModel</name><operator>::</operator><name>formatClientStartupTime</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>QDateTime</name><operator>::</operator><name>fromTime_t</name></name><argument_list>(<argument><expr><call><name>GetStartupTime</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call><operator>.</operator><call><name>toString</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>ClientModel</name><operator>::</operator><name>dataDir</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>GUIUtil</name><operator>::</operator><name>boostPathToQString</name></name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>ClientModel</name><operator>::</operator><name>blocksDir</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>GUIUtil</name><operator>::</operator><name>boostPathToQString</name></name><argument_list>(<argument><expr><call><name>GetBlocksDir</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>ClientModel</name><operator>::</operator><name>updateBanlist</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>banTableModel</name><operator>-&gt;</operator><name>refresh</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// Handlers for core signals</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>ShowProgress</name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>clientmodel</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>title</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nProgress</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// emits signal "showProgress"</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>clientmodel</name></expr></argument>, <argument><expr><literal type="string">"showProgress"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>,
+                              <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>QString</name></expr></argument>, <argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name>title</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>,
+                              <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>int</name></expr></argument>, <argument><expr><name>nProgress</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>NotifyNumConnectionsChanged</name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>clientmodel</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>newNumConnections</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Too noisy: qDebug() &lt;&lt; "NotifyNumConnectionsChanged: " + QString::number(newNumConnections);</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>clientmodel</name></expr></argument>, <argument><expr><literal type="string">"updateNumConnections"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>,
+                              <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>int</name></expr></argument>, <argument><expr><name>newNumConnections</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>NotifyNetworkActiveChanged</name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>clientmodel</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>networkActive</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>clientmodel</name></expr></argument>, <argument><expr><literal type="string">"updateNetworkActive"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>,
+                              <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>bool</name></expr></argument>, <argument><expr><name>networkActive</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>NotifyAlertChanged</name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>clientmodel</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>qDebug</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"NotifyAlertChanged"</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>clientmodel</name></expr></argument>, <argument><expr><literal type="string">"updateAlert"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>BannedListChanged</name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>clientmodel</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>qDebug</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">"%1: Requesting update for peer banlist"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>clientmodel</name></expr></argument>, <argument><expr><literal type="string">"updateBanlist"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>BlockTipChanged</name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>clientmodel</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>initialSync</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>height</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>blockTime</name></decl></parameter>, <parameter><decl><type><name>double</name></type> <name>verificationProgress</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fHeader</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// lock free async UI updates in case we have a new block tip</comment>
+    <comment type="line">// during initial sync, only update the UI if the last update</comment>
+    <comment type="line">// was &gt; 250ms (MODEL_UPDATE_DELAY) ago</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>now</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>initialSync</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>now</name> <operator>=</operator> <call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>int64_t</name><modifier>&amp;</modifier></type> <name>nLastUpdateNotification</name> <init>= <expr><ternary><condition><expr><name>fHeader</name></expr> ?</condition><then> <expr><name>nLastHeaderTipUpdateNotification</name></expr> </then><else>: <expr><name>nLastBlockTipUpdateNotification</name></expr></else></ternary></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>fHeader</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// cache best headers time and height to reduce future cs_main locks</comment>
+        <expr_stmt><expr><name><name>clientmodel</name><operator>-&gt;</operator><name>cachedBestHeaderHeight</name></name> <operator>=</operator> <name>height</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>clientmodel</name><operator>-&gt;</operator><name>cachedBestHeaderTime</name></name> <operator>=</operator> <name>blockTime</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// if we are in-sync or if we notify a header update, update the UI regardless of last update time</comment>
+    <if_stmt><if>if <condition>(<expr><name>fHeader</name> <operator>||</operator> <operator>!</operator><name>initialSync</name> <operator>||</operator> <name>now</name> <operator>-</operator> <name>nLastUpdateNotification</name> <operator>&gt;</operator> <name>MODEL_UPDATE_DELAY</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">//pass an async signal to the UI thread</comment>
+        <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>clientmodel</name></expr></argument>, <argument><expr><literal type="string">"numBlocksChanged"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>int</name></expr></argument>, <argument><expr><name>height</name></expr></argument>)</argument_list></call></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>QDateTime</name></expr></argument>, <argument><expr><call><name><name>QDateTime</name><operator>::</operator><name>fromTime_t</name></name><argument_list>(<argument><expr><name>blockTime</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>double</name></expr></argument>, <argument><expr><name>verificationProgress</name></expr></argument>)</argument_list></call></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>bool</name></expr></argument>, <argument><expr><name>fHeader</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nLastUpdateNotification</name> <operator>=</operator> <name>now</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>ClientModel</name><operator>::</operator><name>subscribeToCoreSignals</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Connect signals to client</comment>
+    <expr_stmt><expr><name>m_handler_show_progress</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleShowProgress</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>ShowProgress</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_notify_num_connections_changed</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleNotifyNumConnectionsChanged</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>NotifyNumConnectionsChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_notify_network_active_changed</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleNotifyNetworkActiveChanged</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>NotifyNetworkActiveChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_notify_alert_changed</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleNotifyAlertChanged</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>NotifyAlertChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_banned_list_changed</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleBannedListChanged</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>BannedListChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_notify_block_tip</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleNotifyBlockTip</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>BlockTipChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_3</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_4</name></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_notify_header_tip</name> <operator>=</operator> <call><name><name>m_node</name><operator>.</operator><name>handleNotifyHeaderTip</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>BlockTipChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_3</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_4</name></name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>ClientModel</name><operator>::</operator><name>unsubscribeFromCoreSignals</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Disconnect signals from client</comment>
+    <expr_stmt><expr><call><name><name>m_handler_show_progress</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_notify_num_connections_changed</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_notify_network_active_changed</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_notify_alert_changed</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_banned_list_changed</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_notify_block_tip</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_notify_header_tip</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>ClientModel</name><operator>::</operator><name>getProxyInfo</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>ip_port</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>proxyType</name></type> <name>ipv4</name></decl>, <decl><type ref="prev"/><name>ipv6</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>m_node</name><operator>.</operator><name>getProxy</name></name><argument_list>(<argument><expr><operator>(</operator><name>Network</name><operator>)</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name>ipv4</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>m_node</name><operator>.</operator><name>getProxy</name></name><argument_list>(<argument><expr><operator>(</operator><name>Network</name><operator>)</operator> <literal type="number">2</literal></expr></argument>, <argument><expr><name>ipv6</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>ip_port</name> <operator>=</operator> <call><name><name>ipv4</name><operator>.</operator><name>proxy</name><operator>.</operator><name>ToStringIPPort</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+      <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

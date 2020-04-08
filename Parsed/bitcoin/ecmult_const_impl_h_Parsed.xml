@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/secp256k1/src/ecmult_const_impl.h"><comment type="block" format="doxygen">/**********************************************************************
+ * Copyright (c) 2015 Pieter Wuille, Andrew Poelstra                  *
+ * Distributed under the MIT software license, see the accompanying   *
+ * file COPYING or http://www.opensource.org/licenses/mit-license.php.*
+ **********************************************************************/</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SECP256K1_ECMULT_CONST_IMPL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SECP256K1_ECMULT_CONST_IMPL_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"scalar.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"group.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"ecmult_const.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"ecmult_impl.h"</cpp:file></cpp:include>
+
+<comment type="block">/* This is like `ECMULT_TABLE_GET_GE` but is constant time */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ECMULT_CONST_TABLE_GET_GE</name><parameter_list>(<parameter><type><name>r</name></type></parameter>,<parameter><type><name>pre</name></type></parameter>,<parameter><type><name>n</name></type></parameter>,<parameter><type><name>w</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>do { \
+    int m; \
+    int abs_n = (n) * (((n) &gt; 0) * 2 - 1); \
+    int idx_n = abs_n / 2; \
+    secp256k1_fe neg_y; \
+    VERIFY_CHECK(((n) &amp; 1) == 1); \
+    VERIFY_CHECK((n) &gt;= -((1 &lt;&lt; ((w)-1)) - 1)); \
+    VERIFY_CHECK((n) &lt;=  ((1 &lt;&lt; ((w)-1)) - 1)); \
+    VERIFY_SETUP(secp256k1_fe_clear(&amp;(r)-&gt;x)); \
+    VERIFY_SETUP(secp256k1_fe_clear(&amp;(r)-&gt;y)); \
+    for (m = 0; m &lt; ECMULT_TABLE_SIZE(w); m++) { \
+        <comment type="block">/* This loop is used to avoid secret data in array indices. See
+         * the comment in ecmult_gen_impl.h for rationale. */</comment> \
+        secp256k1_fe_cmov(&amp;(r)-&gt;x, &amp;(pre)[m].x, m == idx_n); \
+        secp256k1_fe_cmov(&amp;(r)-&gt;y, &amp;(pre)[m].y, m == idx_n); \
+    } \
+    (r)-&gt;infinity = 0; \
+    secp256k1_fe_negate(&amp;neg_y, &amp;(r)-&gt;y, 1); \
+    secp256k1_fe_cmov(&amp;(r)-&gt;y, &amp;neg_y, (n) != abs_n); \
+} while(0)</cpp:value></cpp:define>
+
+
+<comment type="block" format="doxygen">/** Convert a number to WNAF notation.
+ *  The number becomes represented by sum(2^{wi} * wnaf[i], i=0..WNAF_SIZE(w)+1) - return_val.
+ *  It has the following guarantees:
+ *  - each wnaf[i] an odd integer between -(1 &lt;&lt; w) and (1 &lt;&lt; w)
+ *  - each wnaf[i] is nonzero
+ *  - the number of words set is always WNAF_SIZE(w) + 1
+ *
+ *  Adapted from `The Width-w NAF Method Provides Small Memory and Fast Elliptic Scalar
+ *  Multiplications Secure against Side Channel Attacks`, Okeya and Tagaki. M. Joye (Ed.)
+ *  CT-RSA 2003, LNCS 2612, pp. 328-443, 2003. Springer-Verlagy Berlin Heidelberg 2003
+ *
+ *  Numbers reference steps of `Algorithm SPA-resistant Width-w NAF with Odd Scalar` on pp. 335
+ */</comment>
+<function><type><specifier>static</specifier> <name>int</name></type> <name>secp256k1_wnaf_const</name><parameter_list>(<parameter><decl><type><name>int</name> <modifier>*</modifier></type><name>wnaf</name></decl></parameter>, <parameter><decl><type><name>secp256k1_scalar</name></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>w</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>size</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>global_sign</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>skew</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>word</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="block">/* 1 2 3 */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>u_last</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>u</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>flip</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>bit</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_scalar</name></type> <name>neg_s</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>not_neg_one</name></decl>;</decl_stmt>
+    <comment type="block">/* Note that we cannot handle even numbers by negating them to be odd, as is
+     * done in other implementations, since if our scalars were specified to have
+     * width &lt; 256 for performance reasons, their negations would have width 256
+     * and we'd lose any performance benefit. Instead, we use a technique from
+     * Section 4.2 of the Okeya/Tagaki paper, which is to add either 1 (for even)
+     * or 2 (for odd) to the number we are encoding, returning a skew value indicating
+     * this, and having the caller compensate after doing the multiplication.
+     *
+     * In fact, we _do_ want to negate numbers to minimize their bit-lengths (and in
+     * particular, to ensure that the outputs from the endomorphism-split fit into
+     * 128 bits). If we negate, the parity of our number flips, inverting which of
+     * {1, 2} we want to add to the scalar when ensuring that it's odd. Further
+     * complicating things, -1 interacts badly with `secp256k1_scalar_cadd_bit` and
+     * we need to special-case it in this logic. */</comment>
+    <expr_stmt><expr><name>flip</name> <operator>=</operator> <call><name>secp256k1_scalar_is_high</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* We add 1 to even numbers, 2 to odd ones, noting that negation flips parity */</comment>
+    <expr_stmt><expr><name>bit</name> <operator>=</operator> <name>flip</name> <operator>^</operator> <operator>!</operator><call><name>secp256k1_scalar_is_even</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* We check for negative one, since adding 2 to it will cause an overflow */</comment>
+    <expr_stmt><expr><call><name>secp256k1_scalar_negate</name><argument_list>(<argument><expr><operator>&amp;</operator><name>neg_s</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>not_neg_one</name> <operator>=</operator> <operator>!</operator><call><name>secp256k1_scalar_is_one</name><argument_list>(<argument><expr><operator>&amp;</operator><name>neg_s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_scalar_cadd_bit</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><name>bit</name></expr></argument>, <argument><expr><name>not_neg_one</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="block">/* If we had negative one, flip == 1, s.d[0] == 0, bit == 1, so caller expects
+     * that we added two to it and flipped it. In fact for -1 these operations are
+     * identical. We only flipped, but since skewing is required (in the sense that
+     * the skew must be 1 or 2, never zero) and flipping is not, we need to change
+     * our flags to claim that we only skewed. */</comment>
+    <expr_stmt><expr><name>global_sign</name> <operator>=</operator> <call><name>secp256k1_scalar_cond_negate</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><name>flip</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>global_sign</name> <operator>*=</operator> <name>not_neg_one</name> <operator>*</operator> <literal type="number">2</literal> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name>skew</name> <operator>=</operator> <literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>bit</name></expr>;</expr_stmt>
+
+    <comment type="block">/* 4 */</comment>
+    <expr_stmt><expr><name>u_last</name> <operator>=</operator> <call><name>secp256k1_scalar_shr_int</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><name>w</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <while>while <condition>(<expr><name>word</name> <operator>*</operator> <name>w</name> <operator>&lt;</operator> <name>size</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>sign</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>even</name></decl>;</decl_stmt>
+
+        <comment type="block">/* 4.1 4.4 */</comment>
+        <expr_stmt><expr><name>u</name> <operator>=</operator> <call><name>secp256k1_scalar_shr_int</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>, <argument><expr><name>w</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="block">/* 4.2 */</comment>
+        <expr_stmt><expr><name>even</name> <operator>=</operator> <operator>(</operator><operator>(</operator><name>u</name> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator> <operator>==</operator> <literal type="number">0</literal><operator>)</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>sign</name> <operator>=</operator> <literal type="number">2</literal> <operator>*</operator> <operator>(</operator><name>u_last</name> <operator>&gt;</operator> <literal type="number">0</literal><operator>)</operator> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>u</name> <operator>+=</operator> <name>sign</name> <operator>*</operator> <name>even</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>u_last</name> <operator>-=</operator> <name>sign</name> <operator>*</operator> <name>even</name> <operator>*</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>w</name><operator>)</operator></expr>;</expr_stmt>
+
+        <comment type="block">/* 4.3, adapted for global sign change */</comment>
+        <expr_stmt><expr><name><name>wnaf</name><index>[<expr><name>word</name><operator>++</operator></expr>]</index></name> <operator>=</operator> <name>u_last</name> <operator>*</operator> <name>global_sign</name></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name>u_last</name> <operator>=</operator> <name>u</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><name><name>wnaf</name><index>[<expr><name>word</name></expr>]</index></name> <operator>=</operator> <name>u</name> <operator>*</operator> <name>global_sign</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><call><name>secp256k1_scalar_is_zero</name><argument_list>(<argument><expr><operator>&amp;</operator><name>s</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>word</name> <operator>==</operator> <call><name>WNAF_SIZE_BITS</name><argument_list>(<argument><expr><name>size</name></expr></argument>, <argument><expr><name>w</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>skew</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>secp256k1_ecmult_const</name><parameter_list>(<parameter><decl><type><name>secp256k1_gej</name> <modifier>*</modifier></type><name>r</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_ge</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>secp256k1_scalar</name> <modifier>*</modifier></type><name>scalar</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>size</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>secp256k1_ge</name></type> <name><name>pre_a</name><index>[<expr><call><name>ECMULT_TABLE_SIZE</name><argument_list>(<argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_ge</name></type> <name>tmpa</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_fe</name></type> <name>Z</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>skew_1</name></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>secp256k1_ge</name></type> <name><name>pre_a_lam</name><index>[<expr><call><name>ECMULT_TABLE_SIZE</name><argument_list>(<argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name><name>wnaf_lam</name><index>[<expr><literal type="number">1</literal> <operator>+</operator> <call><name>WNAF_SIZE</name><argument_list>(<argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>skew_lam</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_scalar</name></type> <name>q_1</name></decl>, <decl><type ref="prev"/><name>q_lam</name></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <decl_stmt><decl><type><name>int</name></type> <name><name>wnaf_1</name><index>[<expr><literal type="number">1</literal> <operator>+</operator> <call><name>WNAF_SIZE</name><argument_list>(<argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>]</index></name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>i</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>secp256k1_scalar</name></type> <name>sc</name> <init>= <expr><operator>*</operator><name>scalar</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="block">/* build wnaf representation for q. */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>rsize</name> <init>= <expr><name>size</name></expr></init></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+    <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>rsize</name> <operator>=</operator> <literal type="number">128</literal></expr>;</expr_stmt>
+        <comment type="block">/* split q into q_1 and q_lam (where q = q_1 + q_lam*lambda, and q_1 and q_lam are ~128 bit) */</comment>
+        <expr_stmt><expr><call><name>secp256k1_scalar_split_lambda</name><argument_list>(<argument><expr><operator>&amp;</operator><name>q_1</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>q_lam</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>sc</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>skew_1</name>   <operator>=</operator> <call><name>secp256k1_wnaf_const</name><argument_list>(<argument><expr><name>wnaf_1</name></expr></argument>,   <argument><expr><name>q_1</name></expr></argument>,   <argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">128</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>skew_lam</name> <operator>=</operator> <call><name>secp256k1_wnaf_const</name><argument_list>(<argument><expr><name>wnaf_lam</name></expr></argument>, <argument><expr><name>q_lam</name></expr></argument>, <argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">128</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <block>{<block_content>
+        <expr_stmt><expr><name>skew_1</name>   <operator>=</operator> <call><name>secp256k1_wnaf_const</name><argument_list>(<argument><expr><name>wnaf_1</name></expr></argument>, <argument><expr><name>sc</name></expr></argument>, <argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+        <expr_stmt><expr><name>skew_lam</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    </block_content>}</block></else></if_stmt>
+
+    <comment type="block">/* Calculate odd multiples of a.
+     * All multiples are brought to the same Z 'denominator', which is stored
+     * in Z. Due to secp256k1' isomorphism we can do all operations pretending
+     * that the Z coordinate was 1, use affine addition formulae, and correct
+     * the Z coordinate of the result once at the end.
+     */</comment>
+    <expr_stmt><expr><call><name>secp256k1_gej_set_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_ecmult_odd_multiples_table_globalz_windowa</name><argument_list>(<argument><expr><name>pre_a</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>Z</name></expr></argument>, <argument><expr><name>r</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><expr><name>i</name> <operator>=</operator> <literal type="number">0</literal></expr>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name>ECMULT_TABLE_SIZE</name><argument_list>(<argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>secp256k1_fe_normalize_weak</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>pre_a</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>y</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+    <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+        <for>for <control>(<init><expr><name>i</name> <operator>=</operator> <literal type="number">0</literal></expr>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name>ECMULT_TABLE_SIZE</name><argument_list>(<argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name>secp256k1_ge_mul_lambda</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>pre_a_lam</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>pre_a</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="block">/* first loop iteration (separated out so we can directly set r, rather
+     * than having it start at infinity, get doubled several times, then have
+     * its new value added to it) */</comment>
+    <expr_stmt><expr><name>i</name> <operator>=</operator> <name><name>wnaf_1</name><index>[<expr><call><name>WNAF_SIZE_BITS</name><argument_list>(<argument><expr><name>rsize</name></expr></argument>, <argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>]</index></name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>i</name> <operator>!=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>ECMULT_CONST_TABLE_GET_GE</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>, <argument><expr><name>pre_a</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>secp256k1_gej_set_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+    <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>i</name> <operator>=</operator> <name><name>wnaf_lam</name><index>[<expr><call><name>WNAF_SIZE_BITS</name><argument_list>(<argument><expr><name>rsize</name></expr></argument>, <argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>i</name> <operator>!=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>ECMULT_CONST_TABLE_GET_GE</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>, <argument><expr><name>pre_a_lam</name></expr></argument>, <argument><expr><name>i</name></expr></argument>, <argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_gej_add_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <comment type="block">/* remaining loop iterations */</comment>
+    <for>for <control>(<init><expr><name>i</name> <operator>=</operator> <call><name>WNAF_SIZE_BITS</name><argument_list>(<argument><expr><name>rsize</name></expr></argument>, <argument><expr><name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr>;</init> <condition><expr><name>i</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr>;</condition> <incr><expr><name>i</name><operator>--</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>n</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>j</name></decl>;</decl_stmt>
+        <for>for <control>(<init><expr><name>j</name> <operator>=</operator> <literal type="number">0</literal></expr>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <name>WINDOW_A</name> <operator>-</operator> <literal type="number">1</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name>secp256k1_gej_double_nonzero</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>r</name></expr></argument>, <argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+
+        <expr_stmt><expr><name>n</name> <operator>=</operator> <name><name>wnaf_1</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>ECMULT_CONST_TABLE_GET_GE</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>, <argument><expr><name>pre_a</name></expr></argument>, <argument><expr><name>n</name></expr></argument>, <argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>n</name> <operator>!=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_gej_add_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+        <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>n</name> <operator>=</operator> <name><name>wnaf_lam</name><index>[<expr><name>i</name></expr>]</index></name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>ECMULT_CONST_TABLE_GET_GE</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>, <argument><expr><name>pre_a_lam</name></expr></argument>, <argument><expr><name>n</name></expr></argument>, <argument><expr><name>WINDOW_A</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>VERIFY_CHECK</name><argument_list>(<argument><expr><name>n</name> <operator>!=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>secp256k1_gej_add_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tmpa</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name>secp256k1_fe_mul</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>r</name><operator>-&gt;</operator><name>z</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>r</name><operator>-&gt;</operator><name>z</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><name>Z</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <block>{<block_content>
+        <comment type="block">/* Correct for wNAF skew */</comment>
+        <decl_stmt><decl><type><name>secp256k1_ge</name></type> <name>correction</name> <init>= <expr><operator>*</operator><name>a</name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>secp256k1_ge_storage</name></type> <name>correction_1_stor</name></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+        <decl_stmt><decl><type><name>secp256k1_ge_storage</name></type> <name>correction_lam_stor</name></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <decl_stmt><decl><type><name>secp256k1_ge_storage</name></type> <name>a2_stor</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>secp256k1_gej</name></type> <name>tmpj</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>secp256k1_gej_set_ge</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tmpj</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_gej_double_var</name><argument_list>(<argument><expr><operator>&amp;</operator><name>tmpj</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tmpj</name></expr></argument>, <argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_ge_set_gej</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tmpj</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_ge_to_storage</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction_1_stor</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+        <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>secp256k1_ge_to_storage</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction_lam_stor</name></expr></argument>, <argument><expr><name>a</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <expr_stmt><expr><call><name>secp256k1_ge_to_storage</name><argument_list>(<argument><expr><operator>&amp;</operator><name>a2_stor</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="block">/* For odd numbers this is 2a (so replace it), for even ones a (so no-op) */</comment>
+        <expr_stmt><expr><call><name>secp256k1_ge_storage_cmov</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction_1_stor</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>a2_stor</name></expr></argument>, <argument><expr><name>skew_1</name> <operator>==</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+        <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>secp256k1_ge_storage_cmov</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction_lam_stor</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>a2_stor</name></expr></argument>, <argument><expr><name>skew_lam</name> <operator>==</operator> <literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+        <comment type="block">/* Apply the correction */</comment>
+        <expr_stmt><expr><call><name>secp256k1_ge_from_storage</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction_1_stor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_ge_neg</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>secp256k1_gej_add_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>USE_ENDOMORPHISM</name></cpp:ifdef>
+        <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&gt;</operator> <literal type="number">128</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>secp256k1_ge_from_storage</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction_lam_stor</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>secp256k1_ge_neg</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>secp256k1_ge_mul_lambda</name><argument_list>(<argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>secp256k1_gej_add_ge</name><argument_list>(<argument><expr><name>r</name></expr></argument>, <argument><expr><name>r</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>correction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    </block_content>}</block>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* SECP256K1_ECMULT_CONST_IMPL_H */</comment>
+</unit>

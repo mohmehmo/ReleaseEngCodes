@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/compressor.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_COMPRESSOR_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_COMPRESSOR_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;span.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CKeyID</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CPubKey</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CScriptID</name></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>CompressScript</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CScript</name><operator>&amp;</operator> <name>script</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>out</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<function_decl><type><name>unsigned</name> <name>int</name></type> <name>GetSpecialScriptSize</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name></decl></parameter>)</parameter_list>;</function_decl>
+<decl_stmt><decl><type><name>bool</name></type> <name>DecompressScript</name><argument_list>(<argument><expr><name>CScript</name><operator>&amp;</operator> <name>script</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>nSize</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>out</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<function_decl><type><name>uint64_t</name></type> <name>CompressAmount</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>nAmount</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name>uint64_t</name></type> <name>DecompressAmount</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>nAmount</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/** Compact serializer for scripts.
+ *
+ *  It detects common cases and encodes them much more efficiently.
+ *  3 special cases are defined:
+ *  * Pay to pubkey hash (encoded as 21 bytes)
+ *  * Pay to script hash (encoded as 21 bytes)
+ *  * Pay to pubkey starting with 0x02, 0x03 or 0x04 (encoded as 33 bytes)
+ *
+ *  Other scripts up to 121 bytes require 1 byte + script length. Above
+ *  that, scripts up to 16505 bytes require 2 bytes + script length.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CScriptCompressor</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <comment type="block" format="doxygen">/**
+     * make this static for now (there are only 6 special scripts defined)
+     * this can potentially be extended together with a new nVersion for
+     * transactions, in which case this value becomes dependent on nVersion
+     * and nHeight of the enclosing transaction.
+     */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>nSpecialScripts</name> <init>= <expr><literal type="number">6</literal></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CScript</name> <modifier>&amp;</modifier></type><name>script</name></decl>;</decl_stmt>
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>CScriptCompressor</name><argument_list>(<argument><expr><name>CScript</name> <operator>&amp;</operator><name>scriptIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>script</name><argument_list>(<argument>scriptIn</argument>)</argument_list></macro> <block>{ }</block>
+
+    <name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name> <macro><name>Serialize</name><argument_list>(<argument>Stream &amp;s</argument>)</argument_list></macro> <specifier>const</specifier> <block>{
+        <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <name>compr</name></expr>;
+        <if_stmt><if>if <condition>(<expr><call><name>CompressScript</name><argument_list>(<argument><expr><name>script</name></expr></argument>, <argument><expr><name>compr</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <call><name>MakeSpan</name><argument_list>(<argument><expr><name>compr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return;</return>
+        <expr_stmt/>}</block_content>
+        unsigned int nSize = script.size(</block></if></if_stmt>) <operator>+</operator> <name>nSpecialScripts</name></block></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <call><name>VARINT</name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <call><name>MakeSpan</name><argument_list>(<argument><expr><name>script</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <function><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSize</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <call><name>VARINT</name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nSize</name> <operator>&lt;</operator> <name>nSpecialScripts</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name> <call><name>vch</name><argument_list>(<argument><expr><call><name>GetSpecialScriptSize</name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">0x00</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <call><name>MakeSpan</name><argument_list>(<argument><expr><name>vch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>DecompressScript</name><argument_list>(<argument><expr><name>script</name></expr></argument>, <argument><expr><name>nSize</name></expr></argument>, <argument><expr><name>vch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>nSize</name> <operator>-=</operator> <name>nSpecialScripts</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nSize</name> <operator>&gt;</operator> <name>MAX_SCRIPT_SIZE</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Overly long script, replace with a short invalid one</comment>
+            <expr_stmt><expr><name>script</name> <operator>&lt;&lt;</operator> <name>OP_RETURN</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>s</name><operator>.</operator><name>ignore</name></name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name><name>script</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>nSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <call><name>MakeSpan</name><argument_list>(<argument><expr><name>script</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+};
+
+<comment type="block" format="doxygen">/** wrapper for CTxOut that provides a more compact serialization */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CTxOutCompressor</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>CTxOut</name> <modifier>&amp;</modifier></type><name>txout</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>CTxOutCompressor</name><argument_list>(<argument><expr><name>CTxOut</name> <operator>&amp;</operator><name>txoutIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>txout</name><argument_list>(<argument>txoutIn</argument>)</argument_list></macro> <block>{ }</block>
+
+    <name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>ser_action</name><operator>.</operator><name>ForRead</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>nVal</name> <init>= <expr><call><name>CompressAmount</name><argument_list>(<argument><expr><name><name>txout</name><operator>.</operator><name>nValue</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>nVal</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>nVal</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>nVal</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>txout</name><operator>.</operator><name>nValue</name></name> <operator>=</operator> <call><name>DecompressAmount</name><argument_list>(<argument><expr><name>nVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <decl_stmt><decl><type><name>CScriptCompressor</name></type> <name>cscript</name><argument_list>(<argument><expr><call><name>REF</name><argument_list>(<argument><expr><name><name>txout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>cscript</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_COMPRESSOR_H</comment>
+</unit>

@@ -1,0 +1,445 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/checkqueue_tests.cpp"><comment type="line">// Copyright (c) 2012-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/memory.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/time.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;checkqueue.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;atomic&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;thread&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;mutex&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;condition_variable&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unordered_set&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+
+<macro><name>BOOST_FIXTURE_TEST_SUITE</name><argument_list>(<argument>checkqueue_tests</argument>, <argument>TestingSetup</argument>)</argument_list></macro>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>QUEUE_BATCH_SIZE</name> <init>= <expr><literal type="number">128</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>SCRIPT_CHECK_THREADS</name> <init>= <expr><literal type="number">3</literal></expr></init></decl>;</decl_stmt>
+
+<struct>struct <name>FakeCheck</name> <block>{<public type="default">
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></function>
+    <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>FakeCheck</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list><block>{<block_content/>}</block></function><empty_stmt>;</empty_stmt>
+</public>}</block>;</struct>
+
+<struct>struct <name>FakeCheckCheckCompletion</name> <block>{<public type="default">
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>n_calls</name></decl>;</decl_stmt>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>n_calls</name><operator>.</operator><name>fetch_add</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></function>
+    <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>FakeCheckCheckCompletion</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list><block>{<block_content/>}</block></function><empty_stmt>;</empty_stmt>
+</public>}</block>;</struct>
+
+<struct>struct <name>FailingCheck</name> <block>{<public type="default">
+    <decl_stmt><decl><type><name>bool</name></type> <name>fails</name></decl>;</decl_stmt>
+    <constructor><name>FailingCheck</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>_fails</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>fails</name><argument_list>(<argument><expr><name>_fails</name></expr></argument>)</argument_list></call></member_init_list><block>{<block_content/>}</block></constructor><empty_stmt>;</empty_stmt>
+    <constructor><name>FailingCheck</name><parameter_list>()</parameter_list> <member_init_list>: <call><name>fails</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></member_init_list><block>{<block_content/>}</block></constructor><empty_stmt>;</empty_stmt>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><operator>!</operator><name>fails</name></expr>;</return>
+    </block_content>}</block></function>
+    <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>FailingCheck</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>swap</name></name><argument_list>(<argument><expr><name>fails</name></expr></argument>, <argument><expr><name><name>x</name><operator>.</operator><name>fails</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function><empty_stmt>;</empty_stmt>
+</public>}</block>;</struct>
+
+<struct>struct <name>UniqueCheck</name> <block>{<public type="default">
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>mutex</name></name></type> <name>m</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>unordered_multiset</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>results</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>check_id</name></decl>;</decl_stmt>
+    <constructor><name>UniqueCheck</name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>check_id_in</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>check_id</name><argument_list>(<argument><expr><name>check_id_in</name></expr></argument>)</argument_list></call></member_init_list><block>{<block_content/>}</block></constructor><empty_stmt>;</empty_stmt>
+    <constructor><name>UniqueCheck</name><parameter_list>()</parameter_list> <member_init_list>: <call><name>check_id</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></member_init_list><block>{<block_content/>}</block></constructor><empty_stmt>;</empty_stmt>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>lock_guard</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><argument_list>(<argument><expr><name>m</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>results</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>check_id</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></function>
+    <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>UniqueCheck</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>swap</name></name><argument_list>(<argument><expr><name><name>x</name><operator>.</operator><name>check_id</name></name></expr></argument>, <argument><expr><name>check_id</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function><empty_stmt>;</empty_stmt>
+</public>}</block>;</struct>
+
+
+<struct>struct <name>MemoryCheck</name> <block>{<public type="default">
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>fake_allocated_memory</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>b</name> <argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></function>
+    <constructor><name>MemoryCheck</name><parameter_list>()</parameter_list><block>{<block_content/>}</block></constructor><empty_stmt>;</empty_stmt>
+    <constructor><name>MemoryCheck</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>MemoryCheck</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <comment type="line">// We have to do this to make sure that destructor calls are paired</comment>
+        <comment type="line">//</comment>
+        <comment type="line">// Really, copy constructor should be deletable, but CCheckQueue breaks</comment>
+        <comment type="line">// if it is deleted because of internal push_back.</comment>
+        <expr_stmt><expr><call><name><name>fake_allocated_memory</name><operator>.</operator><name>fetch_add</name></name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor><empty_stmt>;</empty_stmt>
+    <constructor><name>MemoryCheck</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>b_</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>b</name><argument_list>(<argument><expr><name>b_</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+        <expr_stmt><expr><call><name><name>fake_allocated_memory</name><operator>.</operator><name>fetch_add</name></name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor><empty_stmt>;</empty_stmt>
+    <destructor><name>~MemoryCheck</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>fake_allocated_memory</name><operator>.</operator><name>fetch_sub</name></name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></destructor><empty_stmt>;</empty_stmt>
+    <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>MemoryCheck</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>swap</name></name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><name><name>x</name><operator>.</operator><name>b</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function><empty_stmt>;</empty_stmt>
+</public>}</block>;</struct>
+
+<struct>struct <name>FrozenCleanupCheck</name> <block>{<public type="default">
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name></type> <name>nFrozen</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>condition_variable</name></name></type> <name>cv</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>mutex</name></name></type> <name>m</name></decl>;</decl_stmt>
+    <comment type="line">// Freezing can't be the default initialized behavior given how the queue</comment>
+    <comment type="line">// swaps in default initialized Checks.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>should_freeze</name> <argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></function>
+    <constructor><name>FrozenCleanupCheck</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></constructor>
+    <destructor><name>~FrozenCleanupCheck</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>should_freeze</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><argument_list>(<argument><expr><name>m</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>nFrozen</name><operator>.</operator><name>store</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>cv</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>cv</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>l</name></expr></argument>, <argument><expr><lambda><capture>[]</capture><block>{<block_content> <return>return <expr><call><name><name>nFrozen</name><operator>.</operator><name>load</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>;</return></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></destructor>
+    <function><type><name>void</name></type> <name>swap</name><parameter_list>(<parameter><decl><type><name>FrozenCleanupCheck</name><modifier>&amp;</modifier></type> <name>x</name></decl></parameter>)</parameter_list><block>{<block_content><expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>swap</name></name><argument_list>(<argument><expr><name>should_freeze</name></expr></argument>, <argument><expr><name><name>x</name><operator>.</operator><name>should_freeze</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content>}</block></function><empty_stmt>;</empty_stmt>
+</public>}</block>;</struct>
+
+<comment type="line">// Static Allocations</comment>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>mutex</name></name></type> <name><name>FrozenCleanupCheck</name><operator>::</operator><name>m</name></name><argument_list>{}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>FrozenCleanupCheck</name><operator>::</operator><name>nFrozen</name></name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>condition_variable</name></name></type> <name><name>FrozenCleanupCheck</name><operator>::</operator><name>cv</name></name><argument_list>{}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>mutex</name></name></type> <name><name>UniqueCheck</name><operator>::</operator><name>m</name></name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unordered_multiset</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>UniqueCheck</name><operator>::</operator><name>results</name></name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>FakeCheckCheckCompletion</name><operator>::</operator><name>n_calls</name></name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name><name>MemoryCheck</name><operator>::</operator><name>fake_allocated_memory</name></name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+
+<comment type="line">// Queue Typedefs</comment>
+<typedef>typedef <type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>FakeCheckCheckCompletion</name></expr></argument>&gt;</argument_list></name></type> <name>Correct_Queue</name>;</typedef>
+<typedef>typedef <type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>FakeCheck</name></expr></argument>&gt;</argument_list></name></type> <name>Standard_Queue</name>;</typedef>
+<typedef>typedef <type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>FailingCheck</name></expr></argument>&gt;</argument_list></name></type> <name>Failing_Queue</name>;</typedef>
+<typedef>typedef <type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>UniqueCheck</name></expr></argument>&gt;</argument_list></name></type> <name>Unique_Queue</name>;</typedef>
+<typedef>typedef <type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>MemoryCheck</name></expr></argument>&gt;</argument_list></name></type> <name>Memory_Queue</name>;</typedef>
+<typedef>typedef <type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>FrozenCleanupCheck</name></expr></argument>&gt;</argument_list></name></type> <name>FrozenCleanup_Queue</name>;</typedef>
+
+
+<comment type="block" format="doxygen">/** This test case checks that the CCheckQueue works properly
+ * with each specified size_t Checks pushed.
+ */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>Correct_Queue_range</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>range</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>small_queue</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Correct_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>SCRIPT_CHECK_THREADS</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>small_queue</name><operator>-&gt;</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// Make vChecks here to save on malloc (this test can be slow...)</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FakeCheckCheckCompletion</name></expr></argument>&gt;</argument_list></name></type> <name>vChecks</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>i</name> <range>: <expr><name>range</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>total</name> <init>= <expr><name>i</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>FakeCheckCheckCompletion</name><operator>::</operator><name>n_calls</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>FakeCheckCheckCompletion</name></expr></argument>&gt;</argument_list></name></type> <name>control</name><argument_list>(<argument><expr><call><name><name>small_queue</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>total</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><name>total</name></expr></argument>, <argument><expr><operator>(</operator><name>size_t</name><operator>)</operator> <call><name>InsecureRandRange</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>total</name> <operator>-=</operator> <call><name><name>vChecks</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><call><name><name>control</name><operator>.</operator><name>Wait</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>FakeCheckCheckCompletion</name><operator>::</operator><name>n_calls</name></name> <operator>!=</operator> <name>i</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_REQUIRE_EQUAL</name><argument_list>(<argument><expr><name><name>FakeCheckCheckCompletion</name><operator>::</operator><name>n_calls</name></name></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Test that 0 checks is correct
+ */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Correct_Zero</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>range</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>range</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>size_t</name><operator>)</operator><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Correct_Queue_range</name><argument_list>(<argument><expr><name>range</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+<comment type="block" format="doxygen">/** Test that 1 check is correct
+ */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Correct_One</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>range</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>range</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>size_t</name><operator>)</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Correct_Queue_range</name><argument_list>(<argument><expr><name>range</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+<comment type="block" format="doxygen">/** Test that MAX check is correct
+ */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Correct_Max</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>range</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>range</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="number">100000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>Correct_Queue_range</name><argument_list>(<argument><expr><name>range</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+<comment type="block" format="doxygen">/** Test that random numbers of checks are correct
+ */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Correct_Random</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list></name></type> <name>range</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>range</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><literal type="number">100000</literal><operator>/</operator><literal type="number">1000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">100000</literal></expr>;</condition> <incr><expr><name>i</name> <operator>+=</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><operator>(</operator><name>size_t</name><operator>)</operator><literal type="number">1</literal></expr></argument>, <argument><expr><operator>(</operator><name>size_t</name><operator>)</operator><call><name>InsecureRandRange</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>min</name></name><argument_list>(<argument><expr><operator>(</operator><name>size_t</name><operator>)</operator><literal type="number">1000</literal></expr></argument>, <argument><expr><operator>(</operator><operator>(</operator><name>size_t</name><operator>)</operator><literal type="number">100000</literal><operator>)</operator> <operator>-</operator> <name>i</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name><name>range</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <expr_stmt><expr><call><name>Correct_Queue_range</name><argument_list>(<argument><expr><name>range</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+
+<comment type="block" format="doxygen">/** Test that failing checks are caught */</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Catches_Failure</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>fail_queue</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Failing_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>SCRIPT_CHECK_THREADS</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>fail_queue</name><operator>-&gt;</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">1001</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>FailingCheck</name></expr></argument>&gt;</argument_list></name></type> <name>control</name><argument_list>(<argument><expr><call><name><name>fail_queue</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>remaining</name> <init>= <expr><name>i</name></expr></init></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>remaining</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>size_t</name></type> <name>r</name> <init>= <expr><call><name>InsecureRandRange</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FailingCheck</name></expr></argument>&gt;</argument_list></name></type> <name>vChecks</name></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>r</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>size_t</name></type> <name>k</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>k</name> <operator>&lt;</operator> <name>r</name> <operator>&amp;&amp;</operator> <name>remaining</name></expr>;</condition> <incr><expr><name>k</name><operator>++</operator></expr><operator>,</operator> <expr><name>remaining</name><operator>--</operator></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>remaining</name> <operator>==</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <decl_stmt><decl><type><name>bool</name></type> <name>success</name> <init>= <expr><call><name><name>control</name><operator>.</operator><name>Wait</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><operator>!</operator><name>success</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>i</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><name>success</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+<comment type="line">// Test that a block validation which fails does not interfere with</comment>
+<comment type="line">// future blocks, ie, the bad state is cleared.</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Recovers_From_Failure</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>fail_queue</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Failing_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>SCRIPT_CHECK_THREADS</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>fail_queue</name><operator>-&gt;</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>times</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>times</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><operator>++</operator><name>times</name></expr></incr>)</control> <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name>bool</name></type> <name>end_fails</name> <range>: <expr><block>{<expr><literal type="boolean">true</literal></expr>, <expr><literal type="boolean">false</literal></expr>}</block></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>FailingCheck</name></expr></argument>&gt;</argument_list></name></type> <name>control</name><argument_list>(<argument><expr><call><name><name>fail_queue</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <block>{<block_content>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FailingCheck</name></expr></argument>&gt;</argument_list></name></type> <name>vChecks</name></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>vChecks</name><index>[<expr><literal type="number">99</literal></expr>]</index></name> <operator>=</operator> <name>end_fails</name></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block>
+            <decl_stmt><decl><type><name>bool</name></type> <name>r</name> <init>=<expr><call><name><name>control</name><operator>.</operator><name>Wait</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><name>r</name> <operator>!=</operator> <name>end_fails</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<comment type="line">// Test that unique checks are actually all called individually, rather than</comment>
+<comment type="line">// just one check being called repeatedly. Test that checks are not called</comment>
+<comment type="line">// more than once as well</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_UniqueCheck</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>queue</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Unique_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>SCRIPT_CHECK_THREADS</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>queue</name><operator>-&gt;</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    </block_content>}</block></for>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>COUNT</name> <init>= <expr><literal type="number">100000</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>total</name> <init>= <expr><name>COUNT</name></expr></init></decl>;</decl_stmt>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>UniqueCheck</name></expr></argument>&gt;</argument_list></name></type> <name>control</name><argument_list>(<argument><expr><call><name><name>queue</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>total</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>size_t</name></type> <name>r</name> <init>= <expr><call><name>InsecureRandRange</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>UniqueCheck</name></expr></argument>&gt;</argument_list></name></type> <name>vChecks</name></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>size_t</name></type> <name>k</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>k</name> <operator>&lt;</operator> <name>r</name> <operator>&amp;&amp;</operator> <name>total</name></expr>;</condition> <incr><expr><name>k</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><operator>--</operator><name>total</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+            <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></while>
+    </block_content>}</block>
+    <decl_stmt><decl><type><name>bool</name></type> <name>r</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_REQUIRE_EQUAL</name><argument_list>(<argument><expr><call><name><name>UniqueCheck</name><operator>::</operator><name>results</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>COUNT</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>COUNT</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>r</name> <operator>=</operator> <name>r</name> <operator>&amp;&amp;</operator> <call><name><name>UniqueCheck</name><operator>::</operator><name>results</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>;</expr_stmt></block_content></block></for>
+    <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><name>r</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+
+<comment type="line">// Test that blocks which might allocate lots of memory free their memory aggressively.</comment>
+<comment type="line">//</comment>
+<comment type="line">// This test attempts to catch a pathological case where by lazily freeing</comment>
+<comment type="line">// checks might mean leaving a check un-swapped out, and decreasing by 1 each</comment>
+<comment type="line">// time could leave the data hanging across a sequence of blocks.</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_Memory</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>queue</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Memory_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>SCRIPT_CHECK_THREADS</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+       <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>queue</name><operator>-&gt;</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">1000</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>total</name> <init>= <expr><name>i</name></expr></init></decl>;</decl_stmt>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>MemoryCheck</name></expr></argument>&gt;</argument_list></name></type> <name>control</name><argument_list>(<argument><expr><call><name><name>queue</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <while>while <condition>(<expr><name>total</name></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>size_t</name></type> <name>r</name> <init>= <expr><call><name>InsecureRandRange</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>MemoryCheck</name></expr></argument>&gt;</argument_list></name></type> <name>vChecks</name></decl>;</decl_stmt>
+                <for>for <control>(<init><decl><type><name>size_t</name></type> <name>k</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>k</name> <operator>&lt;</operator> <name>r</name> <operator>&amp;&amp;</operator> <name>total</name></expr>;</condition> <incr><expr><name>k</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                    <expr_stmt><expr><name>total</name><operator>--</operator></expr>;</expr_stmt>
+                    <comment type="line">// Each iteration leaves data at the front, back, and middle</comment>
+                    <comment type="line">// to catch any sort of deallocation failure</comment>
+                    <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>total</name> <operator>==</operator> <literal type="number">0</literal> <operator>||</operator> <name>total</name> <operator>==</operator> <name>i</name> <operator>||</operator> <name>total</name> <operator>==</operator> <name>i</name><operator>/</operator><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></for>
+                <expr_stmt><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></while>
+        </block_content>}</block>
+        <expr_stmt><expr><call><name>BOOST_REQUIRE_EQUAL</name><argument_list>(<argument><expr><name><name>MemoryCheck</name><operator>::</operator><name>fake_allocated_memory</name></name></expr></argument>, <argument><expr><literal type="number">0U</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<comment type="line">// Test that a new verification cannot occur until all checks</comment>
+<comment type="line">// have been destructed</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>test_CheckQueue_FrozenCleanup</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>queue</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>FrozenCleanup_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fails</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <name>SCRIPT_CHECK_THREADS</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><expr_stmt><expr><call><name><name>queue</name><operator>-&gt;</operator><name>Thread</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>thread</name></name></type> <name>t0</name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><parameter_list>()</parameter_list> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>FrozenCleanupCheck</name></expr></argument>&gt;</argument_list></name> <name>control</name>(<name><name>queue</name><operator>.</operator><name>get</name></name>(</type></decl>)</decl_stmt>)</block_content></block></lambda></expr></argument>;
+        <argument><expr><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FrozenCleanupCheck</name></expr></argument>&gt;</argument_list></name> <call><name>vChecks</name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>;
+        <comment type="line">// Freezing can't be the default initialized behavior given how the queue</comment>
+        <comment type="line">// swaps in default initialized Checks (otherwise freezing destructor</comment>
+        <comment type="line">// would get called twice).</comment>
+        <argument><expr><name><name>vChecks</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>should_freeze</name> <operator>=</operator> <literal type="boolean">true</literal></expr></argument>;
+        <argument><expr><call><name><name>control</name><operator>.</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr></argument>;
+        <argument><expr><name>bool</name> <name>waitResult</name> <operator>=</operator> <call><name><name>control</name><operator>.</operator><name>Wait</name></name><argument_list>()</argument_list></call></expr></argument>; <comment type="line">// Hangs here</comment>
+        <argument><expr><call><name>assert</name><argument_list>(<argument><expr><name>waitResult</name></expr></argument>)</argument_list></call></expr></argument>;</argument_list></decl></decl_stmt>
+    </block_content>}</block>)<empty_stmt>;</empty_stmt>
+    <block>{<block_content>
+        <function_decl><type><name><name>std</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><parameter_list>(<parameter><decl><type><name><name>FrozenCleanupCheck</name><operator>::</operator><name>m</name></name></type></decl></parameter>)</parameter_list>;</function_decl>
+        <comment type="line">// Wait until the queue has finished all jobs and frozen</comment>
+        <expr_stmt><expr><call><name><name>FrozenCleanupCheck</name><operator>::</operator><name>cv</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>l</name></expr></argument>, <argument><expr><lambda><capture>[]</capture><parameter_list>()</parameter_list><block>{<block_content><return>return <expr><name><name>FrozenCleanupCheck</name><operator>::</operator><name>nFrozen</name></name> <operator>==</operator> <literal type="number">1</literal></expr>;</return></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <comment type="line">// Try to get control of the queue a bunch of times</comment>
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <literal type="number">100</literal> <operator>&amp;&amp;</operator> <operator>!</operator><name>fails</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name>fails</name> <operator>=</operator> <call><name><name>queue</name><operator>-&gt;</operator><name>ControlMutex</name><operator>.</operator><name>try_lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <block>{<block_content>
+        <comment type="line">// Unfreeze (we need lock n case of spurious wakeup)</comment>
+        <function_decl><type><name><name>std</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><parameter_list>(<parameter><decl><type><name><name>FrozenCleanupCheck</name><operator>::</operator><name>m</name></name></type></decl></parameter>)</parameter_list>;</function_decl>
+        <expr_stmt><expr><name><name>FrozenCleanupCheck</name><operator>::</operator><name>nFrozen</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    </block_content>}</block>
+    <comment type="line">// Awaken frozen destructor</comment>
+    <expr_stmt><expr><call><name><name>FrozenCleanupCheck</name><operator>::</operator><name>cv</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Wait for control to finish</comment>
+    <expr_stmt><expr><call><name><name>t0</name><operator>.</operator><name>join</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><operator>!</operator><name>fails</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+}
+
+
+<comment type="block" format="doxygen">/** Test that CCheckQueueControl is threadsafe */</comment>
+BOOST_AUTO_TEST_CASE<expr_stmt><expr><operator>(</operator><name>test_CheckQueueControl_Locks</name><operator>)</operator>
+<block>{
+    <expr><name>auto</name> <name>queue</name> <operator>=</operator> <call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>Standard_Queue</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>QUEUE_BATCH_SIZE</name></expr></argument>)</argument_list></call></expr>;
+    <expr><block>{
+        <expr><name><name>boost</name><operator>::</operator><name>thread_group</name></name> <name>tg</name></expr>;
+        <expr><name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <call><name>nThreads</name> <argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></call></expr>;
+        <expr><name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name> <call><name>fails</name> <argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></call></expr>;
+        <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">3</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(
+                    <argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content>
+                    <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>FakeCheck</name></expr></argument>&gt;</argument_list></name> <name>control</name>(<name><name>queue</name><operator>.</operator><name>get</name></name>(</type></decl>)</decl_stmt>)</block_content></block></lambda></expr></argument>;
+                    <comment type="line">// While sleeping, no other thread should execute to this point</comment>
+                    <argument><expr><name>auto</name> <name>observed</name> <operator>=</operator> <operator>++</operator><name>nThreads</name></expr></argument>;
+                    <argument><expr><call><name>MilliSleep</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr></argument>;
+                    <argument><expr><name>fails</name> <operator>+=</operator> <name>observed</name>  <operator>!=</operator> <name>nThreads</name></expr></argument>;
+                    }</argument_list></call></expr></expr_stmt>)</block_content></block><empty_stmt>;</empty_stmt></for></block></expr>
+        }</block>
+        <call><name><name>tg</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_REQUIRE_EQUAL</name><argument_list>(<argument><expr><name>fails</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    }
+    {
+        <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>thread_group</name></name></type> <name>tg</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>mutex</name></name></type> <name>m</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>condition_variable</name></name></type> <name>cv</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>has_lock</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>has_tried</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>done</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>done_ack</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+        <block>{<block_content>
+            <function_decl><type><name><name>std</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name><parameter_list>(<parameter><decl><type><name>m</name></type></decl></parameter>)</parameter_list>;</function_decl>
+            <expr_stmt><expr><call><name><name>tg</name><operator>.</operator><name>create_thread</name></name><argument_list>(<argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content>
+                    <decl_stmt><decl><type><name><name>CCheckQueueControl</name><argument_list type="generic">&lt;<argument><expr><name>FakeCheck</name></expr></argument>&gt;</argument_list></name> <name>control</name>(<name><name>queue</name><operator>.</operator><name>get</name></name>(</type></decl>)</decl_stmt>)</block_content></block></lambda></expr></argument>;
+                    <argument><expr><name><name>std</name><operator>::</operator><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name> <call><name>ll</name><argument_list>(<argument><expr><name>m</name></expr></argument>)</argument_list></call></expr></argument>;
+                    <argument><expr><name>has_lock</name> <operator>=</operator> <literal type="boolean">true</literal></expr></argument>;
+                    <argument><expr><call><name><name>cv</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr></argument>;
+                    <argument><expr><call><name><name>cv</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>ll</name></expr></argument>, <argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><return>return <expr><name>has_tried</name></expr>;</return></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr></argument>;
+                    <argument><expr><name>done</name> <operator>=</operator> <literal type="boolean">true</literal></expr></argument>;
+                    <argument><expr><call><name><name>cv</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr></argument>;
+                    <comment type="line">// Wait until the done is acknowledged</comment>
+                    <comment type="line">//</comment>
+                    <argument><expr><call><name><name>cv</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>ll</name></expr></argument>, <argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><block>{<block_content><return>return <expr><name>done_ack</name></expr>;</return></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr></argument>;</argument_list></call></expr></expr_stmt>
+                    </block_content>}</block>)<empty_stmt>;</empty_stmt>
+            <comment type="line">// Wait for thread to get the lock</comment>
+            <expr_stmt><expr><call><name><name>cv</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>l</name></expr></argument>, <argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><parameter_list>()</parameter_list><block>{<block_content><return>return <expr><name>has_lock</name></expr>;</return></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>bool</name></type> <name>fails</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>auto</name></type> <name>x</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>x</name> <operator>&lt;</operator> <literal type="number">100</literal> <operator>&amp;&amp;</operator> <operator>!</operator><name>fails</name></expr>;</condition> <incr><expr><operator>++</operator><name>x</name></expr></incr>)</control> <block>{<block_content>
+                <expr_stmt><expr><name>fails</name> <operator>=</operator> <call><name><name>queue</name><operator>-&gt;</operator><name>ControlMutex</name><operator>.</operator><name>try_lock</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+            <expr_stmt><expr><name>has_tried</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>cv</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>cv</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>l</name></expr></argument>, <argument><expr><lambda><capture>[<argument><modifier>&amp;</modifier></argument>]</capture><parameter_list>()</parameter_list><block>{<block_content><return>return <expr><name>done</name></expr>;</return></block_content>}</block></lambda></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <comment type="line">// Acknowledge the done</comment>
+            <expr_stmt><expr><name>done_ack</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>cv</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><operator>!</operator><name>fails</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        }
+        tg<expr_stmt><expr><operator>.</operator><call><name>join_all</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    }
+}
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+
+</unit>

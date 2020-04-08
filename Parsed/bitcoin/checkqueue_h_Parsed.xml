@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/checkqueue.h"><comment type="line">// Copyright (c) 2012-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_CHECKQUEUE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_CHECKQUEUE_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread/condition_variable.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread/mutex.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>CCheckQueueControl</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Queue for verifications that have to be performed.
+  * The verifications are represented by a type T, which must provide an
+  * operator(), returning a bool.
+  *
+  * One thread (the master) is assumed to push batches of verifications
+  * onto the queue, where they are processed by N-1 worker threads. When
+  * the master is done adding work, it temporarily joins the worker pool
+  * as an N'th worker, until all jobs are done.
+  */</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>CCheckQueue</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <comment type="line" format="doxygen">//! Mutex to protect the inner state</comment>
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>mutex</name> <name>mutex</name></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Worker threads block on this when out of work</comment>
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>condition_variable</name> <name>condWorker</name></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Master thread blocks on this when out of work</comment>
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>condition_variable</name> <name>condMaster</name></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! The queue of elements to be processed.</comment>
+    <comment type="line" format="doxygen">//! As the order of booleans doesn't matter, it is used as a LIFO (stack)</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <name>queue</name></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! The number of workers (including the master) that are idle.</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>nIdle</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! The total number of workers (including the master).</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>nTotal</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! The temporary evaluation result.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fAllOk</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Number of verifications that haven't completed yet.
+     * This includes elements that are no longer queued, but still in the
+     * worker's own batches.
+     */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nTodo</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! The maximum number of elements to be processed in one batch</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nBatchSize</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Internal function that does bulk of the verification work. */</comment>
+    <function><type><name>bool</name></type> <name>Loop</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>fMaster</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>boost</name><operator>::</operator><name>condition_variable</name><operator>&amp;</operator> <name>cond</name> <operator>=</operator> <ternary><condition><expr><name>fMaster</name></expr> ?</condition><then> <expr><name>condMaster</name></expr> </then><else>: <expr><name>condWorker</name></expr></else></ternary></expr>;</expr_stmt>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <name>vChecks</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><name>nBatchSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nNow</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>fOk</name> <init>= <expr><name>true</name></expr></init></decl>;</decl_stmt>
+        <do>do <block>{<block_content>
+            <block>{<block_content>
+                <expr_stmt><expr><name>boost</name><operator>::</operator><name><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name>boost</name><operator>::</operator><name>mutex</name></expr></argument>&gt;</argument_list></name> <call><name>lock</name><argument_list>(<argument><expr><name>mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <comment type="line">// first do the clean-up of the previous loop run (allowing us to do it in the same critsect)</comment>
+                <if_stmt><if>if <condition>(<expr><name>nNow</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>fAllOk</name> <operator>&amp;=</operator> <name>fOk</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>nTodo</name> <operator>-=</operator> <name>nNow</name></expr>;</expr_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>nTodo</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>!</operator><name>fMaster</name></expr>)</condition><block type="pseudo"><block_content>
+                        <comment type="line">// We processed the last element; inform the master it can exit and return the result</comment>
+                        <expr_stmt><expr><call><name><name>condMaster</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                </block_content>}</block></if> <else>else <block>{<block_content>
+                    <comment type="line">// first iteration</comment>
+                    <expr_stmt><expr><name>nTotal</name><operator>++</operator></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+                <comment type="line">// logically, the do loop starts here</comment>
+                <while>while <condition>(<expr><call><name><name>queue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><name>fMaster</name> <operator>&amp;&amp;</operator> <name>nTodo</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>nTotal</name><operator>--</operator></expr>;</expr_stmt>
+                        <decl_stmt><decl><type><name>bool</name></type> <name>fRet</name> <init>= <expr><name>fAllOk</name></expr></init></decl>;</decl_stmt>
+                        <comment type="line">// reset the status for new work later</comment>
+                        <if_stmt><if>if <condition>(<expr><name>fMaster</name></expr>)</condition><block type="pseudo"><block_content>
+                            <expr_stmt><expr><name>fAllOk</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                        <comment type="line">// return the current status</comment>
+                        <return>return <expr><name>fRet</name></expr>;</return>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>nIdle</name><operator>++</operator></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>cond</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>lock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// wait</comment>
+                    <expr_stmt><expr><name>nIdle</name><operator>--</operator></expr>;</expr_stmt>
+                </block_content>}</block></while>
+                <comment type="line">// Decide how many work units to process now.</comment>
+                <comment type="line">// * Do not try to do everything at once, but aim for increasingly smaller batches so</comment>
+                <comment type="line">//   all workers finish approximately simultaneously.</comment>
+                <comment type="line">// * Try to account for idle jobs which will instantly start helping.</comment>
+                <comment type="line">// * Don't do batches smaller than 1 (duh), or larger than nBatchSize.</comment>
+                <expr_stmt><expr><name>nNow</name> <operator>=</operator> <name>std</name><operator>::</operator><call><name>max</name><argument_list>(<argument><expr><literal type="number">1U</literal></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>min</name><argument_list>(<argument><expr><name>nBatchSize</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><call><name><name>queue</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>/</operator> <operator>(</operator><name>nTotal</name> <operator>+</operator> <name>nIdle</name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>nNow</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nNow</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                    <comment type="line">// We want the lock on the mutex to be as short as possible, so swap jobs from the global</comment>
+                    <comment type="line">// queue to the local batch vector instead of copying.</comment>
+                    <expr_stmt><expr><name><name>vChecks</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>swap</name><argument_list>(<argument><expr><call><name><name>queue</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>queue</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></for>
+                <comment type="line">// Check whether we need to do work at all</comment>
+                <expr_stmt><expr><name>fOk</name> <operator>=</operator> <name>fAllOk</name></expr>;</expr_stmt>
+            </block_content>}</block>
+            <comment type="line">// execute work</comment>
+            <for>for <control>(<init><decl><type><name>T</name><modifier>&amp;</modifier></type> <name>check</name> <range>: <expr><name>vChecks</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+                <if_stmt><if>if <condition>(<expr><name>fOk</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><name>fOk</name> <operator>=</operator> <call><name>check</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt></block_content></block></for>
+            <expr_stmt><expr><call><name><name>vChecks</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> while <condition>(<expr><name>true</name></expr>)</condition>;</do>
+    </block_content>}</block></function>
+
+<label><name>public</name>:</label>
+    <comment type="line" format="doxygen">//! Mutex to ensure only one concurrent CCheckQueueControl</comment>
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>mutex</name> <name>ControlMutex</name></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">//! Create a new check queue</comment>
+    <macro><name>explicit</name></macro> <macro><name>CCheckQueue</name><argument_list>(<argument>unsigned int nBatchSizeIn</argument>)</argument_list></macro> : <expr_stmt><expr><call><name>nIdle</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>nTotal</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>fAllOk</name><argument_list>(<argument><expr><name>true</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>nTodo</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>nBatchSize</name><argument_list>(<argument>nBatchSizeIn</argument>)</argument_list></macro> <expr><block>{}</block>
+
+    <comment type="line" format="doxygen">//! Worker thread</comment>
+    <name>void</name> <macro><name>Thread</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><call><name>Loop</name><argument_list>()</argument_list></call></expr>;
+    }</block>
+
+    <comment type="line" format="doxygen">//! Wait until execution finishes, and return whether all evaluations were successful.</comment>
+    <name>bool</name> <macro><name>Wait</name><argument_list>()</argument_list></macro>
+    <block>{
+        <return>return <expr><call><name>Loop</name><argument_list>(<argument><expr><name>true</name></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <comment type="line" format="doxygen">//! Add a batch of checks to the queue</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>Add</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vChecks</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>boost</name><operator>::</operator><name><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name>boost</name><operator>::</operator><name>mutex</name></expr></argument>&gt;</argument_list></name> <call><name>lock</name><argument_list>(<argument><expr><name>mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>T</name><modifier>&amp;</modifier></type> <name>check</name> <range>: <expr><name>vChecks</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>queue</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>T</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>check</name><operator>.</operator><name>swap</name></name><argument_list>(<argument><expr><call><name><name>queue</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><name>nTodo</name> <operator>+=</operator> <call><name><name>vChecks</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>vChecks</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>condWorker</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <if type="elseif">else if <condition>(<expr><call><name><name>vChecks</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>condWorker</name><operator>.</operator><name>notify_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <expr_stmt><expr><operator>~</operator><macro><name>CCheckQueue</name><argument_list>()</argument_list></macro>
+    <block>{
+    }</block></expr></expr_stmt>
+
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * RAII-style controller object for a CCheckQueue that guarantees the passed
+ * queue is finished before continuing.
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>CCheckQueueControl</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <modifier>*</modifier> <specifier>const</specifier></type> <name>pqueue</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fDone</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>CCheckQueueControl</name><argument_list>()</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>CCheckQueueControl</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CCheckQueueControl</name><operator>&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CCheckQueueControl</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>CCheckQueueControl</name><operator>&amp;</operator><operator>)</operator> <operator>=</operator> <name>delete</name></expr></init></decl>;</decl_stmt>
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>CCheckQueueControl</name><argument_list>(<argument><expr><name><name>CCheckQueue</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name> <operator>*</operator> <specifier>const</specifier> <name>pqueueIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <call><name>pqueue</name><argument_list>(<argument><expr><name>pqueueIn</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>fDone</name><argument_list>(<argument>false</argument>)</argument_list></macro>
+    <expr><block>{
+        <comment type="line">// passed queue is supposed to be unused, or nullptr</comment>
+        <if_stmt><if>if <condition>(<expr><name>pqueue</name> <operator>!=</operator> <name>nullptr</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>ENTER_CRITICAL_SECTION</name><argument_list>(<argument><expr><name><name>pqueue</name><operator>-&gt;</operator><name>ControlMutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt/>}</block_content>
+    }
+
+    bool Wait(</block></if></if_stmt>)
+    <block>{
+        <if_stmt><if>if <condition>(<expr><name>pqueue</name> <operator>==</operator> <name>nullptr</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>true</name></expr>;</return></block_content></block></if></if_stmt>
+        <name>bool</name> <name>fRet</name> <operator>=</operator> <call><name><name>pqueue</name><operator>-&gt;</operator><name>Wait</name></name><argument_list>()</argument_list></call></block></block></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fDone</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt>
+        <return>return <expr><name>fRet</name></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name>void</name></type> <name>Add</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vChecks</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>pqueue</name> <operator>!=</operator> <name>nullptr</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>pqueue</name><operator>-&gt;</operator><name>Add</name></name><argument_list>(<argument><expr><name>vChecks</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <expr_stmt><expr><operator>~</operator><macro><name>CCheckQueueControl</name><argument_list>()</argument_list></macro>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fDone</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Wait</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt></block></expr></expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>pqueue</name> <operator>!=</operator> <name>nullptr</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LEAVE_CRITICAL_SECTION</name><argument_list>(<argument><expr><name><name>pqueue</name><operator>-&gt;</operator><name>ControlMutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    }
+}<empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_CHECKQUEUE_H</comment>
+</unit>

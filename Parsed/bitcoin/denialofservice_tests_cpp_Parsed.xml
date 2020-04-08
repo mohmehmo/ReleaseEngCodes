@@ -1,0 +1,452 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/denialofservice_tests.cpp"><comment type="line">// Copyright (c) 2011-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<comment type="line">// Unit tests for denial-of-service detection/prevention code</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;banman.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;net.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;net_processing.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/sign.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/signingprovider.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/standard.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/memory.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/time.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+
+<struct>struct <name>CConnmanTest</name> <super_list>: <super><specifier>public</specifier> <name>CConnman</name></super></super_list> <block>{<public type="default">
+    <using>using <name><name>CConnman</name><operator>::</operator><name>CConnman</name></name>;</using>
+    <function><type><name>void</name></type> <name>AddNode</name><parameter_list>(<parameter><decl><type><name>CNode</name><modifier>&amp;</modifier></type> <name>node</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_vNodes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vNodes</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>node</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+    <function><type><name>void</name></type> <name>ClearNodes</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_vNodes</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>CNode</name><modifier>*</modifier></type> <name>node</name> <range>: <expr><name>vNodes</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><operator>delete</operator> <name>node</name></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><call><name><name>vNodes</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</struct>
+
+<comment type="line">// Tests these internal-to-net_processing.cpp methods:</comment>
+<function_decl><type><specifier>extern</specifier> <name>bool</name></type> <name>AddOrphanTx</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>NodeId</name></type> <name>peer</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>EraseOrphansFor</name><parameter_list>(<parameter><decl><type><name>NodeId</name></type> <name>peer</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>unsigned</name> <name>int</name></type> <name>LimitOrphanTxSize</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nMaxOrphans</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>Misbehaving</name><parameter_list>(<parameter><decl><type><name>NodeId</name></type> <name>nodeid</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>howmuch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>message</name><init>=<expr><literal type="string">""</literal></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+<struct>struct <name>COrphanTx</name> <block>{<public type="default">
+    <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>tx</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>NodeId</name></type> <name>fromPeer</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTimeExpire</name></decl>;</decl_stmt>
+</public>}</block>;</struct>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>CCriticalSection</name></type> <name>g_cs_orphans</name></decl>;</decl_stmt>
+<function_decl><type><specifier>extern</specifier> <name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>COrphanTx</name></expr></argument>&gt;</argument_list></name> <name>mapOrphanTransactions</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>g_cs_orphans</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><specifier>static</specifier> <name>CService</name></type> <name>ip</name><parameter_list>(<parameter><decl><type><name>uint32_t</name></type> <name>i</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>struct</name> <name>in_addr</name></name></type> <name>s</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>s</name><operator>.</operator><name>s_addr</name></name> <operator>=</operator> <name>i</name></expr>;</expr_stmt>
+    <return>return <expr><call><name>CService</name><argument_list>(<argument><expr><call><name>CNetAddr</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetDefaultPort</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>NodeId</name></type> <name>id</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<function_decl><type><name>void</name></type> <name>UpdateLastBlockAnnounceTime</name><parameter_list>(<parameter><decl><type><name>NodeId</name></type> <name>node</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>time_in_seconds</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<macro><name>BOOST_FIXTURE_TEST_SUITE</name><argument_list>(<argument>denialofservice_tests</argument>, <argument>TestingSetup</argument>)</argument_list></macro>
+
+<comment type="line">// Test eviction of an outbound peer whose chain never advances</comment>
+<comment type="line">// Mock a node connection, and use mocktime to simulate a peer</comment>
+<comment type="line">// which never sends any headers messages.  PeerLogic should</comment>
+<comment type="line">// decide to evict that outbound peer, after the appropriate timeouts.</comment>
+<comment type="line">// Note that we protect 4 outbound nodes from being subject to</comment>
+<comment type="line">// this logic; this test takes advantage of that protection only</comment>
+<comment type="line">// being applied to nodes which send headers with sufficient</comment>
+<comment type="line">// work.</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>outbound_slow_chain_eviction</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>connman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CConnman</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0x1337</literal></expr></argument>, <argument><expr><literal type="number">0x1337</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>peerLogic</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>PeerLogicValidation</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>scheduler</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Mock an outbound peer</comment>
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr1</name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><literal type="number">0xa0b0c001</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CNode</name></type> <name>dummyNode1</name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><call><name>ServiceFlags</name><argument_list>(<argument><expr><name>NODE_NETWORK</name><operator>|</operator><name>NODE_WITNESS</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr1</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <comment type="block">/*fInboundIn=*/</comment> <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dummyNode1</name><operator>.</operator><name>SetSendVersion</name></name><argument_list>(<argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>InitializeNode</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode1</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode1</name><operator>.</operator><name>fSuccessfullyConnected</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+
+    <comment type="line">// This test requires that we have a chain with non-zero work.</comment>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>Tip</name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>nChainWork</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <comment type="line">// Test starts here</comment>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// should result in getheaders</comment>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_vSend</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>vSendMsg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>dummyNode1</name><operator>.</operator><name>vSendMsg</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nStartTime</name> <init>= <expr><call><name>GetTime</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="line">// Wait 21 minutes</comment>
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><name>nStartTime</name><operator>+</operator><literal type="number">21</literal><operator>*</operator><literal type="number">60</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// should result in getheaders</comment>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_vSend</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>vSendMsg</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <comment type="line">// Wait 3 more minutes</comment>
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><name>nStartTime</name><operator>+</operator><literal type="number">24</literal><operator>*</operator><literal type="number">60</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// should result in disconnect</comment>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>dummyNode1</name><operator>.</operator><name>fDisconnect</name></name> <operator>==</operator> <literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>dummy</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>FinalizeNode</name></name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>dummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>AddRandomOutboundPeer</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name> <modifier>*</modifier></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type><name>vNodes</name></decl></parameter>, <parameter><decl><type><name>PeerLogicValidation</name> <modifier>&amp;</modifier></type><name>peerLogic</name></decl></parameter>, <parameter><decl><type><name>CConnmanTest</name><modifier>*</modifier></type> <name>connman</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr</name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><call><name><name>g_insecure_rand_ctx</name><operator>.</operator><name>randbits</name></name><argument_list>(<argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vNodes</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><operator>new</operator> <call><name>CNode</name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><call><name>ServiceFlags</name><argument_list>(<argument><expr><name>NODE_NETWORK</name><operator>|</operator><name>NODE_WITNESS</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <comment type="block">/*fInboundIn=*/</comment> <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CNode</name> <modifier>&amp;</modifier></type><name>node</name> <init>= <expr><operator>*</operator><call><name><name>vNodes</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>node</name><operator>.</operator><name>SetSendVersion</name></name><argument_list>(<argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>.</operator><name>InitializeNode</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>node</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>node</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>node</name><operator>.</operator><name>fSuccessfullyConnected</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>connman</name><operator>-&gt;</operator><name>AddNode</name></name><argument_list>(<argument><expr><name>node</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>stale_tip_peer_management</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>connman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CConnmanTest</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0x1337</literal></expr></argument>, <argument><expr><literal type="number">0x1337</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>peerLogic</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>PeerLogicValidation</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>scheduler</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>consensusParams</name> <init>= <expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetConsensus</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>constexpr</specifier> <name>int</name></type> <name>max_outbound_full_relay</name> <init>= <expr><literal type="number">8</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>CConnman</name><operator>::</operator><name>Options</name></name></type> <name>options</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>nMaxConnections</name></name> <operator>=</operator> <literal type="number">125</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>m_max_outbound_full_relay</name></name> <operator>=</operator> <name>max_outbound_full_relay</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>options</name><operator>.</operator><name>nMaxFeeler</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>connman</name><operator>-&gt;</operator><name>Init</name></name><argument_list>(<argument><expr><name>options</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CNode</name> <modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>vNodes</name></decl>;</decl_stmt>
+
+    <comment type="line">// Mock some outbound peers</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><name>max_outbound_full_relay</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>AddRandomOutboundPeer</name><argument_list>(<argument><expr><name>vNodes</name></expr></argument>, <argument><expr><operator>*</operator><name>peerLogic</name></expr></argument>, <argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>CheckForStaleTipAndEvictPeers</name></name><argument_list>(<argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// No nodes should be marked for disconnection while we have no extra peers</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CNode</name> <modifier>*</modifier></type><name>node</name> <range>: <expr><name>vNodes</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>node</name><operator>-&gt;</operator><name>fDisconnect</name></name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><call><name>GetTime</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">3</literal><operator>*</operator><name><name>consensusParams</name><operator>.</operator><name>nPowTargetSpacing</name></name> <operator>+</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Now tip should definitely be stale, and we should look for an extra</comment>
+    <comment type="line">// outbound peer</comment>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>CheckForStaleTipAndEvictPeers</name></name><argument_list>(<argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>connman</name><operator>-&gt;</operator><name>GetTryNewOutboundPeer</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Still no peers should be marked for disconnection</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CNode</name> <modifier>*</modifier></type><name>node</name> <range>: <expr><name>vNodes</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>node</name><operator>-&gt;</operator><name>fDisconnect</name></name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// If we add one more peer, something should get marked for eviction</comment>
+    <comment type="line">// on the next check (since we're mocking the time to be in the future, the</comment>
+    <comment type="line">// required time connected check should be satisfied).</comment>
+    <expr_stmt><expr><call><name>AddRandomOutboundPeer</name><argument_list>(<argument><expr><name>vNodes</name></expr></argument>, <argument><expr><operator>*</operator><name>peerLogic</name></expr></argument>, <argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>CheckForStaleTipAndEvictPeers</name></name><argument_list>(<argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><name>max_outbound_full_relay</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>vNodes</name><index>[<expr><name>i</name></expr>]</index></name><operator>-&gt;</operator><name>fDisconnect</name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// Last added node should get marked for eviction</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>vNodes</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>fDisconnect</name> <operator>==</operator> <literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>vNodes</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>fDisconnect</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+
+    <comment type="line">// Update the last announced block time for the last</comment>
+    <comment type="line">// peer, and check that the next newest node gets evicted.</comment>
+    <expr_stmt><expr><call><name>UpdateLastBlockAnnounceTime</name><argument_list>(<argument><expr><call><name><name>vNodes</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>GetId</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>GetTime</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>CheckForStaleTipAndEvictPeers</name></name><argument_list>(<argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><name>max_outbound_full_relay</name><operator>-</operator><literal type="number">1</literal></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>vNodes</name><index>[<expr><name>i</name></expr>]</index></name><operator>-&gt;</operator><name>fDisconnect</name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name><name>vNodes</name><index>[<expr><name>max_outbound_full_relay</name><operator>-</operator><literal type="number">1</literal></expr>]</index></name><operator>-&gt;</operator><name>fDisconnect</name> <operator>==</operator> <literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>vNodes</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>fDisconnect</name> <operator>==</operator> <literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>dummy</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>CNode</name> <modifier>*</modifier></type><name>node</name> <range>: <expr><name>vNodes</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>FinalizeNode</name></name><argument_list>(<argument><expr><call><name><name>node</name><operator>-&gt;</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>dummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name><name>connman</name><operator>-&gt;</operator><name>ClearNodes</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>DoS_banning</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>banman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>BanMan</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"banlist.dat"</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>DEFAULT_MISBEHAVING_BANTIME</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>connman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CConnman</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0x1337</literal></expr></argument>, <argument><expr><literal type="number">0x1337</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>peerLogic</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>PeerLogicValidation</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>banman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>scheduler</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>banman</name><operator>-&gt;</operator><name>ClearBanned</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr1</name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><literal type="number">0xa0b0c001</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CNode</name></type> <name>dummyNode1</name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr1</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dummyNode1</name><operator>.</operator><name>SetSendVersion</name></name><argument_list>(<argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>InitializeNode</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode1</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode1</name><operator>.</operator><name>fSuccessfullyConnected</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Should get banned</comment>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><literal type="number">0xa0b0c001</literal><operator>|</operator><literal type="number">0x0000ff00</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Different IP, not banned</comment>
+
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr2</name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><literal type="number">0xa0b0c002</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CNode</name></type> <name>dummyNode2</name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr2</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dummyNode2</name><operator>.</operator><name>SetSendVersion</name></name><argument_list>(<argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>InitializeNode</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode2</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode2</name><operator>.</operator><name>fSuccessfullyConnected</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode2</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">50</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode2</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// 2 not banned yet...</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>  <comment type="line">// ... but 1 still should be</comment>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode2</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">50</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode2</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr2</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>dummy</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>FinalizeNode</name></name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>dummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>FinalizeNode</name></name><argument_list>(<argument><expr><call><name><name>dummyNode2</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>dummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>DoS_banscore</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>banman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>BanMan</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"banlist.dat"</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>DEFAULT_MISBEHAVING_BANTIME</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>connman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CConnman</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0x1337</literal></expr></argument>, <argument><expr><literal type="number">0x1337</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>peerLogic</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>PeerLogicValidation</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>banman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>scheduler</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>banman</name><operator>-&gt;</operator><name>ClearBanned</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>ForceSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-banscore"</literal></expr></argument>, <argument><expr><literal type="string">"111"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// because 11 is my favorite number</comment>
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr1</name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><literal type="number">0xa0b0c001</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CNode</name></type> <name>dummyNode1</name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr1</name></expr></argument>, <argument><expr><literal type="number">3</literal></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dummyNode1</name><operator>.</operator><name>SetSendVersion</name></name><argument_list>(<argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>InitializeNode</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode1</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode1</name><operator>.</operator><name>fSuccessfullyConnected</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode1</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr1</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>ForceSetArg</name></name><argument_list>(<argument><expr><literal type="string">"-banscore"</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>to_string</name></name><argument_list>(<argument><expr><name>DEFAULT_BANSCORE_THRESHOLD</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>dummy</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>FinalizeNode</name></name><argument_list>(<argument><expr><call><name><name>dummyNode1</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>dummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>DoS_bantime</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>auto</name></type> <name>banman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>BanMan</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"banlist.dat"</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>DEFAULT_MISBEHAVING_BANTIME</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>connman</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>CConnman</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0x1337</literal></expr></argument>, <argument><expr><literal type="number">0x1337</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>peerLogic</name> <init>= <expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name>PeerLogicValidation</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>connman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>banman</name><operator>.</operator><name>get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>scheduler</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>banman</name><operator>-&gt;</operator><name>ClearBanned</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nStartTime</name> <init>= <expr><call><name>GetTime</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><name>nStartTime</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Overrides future calls to GetTime()</comment>
+
+    <decl_stmt><decl><type><name>CAddress</name></type> <name>addr</name><argument_list>(<argument><expr><call><name>ip</name><argument_list>(<argument><expr><literal type="number">0xa0b0c001</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>NODE_NONE</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CNode</name></type> <name>dummyNode</name><argument_list>(<argument><expr><name>id</name><operator>++</operator></expr></argument>, <argument><expr><name>NODE_NETWORK</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>INVALID_SOCKET</name></expr></argument>, <argument><expr><name>addr</name></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>, <argument><expr><call><name>CAddress</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>dummyNode</name><operator>.</operator><name>SetSendVersion</name></name><argument_list>(<argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>InitializeNode</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>dummyNode</name><operator>.</operator><name>fSuccessfullyConnected</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>Misbehaving</name><argument_list>(<argument><expr><call><name><name>dummyNode</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name><name>dummyNode</name><operator>.</operator><name>cs_sendProcessing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>SendMessages</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>dummyNode</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><name>nStartTime</name><operator>+</operator><literal type="number">60</literal><operator>*</operator><literal type="number">60</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>SetMockTime</name><argument_list>(<argument><expr><name>nStartTime</name><operator>+</operator><literal type="number">60</literal><operator>*</operator><literal type="number">60</literal><operator>*</operator><literal type="number">24</literal><operator>+</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>banman</name><operator>-&gt;</operator><name>IsBanned</name></name><argument_list>(<argument><expr><name>addr</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>dummy</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>peerLogic</name><operator>-&gt;</operator><name>FinalizeNode</name></name><argument_list>(<argument><expr><call><name><name>dummyNode</name><operator>.</operator><name>GetId</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>dummy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<function><type><specifier>static</specifier> <name>CTransactionRef</name></type> <name>RandomOrphan</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>COrphanTx</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>it</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name>g_cs_orphans</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>it</name> <operator>=</operator> <call><name><name>mapOrphanTransactions</name><operator>.</operator><name>lower_bound</name></name><argument_list>(<argument><expr><call><name>InsecureRand256</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>it</name> <operator>==</operator> <call><name><name>mapOrphanTransactions</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>it</name> <operator>=</operator> <call><name><name>mapOrphanTransactions</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <return>return <expr><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>tx</name></name></expr>;</return>
+</block_content>}</block></function>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>DoS_mapOrphans</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CKey</name></type> <name>key</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>key</name><operator>.</operator><name>MakeNewKey</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>FillableSigningProvider</name></type> <name>keystore</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>keystore</name><operator>.</operator><name>AddKey</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// 50 orphan transactions:</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">50</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>tx</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>n</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>hash</name></name> <operator>=</operator> <call><name>InsecureRand256</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>&lt;&lt;</operator> <name>OP_1</name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <literal type="number">1</literal><operator>*</operator><name>CENT</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>PKHash</name><argument_list>(<argument><expr><call><name><name>key</name><operator>.</operator><name>GetPubKey</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>AddOrphanTx</name><argument_list>(<argument><expr><call><name>MakeTransactionRef</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// ... and 50 that depend on other orphans:</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">50</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>txPrev</name> <init>= <expr><call><name>RandomOrphan</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>tx</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>n</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>hash</name></name> <operator>=</operator> <call><name><name>txPrev</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <literal type="number">1</literal><operator>*</operator><name>CENT</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>PKHash</name><argument_list>(<argument><expr><call><name><name>key</name><operator>.</operator><name>GetPubKey</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>SignSignature</name><argument_list>(<argument><expr><name>keystore</name></expr></argument>, <argument><expr><operator>*</operator><name>txPrev</name></expr></argument>, <argument><expr><name>tx</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>SIGHASH_ALL</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><call><name>AddOrphanTx</name><argument_list>(<argument><expr><call><name>MakeTransactionRef</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// This really-big orphan should be ignored:</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>txPrev</name> <init>= <expr><call><name>RandomOrphan</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>tx</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <literal type="number">1</literal><operator>*</operator><name>CENT</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>PKHash</name><argument_list>(<argument><expr><call><name><name>key</name><operator>.</operator><name>GetPubKey</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">2777</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control>
+        <block>{<block_content>
+            <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>j</name></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>n</name></name> <operator>=</operator> <name>j</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>j</name></expr>]</index></name><operator>.</operator><name><name>prevout</name><operator>.</operator><name>hash</name></name> <operator>=</operator> <call><name><name>txPrev</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>SignSignature</name><argument_list>(<argument><expr><name>keystore</name></expr></argument>, <argument><expr><operator>*</operator><name>txPrev</name></expr></argument>, <argument><expr><name>tx</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>SIGHASH_ALL</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// Re-use same signature for other inputs</comment>
+        <comment type="line">// (they don't have to be valid for this test)</comment>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>j</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>j</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>j</name></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptSig</name></expr>;</expr_stmt></block_content></block></for>
+
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name>AddOrphanTx</name><argument_list>(<argument><expr><call><name>MakeTransactionRef</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><call><name>LOCK2</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>, <argument><expr><name>g_cs_orphans</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Test EraseOrphansFor:</comment>
+    <for>for <control>(<init><decl><type><name>NodeId</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">3</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>size_t</name></type> <name>sizeBefore</name> <init>= <expr><call><name><name>mapOrphanTransactions</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>EraseOrphansFor</name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>mapOrphanTransactions</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name>sizeBefore</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Test LimitOrphanTxSize() function:</comment>
+    <expr_stmt><expr><call><name>LimitOrphanTxSize</name><argument_list>(<argument><expr><literal type="number">40</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>mapOrphanTransactions</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">40</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LimitOrphanTxSize</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>mapOrphanTransactions</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;=</operator> <literal type="number">10</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LimitOrphanTxSize</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>mapOrphanTransactions</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+</unit>
