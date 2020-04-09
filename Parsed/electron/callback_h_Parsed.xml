@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/electron/shell/common/gin_helper/callback.h"><comment type="line">// Copyright (c) 2019 GitHub, Inc. All rights reserved.</comment>
+<comment type="line">// Use of this source code is governed by the MIT license that can be</comment>
+<comment type="line">// found in the LICENSE file.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SHELL_COMMON_GIN_HELPER_CALLBACK_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SHELL_COMMON_GIN_HELPER_CALLBACK_H_</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/bind.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_converters/std_converter.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_helper/function_template.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_helper/locker.h"</cpp:file></cpp:include>
+
+<comment type="line">// Implements safe convertions between JS functions and base::Callback.</comment>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>gin_helper</name> <block>{<block_content>
+
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>RefCountedGlobal</name></decl>;</decl_stmt>
+
+<comment type="line">// Manages the V8 function with RAII.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>SafeV8Function</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <expr_stmt><expr><call><name>SafeV8Function</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>, <argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>SafeV8Function</name><argument_list>(<argument><expr><specifier>const</specifier> <name>SafeV8Function</name><operator>&amp;</operator> <name>other</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><operator>~</operator><call><name>SafeV8Function</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <expr_stmt><expr><name>bool</name> <macro><name>IsAlive</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name> <macro><name>NewHandle</name><argument_list>(<argument>v8::Isolate* isolate</argument>)</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+ <label><name>private</name>:</label>
+  <decl_stmt><decl><type><name><name>scoped_refptr</name><argument_list type="generic">&lt;<argument><expr><name><name>RefCountedGlobal</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>v8_function_</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Helper to invoke a V8 function with C++ parameters.</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>Sig</name><operator>&gt;</operator>
+struct <name>V8FunctionInvoker</name> <block>{}</block></expr>;</expr_stmt>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name><operator>...</operator> <name>ArgTypes</name><operator>&gt;</operator>
+struct <name><name>V8FunctionInvoker</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name><operator>(</operator><name>ArgTypes</name><operator>...</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <macro><name>Go</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                                 <argument>const SafeV8Function&amp; function</argument>,
+                                 <argument>ArgTypes... raw</argument>)</argument_list></macro> <block>{
+    <expr><name>gin_helper</name><operator>::</operator><name>Locker</name> <call><name>locker</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>EscapableHandleScope</name> <call><name>handle_scope</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>function</name><operator>.</operator><name>IsAlive</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><name>v8</name><operator>::</operator><call><name>Null</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <name>v8</name><operator>::</operator><name>MicrotasksScope</name> <call><name>script_scope</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>,
+                                     <argument><expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name><operator>::</operator><name>kRunMicrotasks</name></expr></argument>)</argument_list></call></block></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name> <name>holder</name> <operator>=</operator> <call><name><name>function</name><operator>.</operator><name>NewHandle</name></name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Context</name></expr></argument>&gt;</argument_list></name> <name>context</name> <operator>=</operator> <call><name><name>holder</name><operator>-&gt;</operator><name>CreationContext</name></name><argument_list>()</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>Context</name><operator>::</operator><name>Scope</name> <call><name>context_scope</name><argument_list>(<argument><expr><name>context</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>args</name><block>{
+        <expr><name>gin</name><operator>::</operator><call><name>ConvertToV8</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name><name>forward</name><argument_list type="generic">&lt;<argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>raw</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call><operator>...</operator></expr>}</block></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>MaybeLocal</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>ret</name> <operator>=</operator> <call><name><name>holder</name><operator>-&gt;</operator><name>Call</name></name><argument_list>(
+        <argument><expr><name>context</name></expr></argument>, <argument><expr><name>holder</name></expr></argument>, <argument><expr><call><name><name>args</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><ternary><condition><expr><call><name><name>args</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><name>nullptr</name></expr> </then><else>: <expr><operator>&amp;</operator><call><name><name>args</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr></argument>)</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><call><name><name>ret</name><operator>.</operator><name>IsEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><name>v8</name><operator>::</operator><call><name>Undefined</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+      <return>return <expr><call><name><name>handle_scope</name><operator>.</operator><name>Escape</name></name><argument_list>(<argument><expr><call><name><name>ret</name><operator>.</operator><name>ToLocalChecked</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return></block_content></block></else></if_stmt>
+  }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name><operator>...</operator> <name>ArgTypes</name><operator>&gt;</operator>
+struct <name><name>V8FunctionInvoker</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>ArgTypes</name><operator>...</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>void</name> <macro><name>Go</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                 <argument>const SafeV8Function&amp; function</argument>,
+                 <argument>ArgTypes... raw</argument>)</argument_list></macro> <block>{
+    <expr><name>gin_helper</name><operator>::</operator><name>Locker</name> <call><name>locker</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>HandleScope</name> <call><name>handle_scope</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>function</name><operator>.</operator><name>IsAlive</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return;</return></block_content></block></if></if_stmt>
+    <name>v8</name><operator>::</operator><name>MicrotasksScope</name> <call><name>script_scope</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>,
+                                     <argument><expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name><operator>::</operator><name>kRunMicrotasks</name></expr></argument>)</argument_list></call></block></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name> <name>holder</name> <operator>=</operator> <call><name><name>function</name><operator>.</operator><name>NewHandle</name></name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Context</name></expr></argument>&gt;</argument_list></name> <name>context</name> <operator>=</operator> <call><name><name>holder</name><operator>-&gt;</operator><name>CreationContext</name></name><argument_list>()</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>Context</name><operator>::</operator><name>Scope</name> <call><name>context_scope</name><argument_list>(<argument><expr><name>context</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>args</name><block>{
+        <expr><name>gin</name><operator>::</operator><call><name>ConvertToV8</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name><name>forward</name><argument_list type="generic">&lt;<argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>raw</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call><operator>...</operator></expr>}</block></expr>;
+    <expr><call><name><name>holder</name>
+        <operator>-&gt;</operator><name>Call</name></name><argument_list>(<argument><expr><name>context</name></expr></argument>, <argument><expr><name>holder</name></expr></argument>, <argument><expr><call><name><name>args</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>,
+               <argument><expr><ternary><condition><expr><call><name><name>args</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><name>nullptr</name></expr> </then><else>: <expr><operator>&amp;</operator><call><name><name>args</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr></argument>)</argument_list></call>
+        <operator>.</operator><call><name>IsEmpty</name><argument_list>()</argument_list></call></expr>;
+  }</block></expr></expr_stmt>
+};
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>ReturnType</name></expr><operator>,</operator> <expr><name>typename</name><operator>...</operator> <name>ArgTypes</name><operator>&gt;</operator>
+struct <name><name>V8FunctionInvoker</name><argument_list type="generic">&lt;<argument><expr><name>ReturnType</name><operator>(</operator><name>ArgTypes</name><operator>...</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>ReturnType</name> <macro><name>Go</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                       <argument>const SafeV8Function&amp; function</argument>,
+                       <argument>ArgTypes... raw</argument>)</argument_list></macro> <block>{
+    <expr><name>gin_helper</name><operator>::</operator><name>Locker</name> <call><name>locker</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>HandleScope</name> <call><name>handle_scope</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>ReturnType</name> <name>ret</name> <operator>=</operator> <call><name>ReturnType</name><argument_list>()</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>function</name><operator>.</operator><name>IsAlive</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <return>return <expr><name>ret</name></expr>;</return></block_content></block></if></if_stmt>
+    <name>v8</name><operator>::</operator><name>MicrotasksScope</name> <call><name>script_scope</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>,
+                                     <argument><expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name><operator>::</operator><name>kRunMicrotasks</name></expr></argument>)</argument_list></call></block></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name> <name>holder</name> <operator>=</operator> <call><name><name>function</name><operator>.</operator><name>NewHandle</name></name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Context</name></expr></argument>&gt;</argument_list></name> <name>context</name> <operator>=</operator> <call><name><name>holder</name><operator>-&gt;</operator><name>CreationContext</name></name><argument_list>()</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>Context</name><operator>::</operator><name>Scope</name> <call><name>context_scope</name><argument_list>(<argument><expr><name>context</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>args</name><block>{
+        <expr><name>gin</name><operator>::</operator><call><name>ConvertToV8</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name><name>forward</name><argument_list type="generic">&lt;<argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>raw</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call><operator>...</operator></expr>}</block></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>result</name></expr>;
+    <expr><name>auto</name> <name>maybe_result</name> <operator>=</operator> <call><name><name>holder</name><operator>-&gt;</operator><name>Call</name></name><argument_list>(<argument><expr><name>context</name></expr></argument>, <argument><expr><name>holder</name></expr></argument>, <argument><expr><call><name><name>args</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>,
+                                     <argument><expr><ternary><condition><expr><call><name><name>args</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><name>nullptr</name></expr> </then><else>: <expr><operator>&amp;</operator><call><name><name>args</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr></argument>)</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><call><name><name>maybe_result</name><operator>.</operator><name>ToLocal</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>result</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><name>gin</name><operator>::</operator><name><name>Converter</name><argument_list type="generic">&lt;<argument><expr><name>ReturnType</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>FromV8</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>result</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>ret</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt></block></expr></expr_stmt>
+    <return>return <expr><name>ret</name></expr>;</return>
+  }
+}<empty_stmt>;</empty_stmt>
+
+<comment type="line">// Helper to pass a C++ funtion to JavaScript.</comment>
+<decl_stmt><decl><type><name>using</name></type> <name>Translater</name> <init>= <expr><name>base</name><operator>::</operator><name><name>Callback</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name><operator>)</operator></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+<expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <macro><name>CreateFunctionFromTranslater</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                                                  <argument>const Translater&amp; translater</argument>,
+                                                  <argument>bool one_time</argument>)</argument_list></macro></expr>;</expr_stmt>
+<expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <call><name>BindFunctionWith</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>,
+                                      <argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Context</name></expr></argument>&gt;</argument_list></name> <name>context</name></expr></argument>,
+                                      <argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name> <name>func</name></expr></argument>,
+                                      <argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>arg1</name></expr></argument>,
+                                      <argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>arg2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<comment type="line">// Calls callback with Arguments.</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>Sig</name><operator>&gt;</operator>
+struct <name>NativeFunctionInvoker</name> <block>{}</block></expr>;</expr_stmt>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>ReturnType</name></expr><operator>,</operator> <expr><name>typename</name><operator>...</operator> <name>ArgTypes</name><operator>&gt;</operator>
+struct <name><name>NativeFunctionInvoker</name><argument_list type="generic">&lt;<argument><expr><name>ReturnType</name><operator>(</operator><name>ArgTypes</name><operator>...</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>void</name> <macro><name>Go</name><argument_list>(<argument>base::Callback&lt;ReturnType(ArgTypes...)&gt; val</argument>,
+                 <argument>gin::Arguments* args</argument>)</argument_list></macro> <block>{
+    <expr><name>using</name> <name>Indices</name> <operator>=</operator> <name>typename</name> <name>IndicesGenerator</name><operator>&lt;</operator><sizeof type="pack">sizeof...<argument_list>(<argument><expr><name>ArgTypes</name></expr></argument>)</argument_list></sizeof><operator>&gt;</operator><operator>::</operator><name>type</name></expr>;
+    <expr><name><name>Invoker</name><argument_list type="generic">&lt;<argument><expr><name>Indices</name></expr></argument>, <argument><expr><name>ArgTypes</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name> <call><name>invoker</name><argument_list>(<argument><expr><name>args</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><call><name><name>invoker</name><operator>.</operator><name>IsOK</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>invoker</name><operator>.</operator><name>DispatchToCallback</name></name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt></block></expr>
+  }</block></expr></expr_stmt>
+};
+
+<comment type="line">// Convert a callback to V8 without the call number limitation, this can easily</comment>
+<comment type="line">// cause memory leaks so use it with caution.</comment>
+<expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Sig</name></expr></argument>&gt;</argument_list></name>
+<name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <macro><name>CallbackToV8Leaked</name><argument_list>(
+    <argument>v8::Isolate* isolate</argument>,
+    <argument>const base::RepeatingCallback&lt;Sig&gt;&amp; val</argument>)</argument_list></macro> <block>{
+  <expr><name>Translater</name> <name>translater</name> <operator>=</operator> <name>base</name><operator>::</operator><call><name>Bind</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>NativeFunctionInvoker</name><argument_list type="generic">&lt;<argument><expr><name>Sig</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Go</name></expr></argument>, <argument><expr><name>val</name></expr></argument>)</argument_list></call></expr>;
+  <return>return <expr><call><name>CreateFunctionFromTranslater</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>translater</name></expr></argument>, <argument><expr><name>false</name></expr></argument>)</argument_list></call></expr>;</return>
+}</block></expr></expr_stmt>
+
+}  <comment type="line">// namespace gin_helper</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SHELL_COMMON_GIN_HELPER_CALLBACK_H_</comment>
+</unit>

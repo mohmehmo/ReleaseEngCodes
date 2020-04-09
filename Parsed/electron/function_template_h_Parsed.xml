@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/electron/shell/common/gin_helper/function_template.h"><comment type="line">// Copyright 2019 The Chromium Authors. All rights reserved.</comment>
+<comment type="line">// Use of this source code is governed by a BSD-style license that can be</comment>
+<comment type="line">// found in the LICENSE.chromium file.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SHELL_COMMON_GIN_HELPER_FUNCTION_TEMPLATE_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SHELL_COMMON_GIN_HELPER_FUNCTION_TEMPLATE_H_</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/bind.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/callback.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/optional.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"gin/arguments.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_helper/arguments.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_helper/destroyable.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_helper/error_thrower.h"</cpp:file></cpp:include>
+
+<comment type="line">// This file is forked from gin/function_template.h with 2 differences:</comment>
+<comment type="line">// 1. Support for additional types of arguments.</comment>
+<comment type="line">// 2. Support for warning using destroyed objects.</comment>
+<comment type="line">//</comment>
+<comment type="line">// TODO(zcbenz): We should seek to remove this file after removing native_mate.</comment>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>gin_helper</name> <block>{<block_content>
+
+<enum>enum <name>CreateFunctionTemplateFlags</name> <block>{
+  <decl><name>HolderIsFirstArgument</name> <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal></expr></init></decl>,
+}</block>;</enum>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>T</name><operator>&gt;</operator>
+struct <name>CallbackParamTraits</name> <block>{
+  <typedef>typedef <type><name>T</name></type> <name>LocalType</name>;</typedef>
+}</block></expr></expr_stmt><empty_stmt>;</empty_stmt>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>T</name><operator>&gt;</operator>
+struct <name><name>CallbackParamTraits</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name><operator>&amp;</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <typedef>typedef <type><name>T</name></type> <name>LocalType</name>;</typedef>
+}</block></expr></expr_stmt><empty_stmt>;</empty_stmt>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>T</name><operator>&gt;</operator>
+struct <name><name>CallbackParamTraits</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>T</name><operator>*</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <typedef>typedef <type><name>T</name><modifier>*</modifier></type> <name>LocalType</name>;</typedef>
+}</block></expr></expr_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// CallbackHolder and CallbackHolderBase are used to pass a base::Callback from</comment>
+<comment type="line">// CreateFunctionTemplate through v8 (via v8::FunctionTemplate) to</comment>
+<comment type="line">// DispatchToCallback, where it is invoked.</comment>
+
+<comment type="line">// This simple base class is used so that we can share a single object template</comment>
+<comment type="line">// among every CallbackHolder instance.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CallbackHolderBase</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>External</name></expr></argument>&gt;</argument_list></name> <call><name>GetHandle</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+ <label><name>protected</name>:</label>
+  <decl_stmt><decl><type><name>explicit</name></type> <name>CallbackHolderBase</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+  <expr_stmt><expr><name>virtual</name> <operator>~</operator><call><name>CallbackHolderBase</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+ <label><name>private</name>:</label>
+  <decl_stmt><decl><type><specifier>static</specifier> <name>void</name></type> <name>FirstWeakCallback</name><argument_list>(
+      <argument><expr><specifier>const</specifier> <name>v8</name><operator>::</operator><name><name>WeakCallbackInfo</name><argument_list type="generic">&lt;<argument><expr><name>CallbackHolderBase</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>data</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>static</specifier> <name>void</name></type> <name>SecondWeakCallback</name><argument_list>(
+      <argument><expr><specifier>const</specifier> <name>v8</name><operator>::</operator><name><name>WeakCallbackInfo</name><argument_list type="generic">&lt;<argument><expr><name>CallbackHolderBase</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>data</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Global</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>External</name></expr></argument>&gt;</argument_list></name> <name>v8_ref_</name></expr>;</expr_stmt>
+
+  <expr_stmt><expr><call><name>DISALLOW_COPY_AND_ASSIGN</name><argument_list>(<argument><expr><name>CallbackHolderBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Sig</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>CallbackHolder</name> <range>: <expr><name>public</name> <name>CallbackHolderBase</name> <block>{
+ <expr><name>public</name><operator>:</operator>
+  <macro><name>CallbackHolder</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                 <argument>const base::Callback&lt;Sig&gt;&amp; callback</argument>,
+                 <argument>int flags</argument>)</argument_list></macro>
+      <operator>:</operator> <call><name>CallbackHolderBase</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>, <expr><call><name>callback</name><argument_list>(<argument><expr><name>callback</name></expr></argument>)</argument_list></call></expr>, <macro><name>flags</name><argument_list>(<argument>flags</argument>)</argument_list></macro> <expr><block>{}</block>
+  <name>base</name><operator>::</operator><name><name>Callback</name><argument_list type="generic">&lt;<argument><expr><name>Sig</name></expr></argument>&gt;</argument_list></name> <name>callback</name></expr>;
+  <expr><name>int</name> <name>flags</name> <operator>=</operator> <literal type="number">0</literal></expr>;
+
+ <expr><name>private</name><operator>:</operator>
+  <name>virtual</name> <operator>~</operator><call><name>CallbackHolder</name><argument_list>()</argument_list></call> <operator>=</operator> default</expr>;
+
+  <expr><call><name>DISALLOW_COPY_AND_ASSIGN</name><argument_list>(<argument><expr><name>CallbackHolder</name></expr></argument>)</argument_list></call></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>bool</name></type> <name>GetNextArgument</name><argument_list>(<argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name></expr></argument>,
+                     <argument><expr><name>int</name> <name>create_flags</name></expr></argument>,
+                     <argument><expr><name>bool</name> <name>is_first</name></expr></argument>,
+                     <argument><expr><name>T</name><operator>*</operator> <name>result</name></expr></argument>)</argument_list> <block>{<block_content>
+  <if_stmt><if>if <condition>(<expr><name>is_first</name> <operator>&amp;&amp;</operator> <operator>(</operator><name>create_flags</name> <operator>&amp;</operator> <name>HolderIsFirstArgument</name><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+    <return>return <expr><call><name><name>args</name><operator>-&gt;</operator><name>GetHolder</name></name><argument_list>(<argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></if> <else>else <block>{<block_content>
+    <return>return <expr><call><name><name>args</name><operator>-&gt;</operator><name>GetNext</name></name><argument_list>(<argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</return>
+  </block_content>}</block></else></if_stmt>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="line">// Support base::Optional as output, which would be empty and do not throw error</comment>
+<comment type="line">// when convertion to T fails.</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+<name>bool</name></type> <name>GetNextArgument</name><argument_list>(<argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name></expr></argument>,
+                     <argument><expr><name>int</name> <name>create_flags</name></expr></argument>,
+                     <argument><expr><name>bool</name> <name>is_first</name></expr></argument>,
+                     <argument><expr><name>base</name><operator>::</operator><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>result</name></expr></argument>)</argument_list> <block>{<block_content>
+  <decl_stmt><decl><type><name>T</name></type> <name>converted</name></decl>;</decl_stmt>
+  <comment type="line">// Use gin::Arguments::GetNext which always advances |next| counter.</comment>
+  <if_stmt><if>if <condition>(<expr><call><name><name>args</name><operator>-&gt;</operator><name>GetNext</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>converted</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+    <expr_stmt><expr><call><name><name>result</name><operator>-&gt;</operator><name>emplace</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>converted</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  <return>return <expr><name>true</name></expr>;</return>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="line">// For advanced use cases, we allow callers to request the unparsed Arguments</comment>
+<comment type="line">// object and poke around in it directly.</comment>
+<decl_stmt><decl><type><specifier>inline</specifier> <name>bool</name></type> <name>GetNextArgument</name><argument_list>(<argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name></expr></argument>,
+                            <argument><expr><name>int</name> <name>create_flags</name></expr></argument>,
+                            <argument><expr><name>bool</name> <name>is_first</name></expr></argument>,
+                            <argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator><operator>*</operator> <name>result</name></expr></argument>)</argument_list> <block>{<block_content>
+  <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <name>args</name></expr>;</expr_stmt>
+  <return>return <expr><name>true</name></expr>;</return>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="line">// It's common for clients to just need the isolate, so we make that easy.</comment>
+<decl_stmt><decl><type><specifier>inline</specifier> <name>bool</name></type> <name>GetNextArgument</name><argument_list>(<argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name></expr></argument>,
+                            <argument><expr><name>int</name> <name>create_flags</name></expr></argument>,
+                            <argument><expr><name>bool</name> <name>is_first</name></expr></argument>,
+                            <argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator><operator>*</operator> <name>result</name></expr></argument>)</argument_list> <block>{<block_content>
+  <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <call><name><name>args</name><operator>-&gt;</operator><name>isolate</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><name>true</name></expr>;</return>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="line">// Allow clients to pass a util::Error to throw errors if they</comment>
+<comment type="line">// don't need the full gin::Arguments</comment>
+<decl_stmt><decl><type><specifier>inline</specifier> <name>bool</name></type> <name>GetNextArgument</name><argument_list>(<argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name></expr></argument>,
+                            <argument><expr><name>int</name> <name>create_flags</name></expr></argument>,
+                            <argument><expr><name>bool</name> <name>is_first</name></expr></argument>,
+                            <argument><expr><name>ErrorThrower</name><operator>*</operator> <name>result</name></expr></argument>)</argument_list> <block>{<block_content>
+  <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <call><name>ErrorThrower</name><argument_list>(<argument><expr><call><name><name>args</name><operator>-&gt;</operator><name>isolate</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><name>true</name></expr>;</return>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="line">// Supports the gin_helper::Arguments.</comment>
+<decl_stmt><decl><type><specifier>inline</specifier> <name>bool</name></type> <name>GetNextArgument</name><argument_list>(<argument><expr><name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args</name></expr></argument>,
+                            <argument><expr><name>int</name> <name>create_flags</name></expr></argument>,
+                            <argument><expr><name>bool</name> <name>is_first</name></expr></argument>,
+                            <argument><expr><name>gin_helper</name><operator>::</operator><name>Arguments</name><operator>*</operator><operator>*</operator> <name>result</name></expr></argument>)</argument_list> <block>{<block_content>
+  <expr_stmt><expr><operator>*</operator><name>result</name> <operator>=</operator> <call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>gin_helper</name><operator>::</operator><name>Arguments</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>args</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><name>true</name></expr>;</return>
+</block_content>}</block></decl></decl_stmt>
+
+<comment type="line">// Classes for generating and storing an argument pack of integer indices</comment>
+<comment type="line">// (based on well-known "indices trick", see: http://goo.gl/bKKojn):</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>size_t</name><operator>...</operator> <name>indices</name><operator>&gt;</operator>
+struct <name>IndicesHolder</name> <block>{}</block></expr>;</expr_stmt>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>size_t</name> <name>requested_index</name></expr><operator>,</operator> <expr><name>size_t</name><operator>...</operator> <name>indices</name><operator>&gt;</operator>
+struct <name>IndicesGenerator</name> <block>{
+  <expr><name>using</name> <name>type</name> <operator>=</operator> <name>typename</name> <name><name>IndicesGenerator</name><argument_list type="generic">&lt;<argument><expr><name>requested_index</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>,
+                                         <argument><expr><name>requested_index</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>,
+                                         <argument><expr><name>indices</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name><operator>::</operator><name>type</name></expr>;
+}</block></expr>;</expr_stmt>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>size_t</name><operator>...</operator> <name>indices</name><operator>&gt;</operator>
+struct <name><name>IndicesGenerator</name><argument_list type="generic">&lt;<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>indices</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><name>using</name> <name>type</name> <operator>=</operator> <name><name>IndicesHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name></expr>;
+}</block></expr>;</expr_stmt>
+
+<comment type="line">// Class template for extracting and storing single argument for callback</comment>
+<comment type="line">// at position |index|.</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>size_t</name> <name>index</name></expr><operator>,</operator> <expr><name>typename</name> <name>ArgType</name><operator>&gt;</operator>
+struct <name>ArgumentHolder</name> <block>{
+  <expr><name>using</name> <name>ArgLocalType</name> <operator>=</operator> <name>typename</name> <name><name>CallbackParamTraits</name><argument_list type="generic">&lt;<argument><expr><name>ArgType</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>LocalType</name></expr>;
+
+  <expr><name>ArgLocalType</name> <name>value</name></expr>;
+  <expr><name>bool</name> <name>ok</name> <operator>=</operator> <name>false</name></expr>;
+
+  <macro><name>ArgumentHolder</name><argument_list>(<argument>gin::Arguments* args</argument>, <argument>int create_flags</argument>)</argument_list></macro> <expr><block>{
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Object</name></expr></argument>&gt;</argument_list></name> <name>holder</name></expr>;
+    <if_stmt><if>if <condition>(<expr><name>index</name> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>(</operator><name>create_flags</name> <operator>&amp;</operator> <name>HolderIsFirstArgument</name><operator>)</operator> <operator>&amp;&amp;</operator>
+        <call><name><name>args</name><operator>-&gt;</operator><name>GetHolder</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>holder</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator>
+        <name>gin_helper</name><operator>::</operator><name>Destroyable</name><operator>::</operator><call><name>IsDestroyed</name><argument_list>(<argument><expr><name>holder</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><call><name><name>args</name><operator>-&gt;</operator><name>ThrowTypeError</name></name><argument_list>(<argument><expr><literal type="string">"Object has been destroyed"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+      <return>return;</return>
+    <expr_stmt/>}</block_content>
+    ok = GetNextArgument(args</block><operator>,</operator> <expr_stmt><expr><name>create_flags</name></expr><operator>,</operator> <expr><name>index</name> <operator>==</operator> <literal type="number">0</literal></expr><operator>,</operator> <expr><operator>&amp;</operator><name>value</name></expr></expr_stmt></if></if_stmt>)</block></expr>;
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>ok</name></expr>)</condition> <block>{<block_content>
+      <comment type="line">// Ideally we would include the expected c++ type in the error</comment>
+      <comment type="line">// message which we can access via typeid(ArgType).name()</comment>
+      <comment type="line">// however we compile with no-rtti, which disables typeid.</comment>
+      <expr_stmt><expr><call><name><name>args</name><operator>-&gt;</operator><name>ThrowError</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt/>}</block_content>
+  }
+}</block><empty_stmt>;</empty_stmt></if></if_stmt>
+
+<comment type="line">// Class template for converting arguments from JavaScript to C++ and running</comment>
+<comment type="line">// the callback with them.</comment>
+<name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>IndicesType</name></expr></argument>, <argument><expr><name>typename</name><modifier>...</modifier> <name>ArgTypes</name></expr></argument>&gt;</argument_list></name>
+<name>class</name> <name>Invoker</name> <block>{}</block></block></expr>;</expr_stmt>
+
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>size_t</name><modifier>...</modifier> <name>indices</name></expr></argument>, <argument><expr><name>typename</name><modifier>...</modifier> <name>ArgTypes</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name><name>Invoker</name><argument_list type="generic">&lt;<argument><expr><name><name>IndicesHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name></expr></argument>, <argument><expr><name>ArgTypes</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name>
+    <range>: <expr><name>public</name> <name><name>ArgumentHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name></expr></argument>, <argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><operator>...</operator> <block>{
+ <expr><name>public</name><operator>:</operator>
+  <comment type="line">// Invoker&lt;&gt; inherits from ArgumentHolder&lt;&gt; for each argument.</comment>
+  <comment type="line">// C++ has always been strict about the class initialization order,</comment>
+  <comment type="line">// so it is guaranteed ArgumentHolders will be initialized (and thus, will</comment>
+  <comment type="line">// extract arguments from Arguments) in the right order.</comment>
+  <macro><name>Invoker</name><argument_list>(<argument>gin::Arguments* args</argument>, <argument>int create_flags</argument>)</argument_list></macro>
+      <operator>:</operator> <call><name><name>ArgumentHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name></expr></argument>, <argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>args</name></expr></argument>, <argument><expr><name>create_flags</name></expr></argument>)</argument_list></call><operator>...</operator></expr>, <macro><name>args_</name><argument_list>(<argument>args</argument>)</argument_list></macro> <expr><block>{
+    <comment type="line">// GCC thinks that create_flags is going unused, even though the</comment>
+    <comment type="line">// expansion above clearly makes use of it. Per jyasskin@, casting</comment>
+    <comment type="line">// to void is the commonly accepted way to convince the compiler</comment>
+    <comment type="line">// that you're actually using a parameter/varible.</comment>
+    <expr><operator>(</operator><name>void</name><operator>)</operator><name>create_flags</name></expr>;
+  }</block>
+
+  <name>bool</name> <macro><name>IsOK</name><argument_list>()</argument_list></macro> <block>{ <return>return <expr><call><name>And</name><argument_list>(<argument><expr><name><name>ArgumentHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name></expr></argument>, <argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>ok</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</return> }</block>
+
+  <name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>ReturnType</name></expr></argument>&gt;</argument_list></name>
+  <name>void</name> <macro><name>DispatchToCallback</name><argument_list>(<argument>base::Callback&lt;ReturnType(ArgTypes...)&gt; callback</argument>)</argument_list></macro> <block>{
+    <expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name> <call><name>script_scope</name><argument_list>(<argument><expr><call><name><name>args_</name><operator>-&gt;</operator><name>isolate</name></name><argument_list>()</argument_list></call></expr></argument>,
+                                     <argument><expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name><operator>::</operator><name>kRunMicrotasks</name></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name><name>args_</name><operator>-&gt;</operator><name>Return</name></name><argument_list>(
+        <argument><expr><call><name><name>callback</name><operator>.</operator><name>Run</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name><name>ArgumentHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name></expr></argument>, <argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>)</argument_list></call><operator>...</operator></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+  }</block>
+
+  <comment type="line">// In C++, you can declare the function foo(void), but you can't pass a void</comment>
+  <comment type="line">// expression to foo. As a result, we must specialize the case of Callbacks</comment>
+  <comment type="line">// that have the void return type.</comment>
+  <name>void</name> <macro><name>DispatchToCallback</name><argument_list>(<argument>base::Callback&lt;void(ArgTypes...)&gt; callback</argument>)</argument_list></macro> <block>{
+    <expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name> <call><name>script_scope</name><argument_list>(<argument><expr><call><name><name>args_</name><operator>-&gt;</operator><name>isolate</name></name><argument_list>()</argument_list></call></expr></argument>,
+                                     <argument><expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name><operator>::</operator><name>kRunMicrotasks</name></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name><name>callback</name><operator>.</operator><name>Run</name></name><argument_list>(<argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name><name>ArgumentHolder</name><argument_list type="generic">&lt;<argument><expr><name>indices</name></expr></argument>, <argument><expr><name>ArgTypes</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>)</argument_list></call><operator>...</operator></expr></argument>)</argument_list></call></expr>;
+  }</block>
+
+ <name>private</name><operator>:</operator>
+  <specifier>static</specifier> <name>bool</name> <macro><name>And</name><argument_list>()</argument_list></macro> <block>{ <return>return <expr><name>true</name></expr>;</return> }</block>
+  <name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name><modifier>...</modifier> <name>T</name></expr></argument>&gt;</argument_list></name>
+  <specifier>static</specifier> <name>bool</name> <macro><name>And</name><argument_list>(<argument>bool arg1</argument>, <argument>T... args</argument>)</argument_list></macro> <block>{
+    <return>return <expr><name>arg1</name> <operator>&amp;&amp;</operator> <call><name>And</name><argument_list>(<argument><expr><name>args</name><operator>...</operator></expr></argument>)</argument_list></call></expr>;</return>
+  }</block>
+
+  <name>gin</name><operator>::</operator><name>Arguments</name><operator>*</operator> <name>args_</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<comment type="line">// DispatchToCallback converts all the JavaScript arguments to C++ types and</comment>
+<comment type="line">// invokes the base::Callback.</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>Sig</name><operator>&gt;</operator>
+struct <name>Dispatcher</name> <block>{}</block></expr>;</expr_stmt>
+
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>ReturnType</name></expr><operator>,</operator> <expr><name>typename</name><operator>...</operator> <name>ArgTypes</name><operator>&gt;</operator>
+struct <name><name>Dispatcher</name><argument_list type="generic">&lt;<argument><expr><name>ReturnType</name><operator>(</operator><name>ArgTypes</name><operator>...</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>void</name> <macro><name>DispatchToCallback</name><argument_list>(
+      <argument>const v8::FunctionCallbackInfo&lt;v8::Value&gt;&amp; info</argument>)</argument_list></macro> <block>{
+    <expr><name>gin</name><operator>::</operator><name>Arguments</name> <call><name>args</name><argument_list>(<argument><expr><name>info</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>External</name></expr></argument>&gt;</argument_list></name> <name>v8_holder</name></expr>;
+    <expr><call><name><name>args</name><operator>.</operator><name>GetData</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name>v8_holder</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>CallbackHolderBase</name><operator>*</operator> <name>holder_base</name> <operator>=</operator>
+        <call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><name>CallbackHolderBase</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>v8_holder</name><operator>-&gt;</operator><name>Value</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+
+    <typedef>typedef <type><name><name>CallbackHolder</name><argument_list type="generic">&lt;<argument><expr><name>ReturnType</name><operator>(</operator><name>ArgTypes</name><operator>...</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>HolderT</name>;</typedef>
+    <name>HolderT</name><operator>*</operator> <name>holder</name> <operator>=</operator> <call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>HolderT</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>holder_base</name></expr></argument>)</argument_list></call></block></expr>;
+
+    <expr><name>using</name> <name>Indices</name> <operator>=</operator> <name>typename</name> <name>IndicesGenerator</name><operator>&lt;</operator><sizeof type="pack">sizeof...<argument_list>(<argument><expr><name>ArgTypes</name></expr></argument>)</argument_list></sizeof><operator>&gt;</operator><operator>::</operator><name>type</name></expr>;
+    <expr><name><name>Invoker</name><argument_list type="generic">&lt;<argument><expr><name>Indices</name></expr></argument>, <argument><expr><name>ArgTypes</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name> <call><name>invoker</name><argument_list>(<argument><expr><operator>&amp;</operator><name>args</name></expr></argument>, <argument><expr><name><name>holder</name><operator>-&gt;</operator><name>flags</name></name></expr></argument>)</argument_list></call></expr>;
+    <if_stmt><if>if <condition>(<expr><call><name><name>invoker</name><operator>.</operator><name>IsOK</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+      <expr_stmt><expr><call><name><name>invoker</name><operator>.</operator><name>DispatchToCallback</name></name><argument_list>(<argument><expr><name><name>holder</name><operator>-&gt;</operator><name>callback</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+  }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// CreateFunctionTemplate creates a v8::FunctionTemplate that will create</comment>
+<comment type="line">// JavaScript functions that execute a provided C++ function or base::Callback.</comment>
+<comment type="line">// JavaScript arguments are automatically converted via gin::Converter, as is</comment>
+<comment type="line">// the return value of the C++ function, if any.</comment>
+<comment type="line">//</comment>
+<comment type="line">// NOTE: V8 caches FunctionTemplates for a lifetime of a web page for its own</comment>
+<comment type="line">// internal reasons, thus it is generally a good idea to cache the template</comment>
+<comment type="line">// returned by this function.  Otherwise, repeated method invocations from JS</comment>
+<comment type="line">// will create substantial memory leaks. See http://crbug.com/463487.</comment>
+<expr_stmt><expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Sig</name></expr></argument>&gt;</argument_list></name>
+<name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>FunctionTemplate</name></expr></argument>&gt;</argument_list></name> <macro><name>CreateFunctionTemplate</name><argument_list>(
+    <argument>v8::Isolate* isolate</argument>,
+    <argument>const base::Callback&lt;Sig&gt; callback</argument>,
+    <argument>int callback_flags = <literal type="number">0</literal></argument>)</argument_list></macro> <block>{
+  <typedef>typedef <type><name><name>CallbackHolder</name><argument_list type="generic">&lt;<argument><expr><name>Sig</name></expr></argument>&gt;</argument_list></name></type> <name>HolderT</name>;</typedef>
+  <name>HolderT</name><operator>*</operator> <name>holder</name> <operator>=</operator> <name>new</name> <call><name>HolderT</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>callback</name></expr></argument>, <argument><expr><name>callback_flags</name></expr></argument>)</argument_list></call></block></expr>;</expr_stmt>
+
+  <return>return <expr><name>v8</name><operator>::</operator><name>FunctionTemplate</name><operator>::</operator><call><name>New</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>,
+                                   <argument><expr><operator>&amp;</operator><name><name>Dispatcher</name><argument_list type="generic">&lt;<argument><expr><name>Sig</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>DispatchToCallback</name></expr></argument>,
+                                   <argument><expr><name>gin</name><operator>::</operator><call><name><name>ConvertToV8</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>External</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><argument_list>(
+                                       <argument><expr><name>isolate</name></expr></argument>, <argument><expr><call><name><name>holder</name><operator>-&gt;</operator><name>GetHandle</name></name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+}
+
+<comment type="line">// Base template - used only for non-member function pointers. Other types</comment>
+<comment type="line">// either go to one of the below specializations, or go here and fail to compile</comment>
+<comment type="line">// because of base::Bind().</comment>
+template <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>T</name></expr><operator>,</operator> <expr><name>typename</name> <name>Enable</name> <operator>=</operator> <name>void</name><operator>&gt;</operator>
+struct <name>CallbackTraits</name> <block>{
+  <expr><specifier>static</specifier> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>FunctionTemplate</name></expr></argument>&gt;</argument_list></name> <macro><name>CreateTemplate</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                                                        <argument>T callback</argument>)</argument_list></macro> <block>{
+    <return>return <expr><name>gin_helper</name><operator>::</operator><call><name>CreateFunctionTemplate</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>,
+                                              <argument><expr><name>base</name><operator>::</operator><call><name>BindRepeating</name><argument_list>(<argument><expr><name>callback</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return></block></expr>
+  }</block></expr></expr_stmt>
+};
+
+<comment type="line">// Specialization for base::Callback.</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>T</name><operator>&gt;</operator>
+struct <name><name>CallbackTraits</name><argument_list type="generic">&lt;<argument><expr><name>base</name><operator>::</operator><name><name>Callback</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>FunctionTemplate</name></expr></argument>&gt;</argument_list></name> <macro><name>CreateTemplate</name><argument_list>(
+      <argument>v8::Isolate* isolate</argument>,
+      <argument>const base::RepeatingCallback&lt;T&gt;&amp; callback</argument>)</argument_list></macro> <block>{
+    <return>return <expr><name>gin_helper</name><operator>::</operator><call><name>CreateFunctionTemplate</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>callback</name></expr></argument>)</argument_list></call></expr>;</return></block></expr>
+  }</block></expr></expr_stmt>
+};
+
+<comment type="line">// Specialization for member function pointers. We need to handle this case</comment>
+<comment type="line">// specially because the first parameter for callbacks to MFP should typically</comment>
+<comment type="line">// come from the the JavaScript "this" object the function was called on, not</comment>
+<comment type="line">// from the first normal parameter.</comment>
+<macro><name>template</name></macro> <expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>T</name><operator>&gt;</operator>
+struct <name><name>CallbackTraits</name><argument_list type="generic">&lt;
+    <argument><expr><name>T</name></expr></argument>,
+    <argument><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>enable_if</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>is_member_function_pointer</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>value</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>type</name></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>FunctionTemplate</name></expr></argument>&gt;</argument_list></name> <macro><name>CreateTemplate</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                                                        <argument>T callback</argument>)</argument_list></macro> <block>{
+    <expr><name>int</name> <name>flags</name> <operator>=</operator> <name>HolderIsFirstArgument</name></expr>;
+    <return>return <expr><name>gin_helper</name><operator>::</operator><call><name>CreateFunctionTemplate</name><argument_list>(
+        <argument><expr><name>isolate</name></expr></argument>, <argument><expr><name>base</name><operator>::</operator><call><name>BindRepeating</name><argument_list>(<argument><expr><name>callback</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>flags</name></expr></argument>)</argument_list></call></expr>;</return></block></expr>
+  }</block></expr></expr_stmt>
+};
+
+}  <comment type="line">// namespace gin_helper</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SHELL_COMMON_GIN_HELPER_FUNCTION_TEMPLATE_H_</comment>
+</unit>
