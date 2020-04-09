@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/database/rrdcalc.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrd.h"</cpp:file></cpp:include>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_RRDCALC_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_RRDCALC_H</name></cpp:macro> <cpp:value>1</cpp:value></cpp:define>
+
+<comment type="line">// calculated variables (defined in health configuration)</comment>
+<comment type="line">// These aggregate time-series data at fixed intervals</comment>
+<comment type="line">// (defined in their update_every member below)</comment>
+<comment type="line">// They increase the overhead of netdata.</comment>
+<comment type="line">//</comment>
+<comment type="line">// These calculations are allocated and linked (-&gt;next)</comment>
+<comment type="line">// under RRDHOST.</comment>
+<comment type="line">// Then are also linked to RRDSET (of course only when the</comment>
+<comment type="line">// chart is found, via -&gt;rrdset_next and -&gt;rrdset_prev).</comment>
+<comment type="line">// This double-linked list is maintained sorted at all times</comment>
+<comment type="line">// having as RRDSET.calculations the RRDCALC to be processed</comment>
+<comment type="line">// next.</comment>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_DB_ERROR</name></cpp:macro>              <cpp:value>0x00000001</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_DB_NAN</name></cpp:macro>                <cpp:value>0x00000002</cpp:value></cpp:define>
+<comment type="block">/* #define RRDCALC_FLAG_DB_STALE           0x00000004 */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_CALC_ERROR</name></cpp:macro>            <cpp:value>0x00000008</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_WARN_ERROR</name></cpp:macro>            <cpp:value>0x00000010</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_CRIT_ERROR</name></cpp:macro>            <cpp:value>0x00000020</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_RUNNABLE</name></cpp:macro>              <cpp:value>0x00000040</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_DISABLED</name></cpp:macro>              <cpp:value>0x00000080</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_SILENCED</name></cpp:macro>              <cpp:value>0x00000100</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_RUN_ONCE</name></cpp:macro>              <cpp:value>0x00000200</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_FLAG_NO_CLEAR_NOTIFICATION</name></cpp:macro> <cpp:value>0x80000000</cpp:value></cpp:define>
+
+
+<struct>struct <name>rrdcalc</name> <block>{
+    <decl_stmt><decl><type><name>avl</name></type> <name>avl</name></decl>;</decl_stmt>                        <comment type="line">// the index, with key the id - this has to be first!</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>id</name></decl>;</decl_stmt>                    <comment type="line">// the unique id of this alarm</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>next_event_id</name></decl>;</decl_stmt>         <comment type="line">// the next event id that will be used for this alarm</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl>;</decl_stmt>                     <comment type="line">// the name of this alarm</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash</name></decl>;</decl_stmt>                  <comment type="line">// the hash of the alarm name</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>exec</name></decl>;</decl_stmt>                     <comment type="line">// the command to execute when this alarm switches state</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>recipient</name></decl>;</decl_stmt>                <comment type="line">// the recipient of the alarm (the first parameter to exec)</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>chart</name></decl>;</decl_stmt>                    <comment type="line">// the chart id this should be linked to</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_chart</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>source</name></decl>;</decl_stmt>                   <comment type="line">// the source of this alarm</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>units</name></decl>;</decl_stmt>                    <comment type="line">// the units of the alarm</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>info</name></decl>;</decl_stmt>                     <comment type="line">// a short description of the alarm</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>update_every</name></decl>;</decl_stmt>               <comment type="line">// update frequency for the alarm</comment>
+
+    <comment type="line">// the red and green threshold of this alarm (to be set to the chart)</comment>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>green</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>red</name></decl>;</decl_stmt>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// database lookup settings</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>dimensions</name></decl>;</decl_stmt>               <comment type="line">// the chart dimensions</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>foreachdim</name></decl>;</decl_stmt>               <comment type="line">// the group of dimensions that the `foreach` will be applied.</comment>
+    <decl_stmt><decl><type><name>SIMPLE_PATTERN</name> <modifier>*</modifier></type><name>spdim</name></decl>;</decl_stmt>          <comment type="line">// used if and only if there is a simple pattern for the chart.</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>foreachcounter</name></decl>;</decl_stmt>             <comment type="line">// the number of alarms created with foreachdim, this also works as an id of the</comment>
+                                    <comment type="line">// children</comment>
+    <decl_stmt><decl><type><name>RRDR_GROUPING</name></type> <name>group</name></decl>;</decl_stmt>            <comment type="line">// grouping method: average, max, etc.</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>before</name></decl>;</decl_stmt>                     <comment type="line">// ending point in time-series</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>after</name></decl>;</decl_stmt>                      <comment type="line">// starting point in time-series</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>options</name></decl>;</decl_stmt>               <comment type="line">// calculation options</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// expressions related to the alarm</comment>
+
+    <decl_stmt><decl><type><name>EVAL_EXPRESSION</name> <modifier>*</modifier></type><name>calculation</name></decl>;</decl_stmt>   <comment type="line">// expression to calculate the value of the alarm</comment>
+    <decl_stmt><decl><type><name>EVAL_EXPRESSION</name> <modifier>*</modifier></type><name>warning</name></decl>;</decl_stmt>       <comment type="line">// expression to check the warning condition</comment>
+    <decl_stmt><decl><type><name>EVAL_EXPRESSION</name> <modifier>*</modifier></type><name>critical</name></decl>;</decl_stmt>      <comment type="line">// expression to check the critical condition</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// notification delay settings</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>delay_up_duration</name></decl>;</decl_stmt>         <comment type="line">// duration to delay notifications when alarm raises</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>delay_down_duration</name></decl>;</decl_stmt>       <comment type="line">// duration to delay notifications when alarm lowers</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>delay_max_duration</name></decl>;</decl_stmt>        <comment type="line">// the absolute max delay to apply to this alarm</comment>
+    <decl_stmt><decl><type><name>float</name></type> <name>delay_multiplier</name></decl>;</decl_stmt>        <comment type="line">// multiplier for all delays when alarms switch status</comment>
+    <comment type="line">// while now &lt; delay_up_to</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// notification repeat settings</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>warn_repeat_every</name></decl>;</decl_stmt>     <comment type="line">// interval between repeating warning notifications</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>crit_repeat_every</name></decl>;</decl_stmt> <comment type="line">// interval between repeating critical notifications</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// runtime information</comment>
+
+    <decl_stmt><decl><type><name>RRDCALC_STATUS</name></type> <name>old_status</name></decl>;</decl_stmt> <comment type="line">// the old status of the alarm</comment>
+    <decl_stmt><decl><type><name>RRDCALC_STATUS</name></type> <name>status</name></decl>;</decl_stmt>          <comment type="line">// the current status of the alarm</comment>
+
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>value</name></decl>;</decl_stmt>        <comment type="line">// the current value of the alarm</comment>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>old_value</name></decl>;</decl_stmt>    <comment type="line">// the previous value of the alarm</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>rrdcalc_flags</name></decl>;</decl_stmt>         <comment type="line">// check RRDCALC_FLAG_*</comment>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>last_updated</name></decl>;</decl_stmt>            <comment type="line">// the last update timestamp of the alarm</comment>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>next_update</name></decl>;</decl_stmt>             <comment type="line">// the next update timestamp of the alarm</comment>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>last_status_change</name></decl>;</decl_stmt>      <comment type="line">// the timestamp of the last time this alarm changed status</comment>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>last_repeat</name></decl>;</decl_stmt> <comment type="line">// the last time the alarm got repeated</comment>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>db_after</name></decl>;</decl_stmt>                <comment type="line">// the first timestamp evaluated by the db lookup</comment>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>db_before</name></decl>;</decl_stmt>               <comment type="line">// the last timestamp evaluated by the db lookup</comment>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>delay_up_to_timestamp</name></decl>;</decl_stmt>   <comment type="line">// the timestamp up to which we should delay notifications</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>delay_up_current</name></decl>;</decl_stmt>           <comment type="line">// the current up notification delay duration</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>delay_down_current</name></decl>;</decl_stmt>         <comment type="line">// the current down notification delay duration</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>delay_last</name></decl>;</decl_stmt>                 <comment type="line">// the last delay we used</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// variables this alarm exposes to the rest of the alarms</comment>
+
+    <decl_stmt><decl><type><name>RRDVAR</name> <modifier>*</modifier></type><name>local</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>RRDVAR</name> <modifier>*</modifier></type><name>family</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>RRDVAR</name> <modifier>*</modifier></type><name>hostid</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>RRDVAR</name> <modifier>*</modifier></type><name>hostname</name></decl>;</decl_stmt>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// the chart this alarm it is linked to</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdset</name></name> <modifier>*</modifier></type><name>rrdset</name></decl>;</decl_stmt>
+
+    <comment type="line">// linking of this alarm on its chart</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdcalc</name></name> <modifier>*</modifier></type><name>rrdset_next</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdcalc</name></name> <modifier>*</modifier></type><name>rrdset_prev</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdcalc</name></name> <modifier>*</modifier></type><name>next</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>alarm_isrepeating</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>alarm_id</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>alarm_entry_isrepeating</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>ALARM_ENTRY</name> <modifier>*</modifier></type><name>ae</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRDCALC</name> <modifier>*</modifier></type><name>alarm_max_last_repeat</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>alarm_name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDCALC_HAS_DB_LOOKUP</name><parameter_list>(<parameter><type><name>rc</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((rc)-&gt;after)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdsetcalc_link_matching</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdsetcalc_unlink</name><parameter_list>(<parameter><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRDCALC</name> <modifier>*</modifier></type><name>rrdcalc_find</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>rrdcalc_status2string</name><parameter_list>(<parameter><decl><type><name>RRDCALC_STATUS</name></type> <name>status</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdcalc_free</name><parameter_list>(<parameter><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdcalc_unlink_and_free</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdcalc_exists</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>chart</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash_chart</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash_name</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>uint32_t</name></type> <name>rrdcalc_get_unique_id</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>chart</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name> <modifier>*</modifier></type><name>next_event_id</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRDCALC</name> <modifier>*</modifier></type><name>rrdcalc_create_from_template</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>RRDCALCTEMPLATE</name> <modifier>*</modifier></type><name>rt</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>chart</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRDCALC</name> <modifier>*</modifier></type><name>rrdcalc_create_from_rrdcalc</name><parameter_list>(<parameter><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>, <parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>dimension</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdcalc_add_to_host</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>dimension_remove_pipe_comma</name><parameter_list>(<parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>str</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>alarm_name_with_dim</name><parameter_list>(<parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>namelen</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>dim</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>dimlen</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>int</name></type> <name>rrdcalc_isrepeating</name><parameter_list>(<parameter><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name><name>rc</name><operator>-&gt;</operator><name>warn_repeat_every</name></name> <operator>&gt;</operator> <literal type="number">0</literal> <operator>||</operator> <name><name>rc</name><operator>-&gt;</operator><name>crit_repeat_every</name></name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">1</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">//NETDATA_RRDCALC_H</comment>
+</unit>

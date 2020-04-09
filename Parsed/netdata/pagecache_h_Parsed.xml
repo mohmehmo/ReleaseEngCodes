@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/database/engine/pagecache.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_PAGECACHE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_PAGECACHE_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdengine.h"</cpp:file></cpp:include>
+
+<comment type="block">/* Forward declarations */</comment>
+<struct_decl>struct <name>rrdengine_instance</name>;</struct_decl>
+<struct_decl>struct <name>extent_info</name>;</struct_decl>
+<struct_decl>struct <name>rrdeng_page_descr</name>;</struct_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>INVALID_TIME</name></cpp:macro> <cpp:value>(0)</cpp:value></cpp:define>
+
+<comment type="block">/* Page flags */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_PAGE_DIRTY</name></cpp:macro>          <cpp:value>(1LU &lt;&lt; 0)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_PAGE_LOCKED</name></cpp:macro>         <cpp:value>(1LU &lt;&lt; 1)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_PAGE_READ_PENDING</name></cpp:macro>   <cpp:value>(1LU &lt;&lt; 2)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_PAGE_WRITE_PENDING</name></cpp:macro>  <cpp:value>(1LU &lt;&lt; 3)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_PAGE_POPULATED</name></cpp:macro>      <cpp:value>(1LU &lt;&lt; 4)</cpp:value></cpp:define>
+
+<struct>struct <name>page_cache_descr</name> <block>{
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl>;</decl_stmt> <comment type="block">/* parent descriptor */</comment>
+    <decl_stmt><decl><type><name>void</name> <modifier>*</modifier></type><name>page</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>long</name></type> <name>flags</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>page_cache_descr</name></name> <modifier>*</modifier></type><name>prev</name></decl>;</decl_stmt> <comment type="block">/* LRU */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>page_cache_descr</name></name> <modifier>*</modifier></type><name>next</name></decl>;</decl_stmt> <comment type="block">/* LRU */</comment>
+
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>refcnt</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_mutex_t</name></type> <name>mutex</name></decl>;</decl_stmt> <comment type="block">/* always take it after the page cache lock or after the commit lock */</comment>
+    <decl_stmt><decl><type><name>uv_cond_t</name></type> <name>cond</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>waiters</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/* Page cache descriptor flags, state = 0 means no descriptor */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PG_CACHE_DESCR_ALLOCATED</name></cpp:macro>    <cpp:value>(1LU &lt;&lt; 0)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PG_CACHE_DESCR_DESTROY</name></cpp:macro>      <cpp:value>(1LU &lt;&lt; 1)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PG_CACHE_DESCR_LOCKED</name></cpp:macro>       <cpp:value>(1LU &lt;&lt; 2)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PG_CACHE_DESCR_SHIFT</name></cpp:macro>        <cpp:value>(3)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PG_CACHE_DESCR_USERS_MASK</name></cpp:macro>   <cpp:value>(((unsigned long)-1) &lt;&lt; PG_CACHE_DESCR_SHIFT)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PG_CACHE_DESCR_FLAGS_MASK</name></cpp:macro>   <cpp:value>(((unsigned long)-1) &gt;&gt; (BITS_PER_ULONG - PG_CACHE_DESCR_SHIFT))</cpp:value></cpp:define>
+
+<comment type="block">/*
+ * Page cache descriptor state bits (works for both 32-bit and 64-bit architectures):
+ *
+ * 63    ...     31   ...     3 |          2 |          1 |          0|
+ * -----------------------------+------------+------------+-----------|
+ * number of descriptor users   |    DESTROY |     LOCKED | ALLOCATED |
+ */</comment>
+<struct>struct <name>rrdeng_page_descr</name> <block>{
+    <decl_stmt><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>id</name></decl>;</decl_stmt> <comment type="block">/* never changes */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>extent_info</name></name> <modifier>*</modifier></type><name>extent</name></decl>;</decl_stmt>
+
+    <comment type="block">/* points to ephemeral page cache descriptor if the page resides in the cache */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>page_cache_descr</name></name> <modifier>*</modifier></type><name>pg_cache_descr</name></decl>;</decl_stmt>
+
+    <comment type="block">/* Compare-And-Swap target for page cache descriptor allocation algorithm */</comment>
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name> <name>long</name></type> <name>pg_cache_descr_state</name></decl>;</decl_stmt>
+
+    <comment type="block">/* page information */</comment>
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>start_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>end_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>page_length</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PAGE_INFO_SCRATCH_SZ</name></cpp:macro> <cpp:value>(8)</cpp:value></cpp:define>
+<struct>struct <name>rrdeng_page_info</name> <block>{
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>scratch</name><index>[<expr><name>PAGE_INFO_SCRATCH_SZ</name></expr>]</index></name></decl>;</decl_stmt> <comment type="block">/* scratch area to be used by page-cache users */</comment>
+
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>start_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>end_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>page_length</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/* returns 1 for success, 0 for failure */</comment>
+<typedef>typedef <function_decl><type><name>int</name></type> <name>pg_cache_page_info_filter_t</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type></decl></parameter>)</parameter_list>;</function_decl></typedef>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PAGE_CACHE_MAX_PRELOAD_PAGES</name></cpp:macro>    <cpp:value>(256)</cpp:value></cpp:define>
+
+<comment type="block">/* maps time ranges to pages */</comment>
+<struct>struct <name>pg_cache_page_index</name> <block>{
+    <decl_stmt><decl><type><name>uuid_t</name></type> <name>id</name></decl>;</decl_stmt>
+    <comment type="block">/*
+     * care: JudyL_array indices are converted from useconds to seconds to fit in one word in 32-bit architectures
+     * TODO: examine if we want to support better granularity than seconds
+     */</comment>
+    <decl_stmt><decl><type><name>Pvoid_t</name></type> <name>JudyL_array</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_rwlock_t</name></type> <name>lock</name></decl>;</decl_stmt>
+
+    <comment type="block">/*
+     * Only one effective writer, data deletion workqueue.
+     * It's also written during the DB loading phase.
+     */</comment>
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>oldest_time</name></decl>;</decl_stmt>
+
+    <comment type="block">/*
+     * Only one effective writer, data collection thread.
+     * It's also written by the data deletion workqueue when data collection is disabled for this metric.
+     */</comment>
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>latest_time</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>prev</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/* maps UUIDs to page indices */</comment>
+<struct>struct <name>pg_cache_metrics_index</name> <block>{
+    <decl_stmt><decl><type><name>uv_rwlock_t</name></type> <name>lock</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Pvoid_t</name></type> <name>JudyHS_array</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>last_page_index</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/* gathers dirty pages to be written on disk */</comment>
+<struct>struct <name>pg_cache_committed_page_index</name> <block>{
+    <decl_stmt><decl><type><name>uv_rwlock_t</name></type> <name>lock</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>Pvoid_t</name></type> <name>JudyL_array</name></decl>;</decl_stmt>
+
+    <comment type="block">/*
+     * Dirty page correlation ID is a hint. Dirty pages that are correlated should have
+     * a small correlation ID difference. Dirty pages in memory should never have the
+     * same ID at the same time for correctness.
+     */</comment>
+    <decl_stmt><decl><type><name>Word_t</name></type> <name>latest_corr_id</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>nr_committed_pages</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/*
+ * Gathers populated pages to be evicted.
+ * Relies on page cache descriptors being there as it uses their memory.
+ */</comment>
+<struct>struct <name>pg_cache_replaceQ</name> <block>{
+    <decl_stmt><decl><type><name>uv_rwlock_t</name></type> <name>lock</name></decl>;</decl_stmt> <comment type="block">/* LRU lock */</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>page_cache_descr</name></name> <modifier>*</modifier></type><name>head</name></decl>;</decl_stmt> <comment type="block">/* LRU */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>page_cache_descr</name></name> <modifier>*</modifier></type><name>tail</name></decl>;</decl_stmt> <comment type="block">/* MRU */</comment>
+}</block>;</struct>
+
+<struct>struct <name>page_cache</name> <block>{ <comment type="block">/* TODO: add statistics */</comment>
+    <decl_stmt><decl><type><name>uv_rwlock_t</name></type> <name>pg_cache_rwlock</name></decl>;</decl_stmt> <comment type="block">/* page cache lock */</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_metrics_index</name></name></type> <name>metrics_index</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_committed_page_index</name></name></type> <name>committed_page_index</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_replaceQ</name></name></type> <name>replaceQ</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>page_descriptors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>populated_pages</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_wake_up_waiters_unsafe</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_wait_event_unsafe</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>unsigned</name> <name>long</name></type> <name>pg_cache_wait_event</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_replaceQ_insert</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>,
+                                     <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_replaceQ_delete</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>,
+                                     <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_replaceQ_set_hot</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>,
+                                      <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>pg_cache_create_descr</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>pg_cache_try_get_unsafe</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>exclusive_access</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_put_unsafe</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_put</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_insert</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>index</name></decl></parameter>,
+                            <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_punch_hole</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>, <parameter><decl><type><name>uint8_t</name></type> <name>remove_dirty</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>usec_t</name></type> <name>pg_cache_oldest_time_in_range</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>id</name></decl></parameter>,
+                                            <parameter><decl><type><name>usec_t</name></type> <name>start_time</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>end_time</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_get_filtered_info_prev</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>page_index</name></decl></parameter>,
+                                            <parameter><decl><type><name>usec_t</name></type> <name>point_in_time</name></decl></parameter>, <parameter><decl><type><name>pg_cache_page_info_filter_t</name> <modifier>*</modifier></type><name>filter</name></decl></parameter>,
+                                            <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_info</name></name> <modifier>*</modifier></type><name>page_info</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>unsigned</name></type>
+        <name>pg_cache_preload</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>id</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>start_time</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>end_time</name></decl></parameter>,
+                         <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_info</name></name> <modifier>*</modifier><modifier>*</modifier></type><name>page_info_arrayp</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier><modifier>*</modifier></type><name>ret_page_indexp</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type>
+        <name>pg_cache_lookup</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>index</name></decl></parameter>, <parameter><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>id</name></decl></parameter>,
+                        <parameter><decl><type><name>usec_t</name></type> <name>point_in_time</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type>
+        <name>pg_cache_lookup_next</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>index</name></decl></parameter>, <parameter><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>id</name></decl></parameter>,
+                     <parameter><decl><type><name>usec_t</name></type> <name>start_time</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>end_time</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>create_page_index</name><parameter_list>(<parameter><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>init_page_cache</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>free_page_cache</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_add_new_metric_time</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>page_index</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>pg_cache_update_metric_times</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>page_index</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>unsigned</name> <name>long</name></type> <name>pg_cache_hard_limit</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>unsigned</name> <name>long</name></type> <name>pg_cache_soft_limit</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type>
+    <name>pg_cache_atomic_get_pg_info</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>, <parameter><decl><type><name>usec_t</name> <modifier>*</modifier></type><name>end_timep</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name> <modifier>*</modifier></type><name>page_lengthp</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>end_time</name></decl>, <decl><type ref="prev"/><name>old_end_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>page_length</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>NULL</name> <operator>==</operator> <name><name>descr</name><operator>-&gt;</operator><name>extent</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="block">/* this page is currently being modified, get consistent info locklessly */</comment>
+        <do>do <block>{<block_content>
+            <expr_stmt><expr><name>end_time</name> <operator>=</operator> <name><name>descr</name><operator>-&gt;</operator><name>end_time</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>__sync_synchronize</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>old_end_time</name> <operator>=</operator> <name>end_time</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>page_length</name> <operator>=</operator> <name><name>descr</name><operator>-&gt;</operator><name>page_length</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>__sync_synchronize</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>end_time</name> <operator>=</operator> <name><name>descr</name><operator>-&gt;</operator><name>end_time</name></name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>__sync_synchronize</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> while <condition>(<expr><operator>(</operator><name>end_time</name> <operator>!=</operator> <name>old_end_time</name> <operator>||</operator> <operator>(</operator><name>end_time</name> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal><operator>)</operator></expr>)</condition>;</do>
+
+        <expr_stmt><expr><operator>*</operator><name>end_timep</name> <operator>=</operator> <name>end_time</name></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>*</operator><name>page_lengthp</name> <operator>=</operator> <name>page_length</name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><operator>*</operator><name>end_timep</name> <operator>=</operator> <name><name>descr</name><operator>-&gt;</operator><name>end_time</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>*</operator><name>page_lengthp</name> <operator>=</operator> <name><name>descr</name><operator>-&gt;</operator><name>page_length</name></name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<comment type="block">/* The caller must hold a reference to the page and must have already set the new data */</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type> <name>pg_cache_atomic_set_pg_info</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>end_time</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>page_length</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><operator>(</operator><name>end_time</name> <operator>&amp;</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>__sync_synchronize</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>descr</name><operator>-&gt;</operator><name>end_time</name></name> <operator>|=</operator> <literal type="number">1</literal></expr>;</expr_stmt> <comment type="block">/* mark start of uncertainty period by adding 1 microsecond */</comment>
+    <expr_stmt><expr><call><name>__sync_synchronize</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>descr</name><operator>-&gt;</operator><name>page_length</name></name> <operator>=</operator> <name>page_length</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>__sync_synchronize</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>descr</name><operator>-&gt;</operator><name>end_time</name></name> <operator>=</operator> <name>end_time</name></expr>;</expr_stmt> <comment type="block">/* mark end of uncertainty period */</comment>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_PAGECACHE_H */</comment>
+</unit>

@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/database/engine/rrddiskprotocol.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_RRDDISKPROTOCOL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_RRDDISKPROTOCOL_H</name></cpp:macro></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_BLOCK_SIZE</name></cpp:macro> <cpp:value>(4096)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDFILE_ALIGNMENT</name></cpp:macro> <cpp:value>RRDENG_BLOCK_SIZE</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_MAGIC_SZ</name></cpp:macro> <cpp:value>(32)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_DF_MAGIC</name></cpp:macro> <cpp:value>"netdata-data-file"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_JF_MAGIC</name></cpp:macro> <cpp:value>"netdata-journal-file"</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_VER_SZ</name></cpp:macro> <cpp:value>(16)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_DF_VER</name></cpp:macro> <cpp:value>"1.0"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_JF_VER</name></cpp:macro> <cpp:value>"1.0"</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>UUID_SZ</name></cpp:macro> <cpp:value>(16)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>CHECKSUM_SZ</name></cpp:macro> <cpp:value>(4)</cpp:value></cpp:define> <comment type="block">/* CRC32 */</comment>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_NO_COMPRESSION</name></cpp:macro> <cpp:value>(0)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_LZ4</name></cpp:macro> <cpp:value>(1)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_DF_SB_PADDING_SZ</name></cpp:macro> <cpp:value>(RRDENG_BLOCK_SIZE - (RRDENG_MAGIC_SZ + RRDENG_VER_SZ + sizeof(uint8_t)))</cpp:value></cpp:define>
+<comment type="block">/*
+ * Data file persistent super-block
+ */</comment>
+<struct>struct <name>rrdeng_df_sb</name> <block>{
+    <decl_stmt><decl><type><name>char</name></type> <name><name>magic_number</name><index>[<expr><name>RRDENG_MAGIC_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>version</name><index>[<expr><name>RRDENG_VER_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>tier</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>padding</name><index>[<expr><name>RRDENG_DF_SB_PADDING_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<comment type="block">/*
+ * Page types
+ */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PAGE_METRICS</name></cpp:macro>    <cpp:value>(0)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>PAGE_LOGS</name></cpp:macro>       <cpp:value>(1)</cpp:value></cpp:define> <comment type="block">/* reserved */</comment>
+
+<comment type="block">/*
+ * Data file page descriptor
+ */</comment>
+<struct>struct <name>rrdeng_extent_page_descr</name> <block>{
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>type</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>uuid</name><index>[<expr><name>UUID_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>page_length</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>start_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>end_time</name></decl>;</decl_stmt>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<comment type="block">/*
+ * Data file extent header
+ */</comment>
+<struct>struct <name>rrdeng_df_extent_header</name> <block>{
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>payload_length</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>compression_algorithm</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>number_of_pages</name></decl>;</decl_stmt>
+    <comment type="block">/* #number_of_pages page descriptors follow */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_extent_page_descr</name></name></type> <name><name>descr</name><index>[]</index></name></decl>;</decl_stmt>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<comment type="block">/*
+ * Data file extent trailer
+ */</comment>
+<struct>struct <name>rrdeng_df_extent_trailer</name> <block>{
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>checksum</name><index>[<expr><name>CHECKSUM_SZ</name></expr>]</index></name></decl>;</decl_stmt> <comment type="block">/* CRC32 */</comment>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_JF_SB_PADDING_SZ</name></cpp:macro> <cpp:value>(RRDENG_BLOCK_SIZE - (RRDENG_MAGIC_SZ + RRDENG_VER_SZ))</cpp:value></cpp:define>
+<comment type="block">/*
+ * Journal file super-block
+ */</comment>
+<struct>struct <name>rrdeng_jf_sb</name> <block>{
+    <decl_stmt><decl><type><name>char</name></type> <name><name>magic_number</name><index>[<expr><name>RRDENG_MAGIC_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>version</name><index>[<expr><name>RRDENG_VER_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>padding</name><index>[<expr><name>RRDENG_JF_SB_PADDING_SZ</name></expr>]</index></name></decl>;</decl_stmt>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<comment type="block">/*
+ * Transaction record types
+ */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORE_PADDING</name></cpp:macro>       <cpp:value>(0)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORE_DATA</name></cpp:macro>          <cpp:value>(1)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORE_LOGS</name></cpp:macro>          <cpp:value>(2)</cpp:value></cpp:define> <comment type="block">/* reserved */</comment>
+
+<comment type="block">/*
+ * Journal file transaction record header
+ */</comment>
+<struct>struct <name>rrdeng_jf_transaction_header</name> <block>{
+    <comment type="block">/* when set to STORE_PADDING jump to start of next block */</comment>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>type</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>reserved</name></decl>;</decl_stmt> <comment type="block">/* reserved for future use */</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint16_t</name></type> <name>payload_length</name></decl>;</decl_stmt>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<comment type="block">/*
+ * Journal file transaction record trailer
+ */</comment>
+<struct>struct <name>rrdeng_jf_transaction_trailer</name> <block>{
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name><name>checksum</name><index>[<expr><name>CHECKSUM_SZ</name></expr>]</index></name></decl>;</decl_stmt> <comment type="block">/* CRC32 */</comment>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<comment type="block">/*
+ * Journal file STORE_DATA action
+ */</comment>
+<struct>struct <name>rrdeng_jf_store_data</name> <block>{
+    <comment type="block">/* data file extent information */</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>extent_offset</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>extent_size</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>number_of_pages</name></decl>;</decl_stmt>
+    <comment type="block">/* #number_of_pages page descriptors follow */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_extent_page_descr</name></name></type> <name><name>descr</name><index>[]</index></name></decl>;</decl_stmt>
+}</block> <decl><name>__attribute__</name> <argument_list>(<argument><expr><operator>(</operator><name>packed</name><operator>)</operator></expr></argument>)</argument_list></decl>;</struct>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_RRDDISKPROTOCOL_H */</comment></unit>

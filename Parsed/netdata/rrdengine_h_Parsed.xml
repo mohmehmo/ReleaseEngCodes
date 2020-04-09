@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/database/engine/rrdengine.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_RRDENGINE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_RRDENGINE_H</name></cpp:macro></cpp:define>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>_GNU_SOURCE</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>_GNU_SOURCE</name></cpp:macro></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;fcntl.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;lz4.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;Judy.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;openssl/sha.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;openssl/evp.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"../../daemon/common.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"../rrd.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrddiskprotocol.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdenginelib.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"datafile.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"journalfile.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdengineapi.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"pagecache.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdenglocking.h"</cpp:file></cpp:include>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_RRD_INTERNALS</name></cpp:ifdef>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_RRD_INTERNALS */</comment>
+
+<comment type="block">/* Forward declerations */</comment>
+<struct_decl>struct <name>rrdengine_instance</name>;</struct_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>MAX_PAGES_PER_EXTENT</name></cpp:macro> <cpp:value>(64)</cpp:value></cpp:define> <comment type="block">/* TODO: can go higher only when journal supports bigger than 4KiB transactions */</comment>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_FILE_NUMBER_SCAN_TMPL</name></cpp:macro> <cpp:value>"%1u-%10u"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_FILE_NUMBER_PRINT_TMPL</name></cpp:macro> <cpp:value>"%1.1u-%10.10u"</cpp:value></cpp:define>
+
+
+<typedef>typedef <type><enum>enum <block>{
+    <decl><name>RRDENGINE_STATUS_UNINITIALIZED</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>RRDENGINE_STATUS_INITIALIZING</name></decl>,
+    <decl><name>RRDENGINE_STATUS_INITIALIZED</name></decl>
+}</block></enum></type> <name>rrdengine_state_t</name>;</typedef>
+
+<enum>enum <name>rrdeng_opcode</name> <block>{
+    <comment type="block">/* can be used to return empty status or flush the command queue */</comment>
+    <decl><name>RRDENG_NOOP</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+
+    <decl><name>RRDENG_READ_PAGE</name></decl>,
+    <decl><name>RRDENG_READ_EXTENT</name></decl>,
+    <decl><name>RRDENG_COMMIT_PAGE</name></decl>,
+    <decl><name>RRDENG_FLUSH_PAGES</name></decl>,
+    <decl><name>RRDENG_SHUTDOWN</name></decl>,
+
+    <decl><name>RRDENG_MAX_OPCODE</name></decl>
+}</block>;</enum>
+
+<struct>struct <name>rrdeng_cmd</name> <block>{
+    <decl_stmt><decl><type><name><name>enum</name> <name>rrdeng_opcode</name></name></type> <name>opcode</name></decl>;</decl_stmt>
+    <union>union <block>{
+        <struct>struct <name>rrdeng_read_page</name> <block>{
+            <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>page_cache_descr</name></decl>;</decl_stmt>
+        }</block> <decl><name>read_page</name></decl>;</struct>
+        <struct>struct <name>rrdeng_read_extent</name> <block>{
+            <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name><name>page_cache_descr</name><index>[<expr><name>MAX_PAGES_PER_EXTENT</name></expr>]</index></name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>page_count</name></decl>;</decl_stmt>
+        }</block> <decl><name>read_extent</name></decl>;</struct>
+        <decl_stmt><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>completion</name></decl>;</decl_stmt>
+    }</block>;</union>
+}</block>;</struct>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_CMD_Q_MAX_SIZE</name></cpp:macro> <cpp:value>(2048)</cpp:value></cpp:define>
+
+<struct>struct <name>rrdeng_cmdqueue</name> <block>{
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>head</name></decl>, <decl><type ref="prev"/><name>tail</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_cmd</name></name></type> <name><name>cmd_array</name><index>[<expr><name>RRDENG_CMD_Q_MAX_SIZE</name></expr>]</index></name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>extent_io_descriptor</name> <block>{
+    <decl_stmt><decl><type><name>uv_fs_t</name></type> <name>req</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_buf_t</name></type> <name>iov</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>void</name> <modifier>*</modifier></type><name>buf</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>pos</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>completion</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>descr_count</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>release_descr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name><name>descr_array</name><index>[<expr><name>MAX_PAGES_PER_EXTENT</name></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Word_t</name></type> <name><name>descr_commit_idx_array</name><index>[<expr><name>MAX_PAGES_PER_EXTENT</name></expr>]</index></name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>generic_io_descriptor</name> <block>{
+    <decl_stmt><decl><type><name>uv_fs_t</name></type> <name>req</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_buf_t</name></type> <name>iov</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>void</name> <modifier>*</modifier></type><name>buf</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>pos</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>completion</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>rrdengine_worker_config</name> <block>{
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uv_thread_t</name></type> <name>thread</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_loop_t</name><modifier>*</modifier></type> <name>loop</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_async_t</name></type> <name>async</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_work_t</name></type> <name>now_deleting</name></decl>;</decl_stmt>
+
+    <comment type="block">/* FIFO command queue */</comment>
+    <decl_stmt><decl><type><name>uv_mutex_t</name></type> <name>cmd_mutex</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_cond_t</name></type> <name>cmd_cond</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name></type> <name>queue_size</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_cmdqueue</name></name></type> <name>cmd_queue</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>error</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/*
+ * Debug statistics not used by code logic.
+ * They only describe operations since DB engine instance load time.
+ */</comment>
+<struct>struct <name>rrdengine_statistics</name> <block>{
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>metric_API_producers</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>metric_API_consumers</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>pg_cache_insertions</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>pg_cache_deletions</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>pg_cache_hits</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>pg_cache_misses</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>pg_cache_backfills</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>pg_cache_evictions</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>before_decompress_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>after_decompress_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>before_compress_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>after_compress_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_write_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_write_requests</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_read_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_read_requests</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_write_extent_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_write_extents</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_read_extent_bytes</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_read_extents</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>datafile_creations</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>datafile_deletions</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>journalfile_creations</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>journalfile_deletions</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>page_cache_descriptors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>io_errors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>fs_errors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>rrdeng_stats_t</name></type> <name>flushing_errors</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block">/* I/O errors global counter */</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>rrdeng_stats_t</name></type> <name>global_io_errors</name></decl>;</decl_stmt>
+<comment type="block">/* File-System errors global counter */</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>rrdeng_stats_t</name></type> <name>global_fs_errors</name></decl>;</decl_stmt>
+<comment type="block">/* number of File-Descriptors that have been reserved by dbengine */</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>rrdeng_stats_t</name></type> <name>rrdeng_reserved_file_descriptors</name></decl>;</decl_stmt>
+<comment type="block">/* inability to flush global counter */</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>rrdeng_stats_t</name></type> <name>global_flushing_errors</name></decl>;</decl_stmt>
+
+<struct>struct <name>rrdengine_instance</name> <block>{
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_worker_config</name></name></type> <name>worker_config</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>completion</name></name></type> <name>rrdengine_completion</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>page_cache</name></name></type> <name>pg_cache</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>global_compress_alg</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>transaction_commit_log</name></name></type> <name>commit_log</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_datafile_list</name></name></type> <name>datafiles</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>dbfiles_path</name><index>[<expr><name>FILENAME_MAX</name><operator>+</operator><literal type="number">1</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>disk_space</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>max_disk_space</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>last_fileno</name></decl>;</decl_stmt> <comment type="block">/* newest index of datafile and journalfile */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>long</name></type> <name>max_cache_pages</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>long</name></type> <name>cache_pages_low_watermark</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_statistics</name></name></type> <name>stats</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>init_rrd_files</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>finalize_rrd_files</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdeng_test_quota</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_worker_config</name></name><modifier>*</modifier></type> <name>wc</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdeng_worker</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>arg</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdeng_enq_cmd</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_worker_config</name></name><modifier>*</modifier></type> <name>wc</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrdeng_cmd</name></name> <modifier>*</modifier></type><name>cmd</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name><name>struct</name> <name>rrdeng_cmd</name></name></type> <name>rrdeng_deq_cmd</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_worker_config</name></name><modifier>*</modifier></type> <name>wc</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_RRDENGINE_H */</comment></unit>

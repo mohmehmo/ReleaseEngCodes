@@ -1,0 +1,1085 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/database/rrd.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_RRD_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_RRD_H</name></cpp:macro> <cpp:value>1</cpp:value></cpp:define>
+
+<comment type="line">// forward typedefs</comment>
+<typedef>typedef <type><name><name>struct</name> <name>rrdhost</name></name></type> <name>RRDHOST</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrddim</name></name></type> <name>RRDDIM</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrdset</name></name></type> <name>RRDSET</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrdvar</name></name></type> <name>RRDVAR</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrdsetvar</name></name></type> <name>RRDSETVAR</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrddimvar</name></name></type> <name>RRDDIMVAR</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrdcalc</name></name></type> <name>RRDCALC</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>rrdcalctemplate</name></name></type> <name>RRDCALCTEMPLATE</name>;</typedef>
+<typedef>typedef <type><name><name>struct</name> <name>alarm_entry</name></name></type> <name>ALARM_ENTRY</name>;</typedef>
+
+<comment type="line">// forward declarations</comment>
+<struct_decl>struct <name>rrddim_volatile</name>;</struct_decl>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+<struct_decl>struct <name>rrdeng_page_descr</name>;</struct_decl>
+<struct_decl>struct <name>rrdengine_instance</name>;</struct_decl>
+<struct_decl>struct <name>pg_cache_page_index</name>;</struct_decl>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"../daemon/common.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"web/api/queries/query.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdvar.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdsetvar.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrddimvar.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdcalc.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"rrdcalctemplate.h"</cpp:file></cpp:include>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>UPDATE_EVERY</name></cpp:macro> <cpp:value>1</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>UPDATE_EVERY_MAX</name></cpp:macro> <cpp:value>3600</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_DEFAULT_HISTORY_ENTRIES</name></cpp:macro> <cpp:value>3600</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_HISTORY_ENTRIES_MAX</name></cpp:macro> <cpp:value>(86400*365)</cpp:value></cpp:define>
+
+<decl_stmt><decl><type><specifier>extern</specifier> <name>int</name></type> <name>default_rrd_update_every</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>int</name></type> <name>default_rrd_history_entries</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>int</name></type> <name>gap_when_lost_iterations_above</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>time_t</name></type> <name>rrdset_free_obsolete_time</name></decl>;</decl_stmt>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_ID_LENGTH_MAX</name></cpp:macro> <cpp:value>200</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDSET_MAGIC</name></cpp:macro>        <cpp:value>"NETDATA RRD SET FILE V019"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDDIMENSION_MAGIC</name></cpp:macro>  <cpp:value>"NETDATA RRD DIMENSION FILE V019"</cpp:value></cpp:define>
+
+<typedef>typedef <type><name>long</name> <name>long</name></type> <name>total_number</name>;</typedef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>TOTAL_NUMBER_FORMAT</name></cpp:macro> <cpp:value>"%lld"</cpp:value></cpp:define>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// chart types</comment>
+
+<typedef>typedef <type><enum>enum <name>rrdset_type</name> <block>{
+    <decl><name>RRDSET_TYPE_LINE</name>    <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>RRDSET_TYPE_AREA</name>    <init>= <expr><literal type="number">1</literal></expr></init></decl>,
+    <decl><name>RRDSET_TYPE_STACKED</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>
+}</block></enum></type> <name>RRDSET_TYPE</name>;</typedef>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDSET_TYPE_LINE_NAME</name></cpp:macro> <cpp:value>"line"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDSET_TYPE_AREA_NAME</name></cpp:macro> <cpp:value>"area"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDSET_TYPE_STACKED_NAME</name></cpp:macro> <cpp:value>"stacked"</cpp:value></cpp:define>
+
+<function_decl><type><name>RRDSET_TYPE</name></type> <name>rrdset_type_id</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>rrdset_type_name</name><parameter_list>(<parameter><decl><type><name>RRDSET_TYPE</name></type> <name>chart_type</name></decl></parameter>)</parameter_list>;</function_decl>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// memory mode</comment>
+
+<typedef>typedef <type><enum>enum <name>rrd_memory_mode</name> <block>{
+    <decl><name>RRD_MEMORY_MODE_NONE</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>RRD_MEMORY_MODE_RAM</name>  <init>= <expr><literal type="number">1</literal></expr></init></decl>,
+    <decl><name>RRD_MEMORY_MODE_MAP</name>  <init>= <expr><literal type="number">2</literal></expr></init></decl>,
+    <decl><name>RRD_MEMORY_MODE_SAVE</name> <init>= <expr><literal type="number">3</literal></expr></init></decl>,
+    <decl><name>RRD_MEMORY_MODE_ALLOC</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>,
+    <decl><name>RRD_MEMORY_MODE_DBENGINE</name> <init>= <expr><literal type="number">5</literal></expr></init></decl>
+}</block></enum></type> <name>RRD_MEMORY_MODE</name>;</typedef>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_MEMORY_MODE_NONE_NAME</name></cpp:macro> <cpp:value>"none"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_MEMORY_MODE_RAM_NAME</name></cpp:macro> <cpp:value>"ram"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_MEMORY_MODE_MAP_NAME</name></cpp:macro> <cpp:value>"map"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_MEMORY_MODE_SAVE_NAME</name></cpp:macro> <cpp:value>"save"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_MEMORY_MODE_ALLOC_NAME</name></cpp:macro> <cpp:value>"alloc"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_MEMORY_MODE_DBENGINE_NAME</name></cpp:macro> <cpp:value>"dbengine"</cpp:value></cpp:define>
+
+<decl_stmt><decl><type><specifier>extern</specifier> <name>RRD_MEMORY_MODE</name></type> <name>default_rrd_memory_mode</name></decl>;</decl_stmt>
+
+<function_decl><type><specifier>extern</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>rrd_memory_mode_name</name><parameter_list>(<parameter><decl><type><name>RRD_MEMORY_MODE</name></type> <name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRD_MEMORY_MODE</name></type> <name>rrd_memory_mode_id</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// algorithms types</comment>
+
+<typedef>typedef <type><enum>enum <name>rrd_algorithm</name> <block>{
+    <decl><name>RRD_ALGORITHM_ABSOLUTE</name>              <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>RRD_ALGORITHM_INCREMENTAL</name>           <init>= <expr><literal type="number">1</literal></expr></init></decl>,
+    <decl><name>RRD_ALGORITHM_PCENT_OVER_DIFF_TOTAL</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>,
+    <decl><name>RRD_ALGORITHM_PCENT_OVER_ROW_TOTAL</name>  <init>= <expr><literal type="number">3</literal></expr></init></decl>
+}</block></enum></type> <name>RRD_ALGORITHM</name>;</typedef>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_ALGORITHM_ABSOLUTE_NAME</name></cpp:macro>                <cpp:value>"absolute"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_ALGORITHM_INCREMENTAL_NAME</name></cpp:macro>             <cpp:value>"incremental"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_ALGORITHM_PCENT_OVER_DIFF_TOTAL_NAME</name></cpp:macro>   <cpp:value>"percentage-of-incremental-row"</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRD_ALGORITHM_PCENT_OVER_ROW_TOTAL_NAME</name></cpp:macro>    <cpp:value>"percentage-of-absolute-row"</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>RRD_ALGORITHM</name></type> <name>rrd_algorithm_id</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>rrd_algorithm_name</name><parameter_list>(<parameter><decl><type><name>RRD_ALGORITHM</name></type> <name>algorithm</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRD FAMILY</comment>
+
+<struct>struct <name>rrdfamily</name> <block>{
+    <decl_stmt><decl><type><name>avl</name></type> <name>avl</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>family</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_family</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>use_count</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>rrdvar_root_index</name></decl>;</decl_stmt>
+}</block>;</struct>
+<typedef>typedef <type><name><name>struct</name> <name>rrdfamily</name></name></type> <name>RRDFAMILY</name>;</typedef>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// flags</comment>
+<comment type="line">// use this for configuration flags, not for state control</comment>
+<comment type="line">// flags are set/unset in a manner that is not thread safe</comment>
+<comment type="line">// and may lead to missing information.</comment>
+
+<typedef>typedef <type><enum>enum <name>rrddim_flags</name> <block>{
+    <decl><name>RRDDIM_FLAG_NONE</name>                            <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>RRDDIM_FLAG_HIDDEN</name>                          <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr></init></decl>,  <comment type="line">// this dimension will not be offered to callers</comment>
+    <decl><name>RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS</name> <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>,  <comment type="line">// do not offer RESET or OVERFLOW info to callers</comment>
+    <decl><name>RRDDIM_FLAG_OBSOLETE</name>                        <init>= <expr><operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>   <comment type="line">// this is marked by the collector/module as obsolete</comment>
+}</block></enum></type> <name>RRDDIM_FLAGS</name>;</typedef>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_C___ATOMIC</name></cpp:ifdef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_flag_check</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(__atomic_load_n(&amp;((rd)-&gt;flags), __ATOMIC_SEQ_CST) &amp; (flag))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_flag_set</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro>   <cpp:value>__atomic_or_fetch(&amp;((rd)-&gt;flags), (flag), __ATOMIC_SEQ_CST)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_flag_clear</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__atomic_and_fetch(&amp;((rd)-&gt;flags), ~(flag), __ATOMIC_SEQ_CST)</cpp:value></cpp:define>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_flag_check</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((rd)-&gt;flags &amp; (flag))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_flag_set</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro>   <cpp:value>(rd)-&gt;flags |= (flag)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_flag_clear</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(rd)-&gt;flags &amp;= ~(flag)</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRD DIMENSION - this is a metric</comment>
+
+<struct>struct <name>rrddim</name> <block>{
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// binary indexing structures</comment>
+
+    <decl_stmt><decl><type><name>avl</name></type> <name>avl</name></decl>;</decl_stmt>                                        <comment type="line">// the binary index - this has to be first member!</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// the dimension definition</comment>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl>;</decl_stmt>                                 <comment type="line">// the id of this dimension (for internal identification)</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl>;</decl_stmt>                               <comment type="line">// the name of this dimension (as presented to user)</comment>
+                                                    <comment type="line">// this is a pointer to the config structure</comment>
+                                                    <comment type="line">// since the config always has a higher priority</comment>
+                                                    <comment type="line">// (the user overwrites the name of the charts)</comment>
+                                                    <comment type="line">// DO NOT FREE THIS - IT IS ALLOCATED IN CONFIG</comment>
+
+    <decl_stmt><decl><type><name>RRD_ALGORITHM</name></type> <name>algorithm</name></decl>;</decl_stmt>                        <comment type="line">// the algorithm that is applied to add new collected values</comment>
+    <decl_stmt><decl><type><name>RRD_MEMORY_MODE</name></type> <name>rrd_memory_mode</name></decl>;</decl_stmt>                <comment type="line">// the memory mode for this dimension</comment>
+
+    <decl_stmt><decl><type><name>collected_number</name></type> <name>multiplier</name></decl>;</decl_stmt>                    <comment type="line">// the multiplier of the collected values</comment>
+    <decl_stmt><decl><type><name>collected_number</name></type> <name>divisor</name></decl>;</decl_stmt>                       <comment type="line">// the divider of the collected values</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>flags</name></decl>;</decl_stmt>                                 <comment type="line">// configuration flags for the dimension</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// members for temporary data we need for calculations</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash</name></decl>;</decl_stmt>                                  <comment type="line">// a simple hash of the id, to speed up searching / indexing</comment>
+                                                    <comment type="line">// instead of strcmp() every item in the binary index</comment>
+                                                    <comment type="line">// we first compare the hashes</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_name</name></decl>;</decl_stmt>                             <comment type="line">// a simple hash of the name</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>cache_filename</name></decl>;</decl_stmt>                           <comment type="line">// the filename we load/save from/to this set</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>collections_counter</name></decl>;</decl_stmt>                     <comment type="line">// the number of times we added values to this rrdim</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrddim_volatile</name></name> <modifier>*</modifier></type><name>state</name></decl>;</decl_stmt>                  <comment type="line">// volatile state that is not persistently stored</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name><name>unused</name><index>[<expr><literal type="number">8</literal></expr>]</index></name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>collected_number</name></type> <name>collected_value_max</name></decl>;</decl_stmt>           <comment type="line">// the absolute maximum of the collected value</comment>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>updated</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>                         <comment type="line">// 1 when the dimension has been updated since the last processing</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>exposed</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>                         <comment type="line">// 1 when set what have sent this dimension to the central netdata</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>last_collected_time</name></decl>;</decl_stmt>             <comment type="line">// when was this dimension last updated</comment>
+                                                    <comment type="line">// this is actual date time we updated the last_collected_value</comment>
+                                                    <comment type="line">// THIS IS DIFFERENT FROM THE SAME MEMBER OF RRDSET</comment>
+
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>calculated_value</name></decl>;</decl_stmt>             <comment type="line">// the current calculated value, after applying the algorithm - resets to zero after being used</comment>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>last_calculated_value</name></decl>;</decl_stmt>        <comment type="line">// the last calculated value processed</comment>
+
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>last_stored_value</name></decl>;</decl_stmt>            <comment type="line">// the last value as stored in the database (after interpolation)</comment>
+
+    <decl_stmt><decl><type><name>collected_number</name></type> <name>collected_value</name></decl>;</decl_stmt>               <comment type="line">// the current value, as collected - resets to 0 after being used</comment>
+    <decl_stmt><decl><type><name>collected_number</name></type> <name>last_collected_value</name></decl>;</decl_stmt>          <comment type="line">// the last value that was collected, after being processed</comment>
+
+    <comment type="line">// the *_volume members are used to calculate the accuracy of the rounding done by the</comment>
+    <comment type="line">// storage number - they are printed to debug.log when debug is enabled for a set.</comment>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>collected_volume</name></decl>;</decl_stmt>             <comment type="line">// the sum of all collected values so far</comment>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>stored_volume</name></decl>;</decl_stmt>                <comment type="line">// the sum of all stored values so far</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrddim</name></name> <modifier>*</modifier></type><name>next</name></decl>;</decl_stmt>                            <comment type="line">// linking of dimensions within the same data set</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdset</name></name> <modifier>*</modifier></type><name>rrdset</name></decl>;</decl_stmt>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// members for checking the data when loading from disk</comment>
+
+    <decl_stmt><decl><type><name>long</name></type> <name>entries</name></decl>;</decl_stmt>                                   <comment type="line">// how many entries this dimension has in ram</comment>
+                                                    <comment type="line">// this is the same to the entries of the data set</comment>
+                                                    <comment type="line">// we set it here, to check the data when we load it from disk.</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>update_every</name></decl>;</decl_stmt>                               <comment type="line">// every how many seconds is this updated</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>memsize</name></decl>;</decl_stmt>                                 <comment type="line">// the memory allocated for this dimension</comment>
+
+    <decl_stmt><decl><type><name>char</name></type> <name><name>magic</name><index>[<expr><sizeof>sizeof<argument_list>(<argument><expr><name>RRDDIMENSION_MAGIC</name></expr></argument>)</argument_list></sizeof> <operator>+</operator> <literal type="number">1</literal></expr>]</index></name></decl>;</decl_stmt>     <comment type="line">// a string to be saved, used to identify our data file</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrddimvar</name></name> <modifier>*</modifier></type><name>variables</name></decl>;</decl_stmt>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// the values stored in this dimension, using our floating point numbers</comment>
+
+    <decl_stmt><decl><type><name>storage_number</name></type> <name><name>values</name><index>[]</index></name></decl>;</decl_stmt>                        <comment type="line">// the array of values - THIS HAS TO BE THE LAST MEMBER</comment>
+}</block>;</struct>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// iterator state for RRD dimension data collection</comment>
+<union>union <name>rrddim_collect_handle</name> <block>{
+    <struct>struct <block>{
+        <decl_stmt><decl><type><name>long</name></type> <name>slot</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>long</name></type> <name>entries</name></decl>;</decl_stmt>
+    }</block> <decl><name>slotted</name></decl>;</struct>                           <comment type="line">// state the legacy code uses</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+    <struct>struct <name>rrdeng_collect_handle</name> <block>{
+        <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl>, <decl><type ref="prev"><modifier>*</modifier></type><name>prev_descr</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>long</name></type> <name>page_correlation_id</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>page_index</name></decl>;</decl_stmt>
+        <comment type="line">// set to 1 when this dimension is not page aligned with the other dimensions in the chart</comment>
+        <decl_stmt><decl><type><name>uint8_t</name></type> <name>unaligned_page</name></decl>;</decl_stmt>
+    }</block> <decl><name>rrdeng</name></decl>;</struct> <comment type="line">// state the database engine uses</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+}</block>;</union>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// iterator state for RRD dimension data queries</comment>
+<struct>struct <name>rrddim_query_handle</name> <block>{
+    <decl_stmt><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>start_time</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>end_time</name></decl>;</decl_stmt>
+    <union>union <block>{
+        <struct>struct <block>{
+            <decl_stmt><decl><type><name>long</name></type> <name>slot</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>long</name></type> <name>last_slot</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>uint8_t</name></type> <name>finished</name></decl>;</decl_stmt>
+        }</block> <decl><name>slotted</name></decl>;</struct>                         <comment type="line">// state the legacy code uses</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+        <struct>struct <name>rrdeng_query_handle</name> <block>{
+            <decl_stmt><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>struct</name> <name>pg_cache_page_index</name></name> <modifier>*</modifier></type><name>page_index</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>time_t</name></type> <name>next_page_time</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>time_t</name></type> <name>now</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>unsigned</name></type> <name>position</name></decl>;</decl_stmt>
+        }</block> <decl><name>rrdeng</name></decl>;</struct> <comment type="line">// state the database engine uses</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    }</block>;</union>
+}</block>;</struct>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// volatile state per RRD dimension</comment>
+<struct>struct <name>rrddim_volatile</name> <block>{
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>uuid_t</name> <modifier>*</modifier></type><name>rrdeng_uuid</name></decl>;</decl_stmt>                 <comment type="line">// database engine metric UUID</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <decl_stmt><decl><type><name><name>union</name> <name>rrddim_collect_handle</name></name></type> <name>handle</name></decl>;</decl_stmt>
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// function pointers that handle data collection</comment>
+    <struct>struct <name>rrddim_collect_ops</name> <block>{
+        <comment type="line">// an initialization function to run before starting collection</comment>
+        <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>init</name>)<parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// run this to store each metric into the database</comment>
+        <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>store_metric</name>)<parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>point_in_time</name></decl></parameter>, <parameter><decl><type><name>storage_number</name></type> <name>number</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// an finalization function to run after collection is over</comment>
+        <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>finalize</name>)<parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+    }</block> <decl><name>collect_ops</name></decl>;</struct>
+
+    <comment type="line">// function pointers that handle database queries</comment>
+    <struct>struct <name>rrddim_query_ops</name> <block>{
+        <comment type="line">// run this before starting a series of next_metric() database queries</comment>
+        <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>init</name>)<parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrddim_query_handle</name></name> <modifier>*</modifier></type><name>handle</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>start_time</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>end_time</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// run this to load each metric number from the database</comment>
+        <function_decl><type><name>storage_number</name></type> (<modifier>*</modifier><name>next_metric</name>)<parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrddim_query_handle</name></name> <modifier>*</modifier></type><name>handle</name></decl></parameter>, <parameter><decl><type><name>time_t</name> <modifier>*</modifier></type><name>current_time</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// run this to test if the series of next_metric() database queries is finished</comment>
+        <function_decl><type><name>int</name></type> (<modifier>*</modifier><name>is_finished</name>)<parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrddim_query_handle</name></name> <modifier>*</modifier></type><name>handle</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// run this after finishing a series of load_metric() database queries</comment>
+        <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>finalize</name>)<parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrddim_query_handle</name></name> <modifier>*</modifier></type><name>handle</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// get the timestamp of the last entry of this metric</comment>
+        <function_decl><type><name>time_t</name></type> (<modifier>*</modifier><name>latest_time</name>)<parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+
+        <comment type="line">// get the timestamp of the first entry of this metric</comment>
+        <function_decl><type><name>time_t</name></type> (<modifier>*</modifier><name>oldest_time</name>)<parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+    }</block> <decl><name>query_ops</name></decl>;</struct>
+}</block>;</struct>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// these loop macros make sure the linked list is accessed with the right lock</comment>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_foreach_read</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>for((rd) = (st)-&gt;dimensions, rrdset_check_rdlock(st); (rd) ; (rd) = (rd)-&gt;next)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_foreach_write</name><parameter_list>(<parameter><type><name>rd</name></type></parameter>, <parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>for((rd) = (st)-&gt;dimensions, rrdset_check_wrlock(st); (rd) ; (rd) = (rd)-&gt;next)</cpp:value></cpp:define>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRDSET - this is a chart</comment>
+
+<comment type="line">// use this for configuration flags, not for state control</comment>
+<comment type="line">// flags are set/unset in a manner that is not thread safe</comment>
+<comment type="line">// and may lead to missing information.</comment>
+
+<typedef>typedef <type><enum>enum <name>rrdset_flags</name> <block>{
+    <decl><name>RRDSET_FLAG_ENABLED</name>             <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal></expr></init></decl>, <comment type="line">// enables or disables a chart</comment>
+    <decl><name>RRDSET_FLAG_DETAIL</name>              <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal></expr></init></decl>, <comment type="line">// if set, the data set should be considered as a detail of another</comment>
+                                              <comment type="line">// (the master data set should be the one that has the same family and is not detail)</comment>
+    <decl><name>RRDSET_FLAG_DEBUG</name>               <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">2</literal></expr></init></decl>, <comment type="line">// enables or disables debugging for a chart</comment>
+    <decl><name>RRDSET_FLAG_OBSOLETE</name>            <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">3</literal></expr></init></decl>, <comment type="line">// this is marked by the collector/module as obsolete</comment>
+    <decl><name>RRDSET_FLAG_BACKEND_SEND</name>        <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">4</literal></expr></init></decl>, <comment type="line">// if set, this chart should be sent to backends</comment>
+    <decl><name>RRDSET_FLAG_BACKEND_IGNORE</name>      <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">5</literal></expr></init></decl>, <comment type="line">// if set, this chart should not be sent to backends</comment>
+    <decl><name>RRDSET_FLAG_UPSTREAM_SEND</name>       <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">6</literal></expr></init></decl>, <comment type="line">// if set, this chart should be sent upstream (streaming)</comment>
+    <decl><name>RRDSET_FLAG_UPSTREAM_IGNORE</name>     <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">7</literal></expr></init></decl>, <comment type="line">// if set, this chart should not be sent upstream (streaming)</comment>
+    <decl><name>RRDSET_FLAG_UPSTREAM_EXPOSED</name>    <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">8</literal></expr></init></decl>, <comment type="line">// if set, we have sent this chart definition to netdata master (streaming)</comment>
+    <decl><name>RRDSET_FLAG_STORE_FIRST</name>         <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">9</literal></expr></init></decl>, <comment type="line">// if set, do not eliminate the first collection during interpolation</comment>
+    <decl><name>RRDSET_FLAG_HETEROGENEOUS</name>       <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">10</literal></expr></init></decl>, <comment type="line">// if set, the chart is not homogeneous (dimensions in it have multiple algorithms, multipliers or dividers)</comment>
+    <decl><name>RRDSET_FLAG_HOMOGENEOUS_CHECK</name>   <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">11</literal></expr></init></decl>, <comment type="line">// if set, the chart should be checked to determine if the dimensions are homogeneous</comment>
+    <decl><name>RRDSET_FLAG_HIDDEN</name>              <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">12</literal></expr></init></decl>, <comment type="line">// if set, do not show this chart on the dashboard, but use it for backends</comment>
+    <decl><name>RRDSET_FLAG_SYNC_CLOCK</name>          <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">13</literal></expr></init></decl>, <comment type="line">// if set, microseconds on next data collection will be ignored (the chart will be synced to now)</comment>
+    <decl><name>RRDSET_FLAG_OBSOLETE_DIMENSIONS</name> <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">14</literal></expr></init></decl>  <comment type="line">// this is marked by the collector/module when a chart has obsolete dimensions</comment>
+}</block></enum></type> <name>RRDSET_FLAGS</name>;</typedef>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_C___ATOMIC</name></cpp:ifdef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_check</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(__atomic_load_n(&amp;((st)-&gt;flags), __ATOMIC_SEQ_CST) &amp; (flag))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_set</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro>   <cpp:value>__atomic_or_fetch(&amp;((st)-&gt;flags), flag, __ATOMIC_SEQ_CST)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_clear</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__atomic_and_fetch(&amp;((st)-&gt;flags), ~flag, __ATOMIC_SEQ_CST)</cpp:value></cpp:define>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_check</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((st)-&gt;flags &amp; (flag))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_set</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro>   <cpp:value>(st)-&gt;flags |= (flag)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_clear</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(st)-&gt;flags &amp;= ~(flag)</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_flag_check_noatomic</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((st)-&gt;flags &amp; (flag))</cpp:value></cpp:define>
+
+<struct>struct <name>rrdset</name> <block>{
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// binary indexing structures</comment>
+
+    <decl_stmt><decl><type><name>avl</name></type> <name>avl</name></decl>;</decl_stmt>                                        <comment type="line">// the index, with key the id - this has to be first!</comment>
+    <decl_stmt><decl><type><name>avl</name></type> <name>avlname</name></decl>;</decl_stmt>                                    <comment type="line">// the index, with key the name</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// the set configuration</comment>
+
+    <decl_stmt><decl><type><name>char</name></type> <name><name>id</name><index>[<expr><name>RRD_ID_LENGTH_MAX</name> <operator>+</operator> <literal type="number">1</literal></expr>]</index></name></decl>;</decl_stmt>                 <comment type="line">// id of the data set</comment>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl>;</decl_stmt>                               <comment type="line">// the name of this dimension (as presented to user)</comment>
+                                                    <comment type="line">// this is a pointer to the config structure</comment>
+                                                    <comment type="line">// since the config always has a higher priority</comment>
+                                                    <comment type="line">// (the user overwrites the name of the charts)</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>config_section</name></decl>;</decl_stmt>                           <comment type="line">// the config section for the chart</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>type</name></decl>;</decl_stmt>                                     <comment type="line">// the type of graph RRD_TYPE_* (a category, for determining graphing options)</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>family</name></decl>;</decl_stmt>                                   <comment type="line">// grouping sets under the same family</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>title</name></decl>;</decl_stmt>                                    <comment type="line">// title shown to user</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>units</name></decl>;</decl_stmt>                                    <comment type="line">// units of measurement</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>context</name></decl>;</decl_stmt>                                  <comment type="line">// the template of this data set</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_context</name></decl>;</decl_stmt>                          <comment type="line">// the hash of the chart's context</comment>
+
+    <decl_stmt><decl><type><name>RRDSET_TYPE</name></type> <name>chart_type</name></decl>;</decl_stmt>                         <comment type="line">// line, area, stacked</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>update_every</name></decl>;</decl_stmt>                               <comment type="line">// every how many seconds is this updated?</comment>
+
+    <decl_stmt><decl><type><name>long</name></type> <name>entries</name></decl>;</decl_stmt>                                   <comment type="line">// total number of entries in the data set</comment>
+
+    <decl_stmt><decl><type><name>long</name></type> <name>current_entry</name></decl>;</decl_stmt>                             <comment type="line">// the entry that is currently being updated</comment>
+                                                    <comment type="line">// it goes around in a round-robin fashion</comment>
+
+    <decl_stmt><decl><type><name>RRDSET_FLAGS</name></type> <name>flags</name></decl>;</decl_stmt>                             <comment type="line">// configuration flags</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>gap_when_lost_iterations_above</name></decl>;</decl_stmt>             <comment type="line">// after how many lost iterations a gap should be stored</comment>
+                                                    <comment type="line">// netdata will interpolate values for gaps lower than this</comment>
+
+    <decl_stmt><decl><type><name>long</name></type> <name>priority</name></decl>;</decl_stmt>                                  <comment type="line">// the sorting priority of this chart</comment>
+
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// members for temporary data we need for calculations</comment>
+
+    <decl_stmt><decl><type><name>RRD_MEMORY_MODE</name></type> <name>rrd_memory_mode</name></decl>;</decl_stmt>                <comment type="line">// if set to 1, this is memory mapped</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>cache_dir</name></decl>;</decl_stmt>                                <comment type="line">// the directory to store dimensions</comment>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>cache_filename</name><index>[<expr><name>FILENAME_MAX</name><operator>+</operator><literal type="number">1</literal></expr>]</index></name></decl>;</decl_stmt>            <comment type="line">// the filename to store this set</comment>
+
+    <decl_stmt><decl><type><name>netdata_rwlock_t</name></type> <name>rrdset_rwlock</name></decl>;</decl_stmt>                 <comment type="line">// protects dimensions linked list</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>counter</name></decl>;</decl_stmt>                                 <comment type="line">// the number of times we added values to this database</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>counter_done</name></decl>;</decl_stmt>                            <comment type="line">// the number of times rrdset_done() has been called</comment>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>last_accessed_time</name></decl>;</decl_stmt>                      <comment type="line">// the last time this RRDSET has been accessed</comment>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>upstream_resync_time</name></decl>;</decl_stmt>                    <comment type="line">// the timestamp up to which we should resync clock upstream</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>plugin_name</name></decl>;</decl_stmt>                              <comment type="line">// the name of the plugin that generated this</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>module_name</name></decl>;</decl_stmt>                              <comment type="line">// the name of the plugin module that generated this</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name><name>unused</name><index>[<expr><literal type="number">5</literal></expr>]</index></name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>rrddim_page_alignment</name></decl>;</decl_stmt>                   <comment type="line">// keeps metric pages in alignment when using dbengine</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash</name></decl>;</decl_stmt>                                  <comment type="line">// a simple hash on the id, to speed up searching</comment>
+                                                    <comment type="line">// we first compare hashes, and only if the hashes are equal we do string comparisons</comment>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_name</name></decl>;</decl_stmt>                             <comment type="line">// a simple hash on the name</comment>
+
+    <decl_stmt><decl><type><name>usec_t</name></type> <name>usec_since_last_update</name></decl>;</decl_stmt>                  <comment type="line">// the time in microseconds since the last collection of data</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>last_updated</name></decl>;</decl_stmt>                    <comment type="line">// when this data set was last updated (updated every time the rrd_stats_done() function)</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>last_collected_time</name></decl>;</decl_stmt>             <comment type="line">// when did this data set last collected values</comment>
+
+    <decl_stmt><decl><type><name>total_number</name></type> <name>collected_total</name></decl>;</decl_stmt>                   <comment type="line">// used internally to calculate percentages</comment>
+    <decl_stmt><decl><type><name>total_number</name></type> <name>last_collected_total</name></decl>;</decl_stmt>              <comment type="line">// used internally to calculate percentages</comment>
+
+    <decl_stmt><decl><type><name>RRDFAMILY</name> <modifier>*</modifier></type><name>rrdfamily</name></decl>;</decl_stmt>                           <comment type="line">// pointer to RRDFAMILY this chart belongs to</comment>
+    <decl_stmt><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>rrdhost</name></decl>;</decl_stmt>                               <comment type="line">// pointer to RRDHOST this chart belongs to</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdset</name></name> <modifier>*</modifier></type><name>next</name></decl>;</decl_stmt>                            <comment type="line">// linking of rrdsets</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// local variables</comment>
+
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>green</name></decl>;</decl_stmt>                        <comment type="line">// green threshold for this chart</comment>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>red</name></decl>;</decl_stmt>                          <comment type="line">// red threshold for this chart</comment>
+
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>rrdvar_root_index</name></decl>;</decl_stmt>                <comment type="line">// RRDVAR index for this chart</comment>
+    <decl_stmt><decl><type><name>RRDSETVAR</name> <modifier>*</modifier></type><name>variables</name></decl>;</decl_stmt>                           <comment type="line">// RRDSETVAR linked list for this chart (one RRDSETVAR, many RRDVARs)</comment>
+    <decl_stmt><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>alarms</name></decl>;</decl_stmt>                                <comment type="line">// RRDCALC linked list for this chart</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// members for checking the data when loading from disk</comment>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>long</name></type> <name>memsize</name></decl>;</decl_stmt>                          <comment type="line">// how much mem we have allocated for this (without dimensions)</comment>
+
+    <decl_stmt><decl><type><name>char</name></type> <name><name>magic</name><index>[<expr><sizeof>sizeof<argument_list>(<argument><expr><name>RRDSET_MAGIC</name></expr></argument>)</argument_list></sizeof> <operator>+</operator> <literal type="number">1</literal></expr>]</index></name></decl>;</decl_stmt>           <comment type="line">// our magic</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// the dimensions</comment>
+
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>dimensions_index</name></decl>;</decl_stmt>                 <comment type="line">// the root of the dimensions index</comment>
+    <decl_stmt><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>dimensions</name></decl>;</decl_stmt>                             <comment type="line">// the actual data for every dimension</comment>
+
+}</block>;</struct>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_rdlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_rdlock(&amp;((st)-&gt;rrdset_rwlock))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_wrlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_wrlock(&amp;((st)-&gt;rrdset_rwlock))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_unlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_unlock(&amp;((st)-&gt;rrdset_rwlock))</cpp:value></cpp:define>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// these loop macros make sure the linked list is accessed with the right lock</comment>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_foreach_read</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>for((st) = (host)-&gt;rrdset_root, rrdhost_check_rdlock(host); st ; (st) = (st)-&gt;next)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_foreach_write</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>for((st) = (host)-&gt;rrdset_root, rrdhost_check_wrlock(host); st ; (st) = (st)-&gt;next)</cpp:value></cpp:define>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRDHOST flags</comment>
+<comment type="line">// use this for configuration flags, not for state control</comment>
+<comment type="line">// flags are set/unset in a manner that is not thread safe</comment>
+<comment type="line">// and may lead to missing information.</comment>
+
+<typedef>typedef <type><enum>enum <name>rrdhost_flags</name> <block>{
+    <decl><name>RRDHOST_FLAG_ORPHAN</name>                 <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal></expr></init></decl>, <comment type="line">// this host is orphan (not receiving data)</comment>
+    <decl><name>RRDHOST_FLAG_DELETE_OBSOLETE_CHARTS</name> <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal></expr></init></decl>, <comment type="line">// delete files of obsolete charts</comment>
+    <decl><name>RRDHOST_FLAG_DELETE_ORPHAN_HOST</name>     <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">2</literal></expr></init></decl>, <comment type="line">// delete the entire host when orphan</comment>
+    <decl><name>RRDHOST_FLAG_BACKEND_SEND</name>           <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">3</literal></expr></init></decl>, <comment type="line">// send it to backends</comment>
+    <decl><name>RRDHOST_FLAG_BACKEND_DONT_SEND</name>      <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">4</literal></expr></init></decl>, <comment type="line">// don't send it to backends</comment>
+}</block></enum></type> <name>RRDHOST_FLAGS</name>;</typedef>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_C___ATOMIC</name></cpp:ifdef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_flag_check</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(__atomic_load_n(&amp;((host)-&gt;flags), __ATOMIC_SEQ_CST) &amp; (flag))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_flag_set</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro>   <cpp:value>__atomic_or_fetch(&amp;((host)-&gt;flags), flag, __ATOMIC_SEQ_CST)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_flag_clear</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__atomic_and_fetch(&amp;((host)-&gt;flags), ~flag, __ATOMIC_SEQ_CST)</cpp:value></cpp:define>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_flag_check</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((host)-&gt;flags &amp; (flag))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_flag_set</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro>   <cpp:value>(host)-&gt;flags |= (flag)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_flag_clear</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>flag</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(host)-&gt;flags &amp;= ~(flag)</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_INTERNAL_CHECKS</name></cpp:ifdef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_debug</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>fmt</name></type></parameter>, <parameter><type><name>args</name><modifier>...</modifier></type></parameter>)</parameter_list></cpp:macro> <cpp:value>do { if(unlikely(debug_flags &amp; D_RRD_STATS &amp;&amp; rrdset_flag_check(st, RRDSET_FLAG_DEBUG))) \
+            debug_int(__FILE__, __FUNCTION__, __LINE__, "%s: " fmt, st-&gt;name, ##args); } while(0)</cpp:value></cpp:define>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_debug</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>fmt</name></type></parameter>, <parameter><type><name>args</name><modifier>...</modifier></type></parameter>)</parameter_list></cpp:macro> <cpp:value>debug_dummy()</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// Health data</comment>
+
+<struct>struct <name>alarm_entry</name> <block>{
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>unique_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>alarm_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>alarm_event_id</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>when</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>duration</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>non_clear_duration</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_name</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>chart</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_chart</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>family</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>exec</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>recipient</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>exec_run_timestamp</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>exec_code</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>source</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>units</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>info</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>old_value</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>calculated_number</name></type> <name>new_value</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>old_value_string</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>new_value_string</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>RRDCALC_STATUS</name></type> <name>old_status</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>RRDCALC_STATUS</name></type> <name>new_status</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>flags</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>delay</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>delay_up_to_timestamp</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>updated_by_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>updates_id</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>last_repeat</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>alarm_entry</name></name> <modifier>*</modifier></type><name>next</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+
+<typedef>typedef <type><struct>struct <name>alarm_log</name> <block>{
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>next_log_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>next_alarm_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>count</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>max</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>ALARM_ENTRY</name> <modifier>*</modifier></type><name>alarms</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>netdata_rwlock_t</name></type> <name>alarm_log_rwlock</name></decl>;</decl_stmt>
+}</block></struct></type> <name>ALARM_LOG</name>;</typedef>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRD HOST</comment>
+
+<struct>struct <name>rrdhost_system_info</name> <block>{
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>os_name</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>os_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>os_id_like</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>os_version</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>os_version_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>os_detection</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>kernel_name</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>kernel_version</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>architecture</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>virtualization</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>virt_detection</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>container</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>container_detection</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>rrdhost</name> <block>{
+    <decl_stmt><decl><type><name>avl</name></type> <name>avl</name></decl>;</decl_stmt>                                        <comment type="line">// the index of hosts</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// host information</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>hostname</name></decl>;</decl_stmt>                                 <comment type="line">// the hostname of this host</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_hostname</name></decl>;</decl_stmt>                         <comment type="line">// the hostname hash</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>registry_hostname</name></decl>;</decl_stmt>                        <comment type="line">// the registry hostname for this host</comment>
+
+    <decl_stmt><decl><type><name>char</name></type> <name><name>machine_guid</name><index>[<expr><name>GUID_LEN</name> <operator>+</operator> <literal type="number">1</literal></expr>]</index></name></decl>;</decl_stmt>                <comment type="line">// the unique ID of this host</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash_machine_guid</name></decl>;</decl_stmt>                     <comment type="line">// the hash of the unique ID</comment>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>os</name></decl>;</decl_stmt>                                 <comment type="line">// the O/S type of the host</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>tags</name></decl>;</decl_stmt>                               <comment type="line">// tags for this host</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>timezone</name></decl>;</decl_stmt>                           <comment type="line">// the timezone of the host</comment>
+
+    <decl_stmt><decl><type><name>RRDHOST_FLAGS</name></type> <name>flags</name></decl>;</decl_stmt>                            <comment type="line">// flags about this RRDHOST</comment>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>rrd_update_every</name></decl>;</decl_stmt>                           <comment type="line">// the update frequency of the host</comment>
+    <decl_stmt><decl><type><name>long</name></type> <name>rrd_history_entries</name></decl>;</decl_stmt>                       <comment type="line">// the number of history entries for the host's charts</comment>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>page_cache_mb</name></decl>;</decl_stmt>                         <comment type="line">// Database Engine page cache size in MiB</comment>
+    <decl_stmt><decl><type><name>unsigned</name></type> <name>disk_space_mb</name></decl>;</decl_stmt>                         <comment type="line">// Database Engine disk space quota in MiB</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <decl_stmt><decl><type><name>RRD_MEMORY_MODE</name></type> <name>rrd_memory_mode</name></decl>;</decl_stmt>                <comment type="line">// the memory more for the charts of this host</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>cache_dir</name></decl>;</decl_stmt>                                <comment type="line">// the directory to save RRD cache files</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>varlib_dir</name></decl>;</decl_stmt>                               <comment type="line">// the directory to save health log</comment>
+
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>program_name</name></decl>;</decl_stmt>                             <comment type="line">// the program name that collects metrics for this host</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>program_version</name></decl>;</decl_stmt>                          <comment type="line">// the program version that collects metrics for this host</comment>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdhost_system_info</name></name> <modifier>*</modifier></type><name>system_info</name></decl>;</decl_stmt>        <comment type="line">// information collected from the host environment</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// streaming of data to remote hosts - rrdpush</comment>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>rrdpush_send_enabled</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>            <comment type="line">// 1 when this host sends metrics to another netdata</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>rrdpush_send_destination</name></decl>;</decl_stmt>                 <comment type="line">// where to send metrics to</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>rrdpush_send_api_key</name></decl>;</decl_stmt>                     <comment type="line">// the api key at the receiving netdata</comment>
+
+    <comment type="line">// the following are state information for the threading</comment>
+    <comment type="line">// streaming metrics from this netdata to an upstream netdata</comment>
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name> <name>int</name></type> <name>rrdpush_sender_spawn</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>   <comment type="line">// 1 when the sender thread has been spawn</comment>
+    <decl_stmt><decl><type><name>netdata_thread_t</name></type> <name>rrdpush_sender_thread</name></decl>;</decl_stmt>         <comment type="line">// the sender thread</comment>
+
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name> <name>int</name></type> <name>rrdpush_sender_connected</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt> <comment type="line">// 1 when the sender is ready to push metrics</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>rrdpush_sender_socket</name></decl>;</decl_stmt>                      <comment type="line">// the fd of the socket to the remote host, or -1</comment>
+
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name> <name>int</name></type> <name>rrdpush_sender_error_shown</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt> <comment type="line">// 1 when we have logged a communication error</comment>
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name> <name>int</name></type> <name>rrdpush_sender_join</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>    <comment type="line">// 1 when we have to join the sending thread</comment>
+
+    <decl_stmt><decl><type><name>SIMPLE_PATTERN</name> <modifier>*</modifier></type><name>rrdpush_send_charts_matching</name></decl>;</decl_stmt>   <comment type="line">// pattern to match the charts to be sent</comment>
+
+    <comment type="line">// metrics may be collected asynchronously</comment>
+    <comment type="line">// these synchronize all the threads willing the write to our sending buffer</comment>
+    <decl_stmt><decl><type><name>netdata_mutex_t</name></type> <name>rrdpush_sender_buffer_mutex</name></decl>;</decl_stmt>    <comment type="line">// exclusive access to rrdpush_sender_buffer</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name><name>rrdpush_sender_pipe</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></decl>;</decl_stmt>                     <comment type="line">// collector to sender thread signaling</comment>
+    <decl_stmt><decl><type><name>BUFFER</name> <modifier>*</modifier></type><name>rrdpush_sender_buffer</name></decl>;</decl_stmt>                  <comment type="line">// collector fills it, sender sends it</comment>
+
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// streaming of data from remote hosts - rrdpush</comment>
+
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>size_t</name></type> <name>connected_senders</name></decl>;</decl_stmt>              <comment type="line">// when remote hosts are streaming to this</comment>
+                                                    <comment type="line">// host, this is the counter of connected clients</comment>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>senders_disconnected_time</name></decl>;</decl_stmt>               <comment type="line">// the time the last sender was disconnected</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// health monitoring options</comment>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>health_enabled</name><range>:<expr><literal type="number">1</literal></expr></range></decl>;</decl_stmt>                  <comment type="line">// 1 when this host has health enabled</comment>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>health_delay_up_to</name></decl>;</decl_stmt>                      <comment type="line">// a timestamp to delay alarms processing up to</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>health_default_exec</name></decl>;</decl_stmt>                      <comment type="line">// the full path of the alarms notifications program</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>health_default_recipient</name></decl>;</decl_stmt>                 <comment type="line">// the default recipient for all alarms</comment>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>health_log_filename</name></decl>;</decl_stmt>                      <comment type="line">// the alarms event log filename</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>health_log_entries_written</name></decl>;</decl_stmt>              <comment type="line">// the number of alarm events writtern to the alarms event log</comment>
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>health_log_fp</name></decl>;</decl_stmt>                            <comment type="line">// the FILE pointer to the open alarms event log file</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>health_default_warn_repeat_every</name></decl>;</decl_stmt>      <comment type="line">// the default value for the interval between repeating warning notifications</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>health_default_crit_repeat_every</name></decl>;</decl_stmt>      <comment type="line">// the default value for the interval between repeating critical notifications</comment>
+
+
+    <comment type="line">// all RRDCALCs are primarily allocated and linked here</comment>
+    <comment type="line">// RRDCALCs may be linked to charts at any point</comment>
+    <comment type="line">// (charts may or may not exist when these are loaded)</comment>
+    <decl_stmt><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>alarms</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>RRDCALC</name> <modifier>*</modifier></type><name>alarms_with_foreach</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>alarms_idx_health_log</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>alarms_idx_name</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>ALARM_LOG</name></type> <name>health_log</name></decl>;</decl_stmt>                           <comment type="line">// alarms historical events (event log)</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>health_last_processed_id</name></decl>;</decl_stmt>              <comment type="line">// the last processed health id from the log</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>health_max_unique_id</name></decl>;</decl_stmt>                  <comment type="line">// the max alarm log unique id given for the host</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>health_max_alarm_id</name></decl>;</decl_stmt>                   <comment type="line">// the max alarm id given for the host</comment>
+
+    <comment type="line">// templates of alarms</comment>
+    <comment type="line">// these are used to create alarms when charts</comment>
+    <comment type="line">// are created or renamed, that match them</comment>
+    <decl_stmt><decl><type><name>RRDCALCTEMPLATE</name> <modifier>*</modifier></type><name>templates</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>RRDCALCTEMPLATE</name> <modifier>*</modifier></type><name>alarms_template_with_foreach</name></decl>;</decl_stmt>
+
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// the charts of the host</comment>
+
+    <decl_stmt><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>rrdset_root</name></decl>;</decl_stmt>                            <comment type="line">// the host charts</comment>
+
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// locks</comment>
+
+    <decl_stmt><decl><type><name>netdata_rwlock_t</name></type> <name>rrdhost_rwlock</name></decl>;</decl_stmt>                <comment type="line">// lock for this RRDHOST (protects rrdset_root linked list)</comment>
+
+    <comment type="line">// ------------------------------------------------------------------------</comment>
+    <comment type="line">// indexes</comment>
+
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>rrdset_root_index</name></decl>;</decl_stmt>                <comment type="line">// the host's charts index (by id)</comment>
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>rrdset_root_index_name</name></decl>;</decl_stmt>           <comment type="line">// the host's charts index (by name)</comment>
+
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>rrdfamily_root_index</name></decl>;</decl_stmt>             <comment type="line">// the host's chart families index</comment>
+    <decl_stmt><decl><type><name>avl_tree_lock</name></type> <name>rrdvar_root_index</name></decl>;</decl_stmt>                <comment type="line">// the host's chart variables index</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>rrdeng_ctx</name></decl>;</decl_stmt>          <comment type="line">// DB engine instance for this host</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_HTTPS</name></cpp:ifdef>
+    <decl_stmt><decl><type><name><name>struct</name> <name>netdata_ssl</name></name></type> <name>ssl</name></decl>;</decl_stmt>                         <comment type="line">//Structure used to encrypt the connection</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>netdata_ssl</name></name></type> <name>stream_ssl</name></decl>;</decl_stmt>                         <comment type="line">//Structure used to encrypt the stream</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <decl_stmt><decl><type><name><name>struct</name> <name>rrdhost</name></name> <modifier>*</modifier></type><name>next</name></decl>;</decl_stmt>
+}</block>;</struct>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>RRDHOST</name> <modifier>*</modifier></type><name>localhost</name></decl>;</decl_stmt>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_rdlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_rdlock(&amp;((host)-&gt;rrdhost_rwlock))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_wrlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_wrlock(&amp;((host)-&gt;rrdhost_rwlock))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_unlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_unlock(&amp;((host)-&gt;rrdhost_rwlock))</cpp:value></cpp:define>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// these loop macros make sure the linked list is accessed with the right lock</comment>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_foreach_read</name><parameter_list>(<parameter><type><name>var</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>for((var) = localhost, rrd_check_rdlock(); var ; (var) = (var)-&gt;next)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_foreach_write</name><parameter_list>(<parameter><type><name>var</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>for((var) = localhost, rrd_check_wrlock(); var ; (var) = (var)-&gt;next)</cpp:value></cpp:define>
+
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// global lock for all RRDHOSTs</comment>
+
+<decl_stmt><decl><type><specifier>extern</specifier> <name>netdata_rwlock_t</name></type> <name>rrd_rwlock</name></decl>;</decl_stmt>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_rdlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_rdlock(&amp;rrd_rwlock)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_wrlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_wrlock(&amp;rrd_rwlock)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_unlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>netdata_rwlock_unlock(&amp;rrd_rwlock)</cpp:value></cpp:define>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+
+<decl_stmt><decl><type><specifier>extern</specifier> <name>size_t</name></type> <name>rrd_hosts_available</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>time_t</name></type> <name>rrdhost_free_orphan_time</name></decl>;</decl_stmt>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrd_init</name><parameter_list>(<parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>hostname</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>rrdhost_system_info</name></name> <modifier>*</modifier></type><name>system_info</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDHOST</name> <modifier>*</modifier></type><name>rrdhost_find_by_hostname</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>hostname</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRDHOST</name> <modifier>*</modifier></type><name>rrdhost_find_by_guid</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>guid</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDHOST</name> <modifier>*</modifier></type><name>rrdhost_find_or_create</name><parameter_list>(
+        <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>hostname</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>registry_hostname</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>guid</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>os</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>timezone</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>tags</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>program_name</name></decl></parameter>
+        , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>program_version</name></decl></parameter>
+        , <parameter><decl><type><name>int</name></type> <name>update_every</name></decl></parameter>
+        , <parameter><decl><type><name>long</name></type> <name>history</name></decl></parameter>
+        , <parameter><decl><type><name>RRD_MEMORY_MODE</name></type> <name>mode</name></decl></parameter>
+        , <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>health_enabled</name></decl></parameter>
+        , <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>rrdpush_enabled</name></decl></parameter>
+        , <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>rrdpush_destination</name></decl></parameter>
+        , <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>rrdpush_api_key</name></decl></parameter>
+        , <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>rrdpush_send_charts_matching</name></decl></parameter>
+        , <parameter><decl><type><name><name>struct</name> <name>rrdhost_system_info</name></name> <modifier>*</modifier></type><name>system_info</name></decl></parameter>
+)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdhost_set_system_info_variable</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdhost_system_info</name></name> <modifier>*</modifier></type><name>system_info</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>NETDATA_INTERNAL_CHECKS</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name>defined</name><argument_list>(<argument><expr><name>NETDATA_VERIFY_LOCKS</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>__rrdhost_check_wrlock</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>file</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>function</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>long</name></type> <name>line</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>__rrdhost_check_rdlock</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>file</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>function</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>long</name></type> <name>line</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>__rrdset_check_rdlock</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>file</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>function</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>long</name></type> <name>line</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>__rrdset_check_wrlock</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>file</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>function</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>long</name></type> <name>line</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>__rrd_check_rdlock</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>file</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>function</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>long</name></type> <name>line</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>__rrd_check_wrlock</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>file</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>function</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>unsigned</name> <name>long</name></type> <name>line</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_check_rdlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__rrdhost_check_rdlock(host, __FILE__, __FUNCTION__, __LINE__)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_check_wrlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__rrdhost_check_wrlock(host, __FILE__, __FUNCTION__, __LINE__)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_check_rdlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__rrdset_check_rdlock(st, __FILE__, __FUNCTION__, __LINE__)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_check_wrlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>__rrdset_check_wrlock(st, __FILE__, __FUNCTION__, __LINE__)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_check_rdlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>__rrd_check_rdlock(__FILE__, __FUNCTION__, __LINE__)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_check_wrlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>__rrd_check_wrlock(__FILE__, __FUNCTION__, __LINE__)</cpp:value></cpp:define>
+
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_check_rdlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(void)0</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdhost_check_wrlock</name><parameter_list>(<parameter><type><name>host</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(void)0</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_check_rdlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(void)0</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_check_wrlock</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(void)0</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_check_rdlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>(void)0</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_check_wrlock</name><parameter_list>()</parameter_list></cpp:macro> <cpp:value>(void)0</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRDSET functions</comment>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdset_set_name</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDSET</name> <modifier>*</modifier></type><name>rrdset_create_custom</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>type</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>family</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>context</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>title</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>units</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>plugin</name></decl></parameter>
+                             , <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>module</name></decl></parameter>
+                             , <parameter><decl><type><name>long</name></type> <name>priority</name></decl></parameter>
+                             , <parameter><decl><type><name>int</name></type> <name>update_every</name></decl></parameter>
+                             , <parameter><decl><type><name>RRDSET_TYPE</name></type> <name>chart_type</name></decl></parameter>
+                             , <parameter><decl><type><name>RRD_MEMORY_MODE</name></type> <name>memory_mode</name></decl></parameter>
+                             , <parameter><decl><type><name>long</name></type> <name>history_entries</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_create</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>type</name></type></parameter>, <parameter><type><name>id</name></type></parameter>, <parameter><type><name>name</name></type></parameter>, <parameter><type><name>family</name></type></parameter>, <parameter><type><name>context</name></type></parameter>, <parameter><type><name>title</name></type></parameter>, <parameter><type><name>units</name></type></parameter>, <parameter><type><name>plugin</name></type></parameter>, <parameter><type><name>module</name></type></parameter>, <parameter><type><name>priority</name></type></parameter>, <parameter><type><name>update_every</name></type></parameter>, <parameter><type><name>chart_type</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>rrdset_create_custom(host, type, id, name, family, context, title, units, plugin, module, priority, update_every, chart_type, (host)-&gt;rrd_memory_mode, (host)-&gt;rrd_history_entries)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_create_localhost</name><parameter_list>(<parameter><type><name>type</name></type></parameter>, <parameter><type><name>id</name></type></parameter>, <parameter><type><name>name</name></type></parameter>, <parameter><type><name>family</name></type></parameter>, <parameter><type><name>context</name></type></parameter>, <parameter><type><name>title</name></type></parameter>, <parameter><type><name>units</name></type></parameter>, <parameter><type><name>plugin</name></type></parameter>, <parameter><type><name>module</name></type></parameter>, <parameter><type><name>priority</name></type></parameter>, <parameter><type><name>update_every</name></type></parameter>, <parameter><type><name>chart_type</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>rrdset_create(localhost, type, id, name, family, context, title, units, plugin, module, priority, update_every, chart_type)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_free_all</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_save_all</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_cleanup_all</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_cleanup_orphan_hosts_nolock</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>protected</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_system_info_free</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdhost_system_info</name></name> <modifier>*</modifier></type><name>system_info</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_free</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_save_charts</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_delete_charts</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdhost_should_be_removed</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>protected</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>now</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_update_heterogeneous_flag</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDSET</name> <modifier>*</modifier></type><name>rrdset_find</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_find_localhost</name><parameter_list>(<parameter><type><name>id</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>rrdset_find(localhost, id)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDSET</name> <modifier>*</modifier></type><name>rrdset_find_bytype</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>type</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_find_bytype_localhost</name><parameter_list>(<parameter><type><name>type</name></type></parameter>, <parameter><type><name>id</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>rrdset_find_bytype(localhost, type, id)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDSET</name> <modifier>*</modifier></type><name>rrdset_find_byname</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_find_byname_localhost</name><parameter_list>(<parameter><type><name>name</name></type></parameter>)</parameter_list></cpp:macro>  <cpp:value>rrdset_find_byname(localhost, name)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_next_usec_unfiltered</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>microseconds</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_next_usec</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>usec_t</name></type> <name>microseconds</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_next</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>rrdset_next_usec(st, 0ULL)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_done</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_is_obsolete</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_isnot_obsolete</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// checks if the RRDSET should be offered to viewers</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_is_available_for_viewers</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(rrdset_flag_check(st, RRDSET_FLAG_ENABLED) &amp;&amp; !rrdset_flag_check(st, RRDSET_FLAG_HIDDEN) &amp;&amp; !rrdset_flag_check(st, RRDSET_FLAG_OBSOLETE) &amp;&amp; (st)-&gt;dimensions &amp;&amp; (st)-&gt;rrd_memory_mode != RRD_MEMORY_MODE_NONE)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_is_available_for_backends</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(rrdset_flag_check(st, RRDSET_FLAG_ENABLED) &amp;&amp; !rrdset_flag_check(st, RRDSET_FLAG_OBSOLETE) &amp;&amp; (st)-&gt;dimensions)</cpp:value></cpp:define>
+
+<comment type="line">// get the total duration in seconds of the round robin database</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_duration</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((time_t)( (((st)-&gt;counter &gt;= ((unsigned long)(st)-&gt;entries))?(unsigned long)(st)-&gt;entries:(st)-&gt;counter) * (st)-&gt;update_every ))</cpp:value></cpp:define>
+
+<comment type="line">// get the timestamp of the last entry in the round robin database</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>time_t</name></type> <name>rrdset_last_entry_t</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>st</name><operator>-&gt;</operator><name>rrd_memory_mode</name></name> <operator>==</operator> <name>RRD_MEMORY_MODE_DBENGINE</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>time_t</name></type> <name>last_entry_t</name>  <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name>netdata_rwlock_tryrdlock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>st</name><operator>-&gt;</operator><name>rrdset_rwlock</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <macro><name>rrddim_foreach_read</name><argument_list>(<argument>rd</argument>, <argument>st</argument>)</argument_list></macro> <block>{<block_content>
+            <expr_stmt><expr><name>last_entry_t</name> <operator>=</operator> <call><name>MAX</name><argument_list>(<argument><expr><name>last_entry_t</name></expr></argument>, <argument><expr><call><name><name>rd</name><operator>-&gt;</operator><name>state</name><operator>-&gt;</operator><name>query_ops</name><operator>.</operator><name>latest_time</name></name><argument_list>(<argument><expr><name>rd</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block>
+        <if_stmt><if>if<condition>(<expr><literal type="number">0</literal> <operator>==</operator> <name>ret</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>netdata_rwlock_unlock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>st</name><operator>-&gt;</operator><name>rrdset_rwlock</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <return>return <expr><name>last_entry_t</name></expr>;</return>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <return>return <expr><operator>(</operator><name>time_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>last_updated</name><operator>.</operator><name>tv_sec</name></name></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// get the timestamp of first entry in the round robin database</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>time_t</name></type> <name>rrdset_first_entry_t</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>st</name><operator>-&gt;</operator><name>rrd_memory_mode</name></name> <operator>==</operator> <name>RRD_MEMORY_MODE_DBENGINE</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>time_t</name></type> <name>first_entry_t</name> <init>= <expr><name>LONG_MAX</name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name>netdata_rwlock_tryrdlock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>st</name><operator>-&gt;</operator><name>rrdset_rwlock</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <macro><name>rrddim_foreach_read</name><argument_list>(<argument>rd</argument>, <argument>st</argument>)</argument_list></macro> <block>{<block_content>
+            <expr_stmt><expr><name>first_entry_t</name> <operator>=</operator> <call><name>MIN</name><argument_list>(<argument><expr><name>first_entry_t</name></expr></argument>, <argument><expr><call><name><name>rd</name><operator>-&gt;</operator><name>state</name><operator>-&gt;</operator><name>query_ops</name><operator>.</operator><name>oldest_time</name></name><argument_list>(<argument><expr><name>rd</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block>
+        <if_stmt><if>if<condition>(<expr><literal type="number">0</literal> <operator>==</operator> <name>ret</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>netdata_rwlock_unlock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>st</name><operator>-&gt;</operator><name>rrdset_rwlock</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name>LONG_MAX</name> <operator>==</operator> <name>first_entry_t</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+        <return>return <expr><name>first_entry_t</name></expr>;</return>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <return>return <expr><operator>(</operator><name>time_t</name><operator>)</operator><operator>(</operator><call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <call><name>rrdset_duration</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call><operator>)</operator></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// get the last slot updated in the round robin database</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_last_slot</name><parameter_list>(<parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((size_t)(((st)-&gt;current_entry == 0) ? (st)-&gt;entries - 1 : (st)-&gt;current_entry - 1))</cpp:value></cpp:define>
+
+<comment type="line">// get the first / oldest slot updated in the round robin database</comment>
+<comment type="line">// #define rrdset_first_slot(st) ((size_t)( (((st)-&gt;counter &gt;= ((unsigned long)(st)-&gt;entries)) ? (unsigned long)( ((unsigned long)(st)-&gt;current_entry &gt; 0) ? ((unsigned long)(st)-&gt;current_entry) : ((unsigned long)(st)-&gt;entries) ) - 1 : 0) ))</comment>
+
+<comment type="line">// return the slot that has the oldest value</comment>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>size_t</name></type> <name>rrdset_first_slot</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><name><name>st</name><operator>-&gt;</operator><name>counter</name></name> <operator>&gt;=</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// the database has been rotated at least once</comment>
+        <comment type="line">// the oldest entry is the one that will be next</comment>
+        <comment type="line">// overwritten by data collection</comment>
+        <return>return <expr><operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>current_entry</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// we do not have rotated the db yet</comment>
+    <comment type="line">// so 0 is the first entry</comment>
+    <return>return <expr><literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// get the slot of the round robin database, for the given timestamp (t)</comment>
+<comment type="line">// it always returns a valid slot, although may not be for the time requested if the time is outside the round robin database</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>size_t</name></type> <name>rrdset_time2slot</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>t</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>ret</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if<condition>(<expr><name>t</name> <operator>&gt;=</operator> <call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// the requested time is after the last entry we have</comment>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_last_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <else>else <block>{<block_content>
+        <if_stmt><if>if<condition>(<expr><name>t</name> <operator>&lt;=</operator> <call><name>rrdset_first_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// the requested time is before the first entry we have</comment>
+            <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_first_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <else>else <block>{<block_content>
+            <if_stmt><if>if<condition>(<expr><call><name>rrdset_last_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>&gt;=</operator> <operator>(</operator><operator>(</operator><call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <name>t</name><operator>)</operator> <operator>/</operator> <operator>(</operator><name>size_t</name><operator>)</operator><operator>(</operator><name><name>st</name><operator>-&gt;</operator><name>update_every</name></name><operator>)</operator><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_last_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <operator>(</operator><operator>(</operator><call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <name>t</name><operator>)</operator> <operator>/</operator> <operator>(</operator><name>size_t</name><operator>)</operator><operator>(</operator><name><name>st</name><operator>-&gt;</operator><name>update_every</name></name><operator>)</operator><operator>)</operator></expr>;</expr_stmt></block_content></block></if>
+            <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_last_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <operator>(</operator><operator>(</operator><call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <name>t</name><operator>)</operator> <operator>/</operator> <operator>(</operator><name>size_t</name><operator>)</operator><operator>(</operator><name><name>st</name><operator>-&gt;</operator><name>update_every</name></name><operator>)</operator><operator>)</operator> <operator>+</operator> <operator>(</operator><name>unsigned</name> <name>long</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name>ret</name> <operator>&gt;=</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"INTERNAL ERROR: rrdset_time2slot() on %s returns values outside entries"</literal></expr></argument>, <argument><expr><name><name>st</name><operator>-&gt;</operator><name>name</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <operator>(</operator><name>size_t</name><operator>)</operator><operator>(</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// get the timestamp of a specific slot in the round robin database</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>time_t</name></type> <name>rrdset_slot2time</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>slot</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>ret</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if<condition>(<expr><name>slot</name> <operator>&gt;=</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"INTERNAL ERROR: caller of rrdset_slot2time() gives invalid slot %zu"</literal></expr></argument>, <argument><expr><name>slot</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>slot</name> <operator>=</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if<condition>(<expr><name>slot</name> <operator>&gt;</operator> <call><name>rrdset_last_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>update_every</name></name> <operator>*</operator> <operator>(</operator><call><name>rrdset_last_slot</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <name>slot</name> <operator>+</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>entries</name></name><operator>)</operator></expr>;</expr_stmt>
+    </block_content>}</block></if>
+    <else>else <block>{<block_content>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call> <operator>-</operator> <operator>(</operator><name>size_t</name><operator>)</operator><name><name>st</name><operator>-&gt;</operator><name>update_every</name></name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name>ret</name> <operator>&lt;</operator> <call><name>rrdset_first_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"INTERNAL ERROR: rrdset_slot2time() on %s returns time too far in the past"</literal></expr></argument>, <argument><expr><name><name>st</name><operator>-&gt;</operator><name>name</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_first_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name>ret</name> <operator>&gt;</operator> <call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"INTERNAL ERROR: rrdset_slot2time() on %s returns time into the future"</literal></expr></argument>, <argument><expr><name><name>st</name><operator>-&gt;</operator><name>name</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>ret</name> <operator>=</operator> <call><name>rrdset_last_entry_t</name><argument_list>(<argument><expr><name>st</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRD DIMENSION functions</comment>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdcalc_link_to_rrddim</name><parameter_list>(<parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>RRDDIM</name> <modifier>*</modifier></type><name>rrddim_add_custom</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>collected_number</name></type> <name>multiplier</name></decl></parameter>, <parameter><decl><type><name>collected_number</name></type> <name>divisor</name></decl></parameter>, <parameter><decl><type><name>RRD_ALGORITHM</name></type> <name>algorithm</name></decl></parameter>, <parameter><decl><type><name>RRD_MEMORY_MODE</name></type> <name>memory_mode</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrddim_add</name><parameter_list>(<parameter><type><name>st</name></type></parameter>, <parameter><type><name>id</name></type></parameter>, <parameter><type><name>name</name></type></parameter>, <parameter><type><name>multiplier</name></type></parameter>, <parameter><type><name>divisor</name></type></parameter>, <parameter><type><name>algorithm</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>rrddim_add_custom(st, id, name, multiplier, divisor, algorithm, (st)-&gt;rrd_memory_mode)</cpp:value></cpp:define>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_set_name</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_set_algorithm</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name>RRD_ALGORITHM</name></type> <name>algorithm</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_set_multiplier</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name>collected_number</name></type> <name>multiplier</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_set_divisor</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name>collected_number</name></type> <name>divisor</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDDIM</name> <modifier>*</modifier></type><name>rrddim_find</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_hide</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_unhide</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrddim_is_obsolete</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrddim_isnot_obsolete</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>collected_number</name></type> <name>rrddim_set_by_pointer</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>, <parameter><decl><type><name>collected_number</name></type> <name>value</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>collected_number</name></type> <name>rrddim_set</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>, <parameter><decl><type><name>collected_number</name></type> <name>value</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>long</name></type> <name>align_entries_to_pagesize</name><parameter_list>(<parameter><decl><type><name>RRD_MEMORY_MODE</name></type> <name>mode</name></decl></parameter>, <parameter><decl><type><name>long</name></type> <name>entries</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// Miscellaneous functions</comment>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>alarm_compare_id</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>alarm_compare_name</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRD internal functions</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_RRD_INTERNALS</name></cpp:ifdef>
+
+<decl_stmt><decl><type><specifier>extern</specifier> <name>avl_tree_lock</name></type> <name>rrdhost_root_index</name></decl>;</decl_stmt>
+
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>rrdset_strncpyz_name</name><parameter_list>(<parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>to</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>from</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>length</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>rrdset_cache_dir</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>config_section</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrddim_free</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>, <parameter><decl><type><name>RRDDIM</name> <modifier>*</modifier></type><name>rd</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrddim_compare</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>a</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdset_compare</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>a</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdset_compare_name</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>a</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>rrdfamily_compare</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>b</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>RRDFAMILY</name> <modifier>*</modifier></type><name>rrdfamily_create</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>id</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdfamily_free</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>RRDFAMILY</name> <modifier>*</modifier></type><name>rc</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_index_add</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(RRDSET *)avl_insert_lock(&amp;((host)-&gt;rrdset_root_index), (avl *)(st))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrdset_index_del</name><parameter_list>(<parameter><type><name>host</name></type></parameter>, <parameter><type><name>st</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(RRDSET *)avl_remove_lock(&amp;((host)-&gt;rrdset_root_index), (avl *)(st))</cpp:value></cpp:define>
+<function_decl><type><specifier>extern</specifier> <name>RRDSET</name> <modifier>*</modifier></type><name>rrdset_index_del_name</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_free</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_reset</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_save</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_delete</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdset_delete_obsolete_dimensions</name><parameter_list>(<parameter><decl><type><name>RRDSET</name> <modifier>*</modifier></type><name>st</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>rrdhost_cleanup_obsolete_charts</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_RRD_INTERNALS */</comment>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// RRD DB engine declarations</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>ENABLE_DBENGINE</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"database/engine/rrdengineapi.h"</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_RRD_H */</comment>
+</unit>

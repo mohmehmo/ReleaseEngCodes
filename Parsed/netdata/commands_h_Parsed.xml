@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/daemon/commands.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_COMMANDS_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_COMMANDS_H</name></cpp:macro> <cpp:value>1</cpp:value></cpp:define>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>_WIN32</name></cpp:ifdef>
+<cpp:define># <cpp:directive>define</cpp:directive> <cpp:macro><name>PIPENAME</name></cpp:macro> <cpp:value>"\\\\?\\pipe\\netdata-cli"</cpp:value></cpp:define>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define># <cpp:directive>define</cpp:directive> <cpp:macro><name>PIPENAME</name></cpp:macro> <cpp:value>"/tmp/netdata-ipc"</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>MAX_COMMAND_LENGTH</name></cpp:macro> <cpp:value>4096</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>MAX_EXIT_STATUS_LENGTH</name></cpp:macro> <cpp:value>23</cpp:value></cpp:define> <comment type="block">/* Can't ever be bigger than "X-18446744073709551616" */</comment>
+
+<typedef>typedef <type><enum>enum <name>cmd</name> <block>{
+    <decl><name>CMD_HELP</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>CMD_RELOAD_HEALTH</name></decl>,
+    <decl><name>CMD_SAVE_DATABASE</name></decl>,
+    <decl><name>CMD_REOPEN_LOGS</name></decl>,
+    <decl><name>CMD_EXIT</name></decl>,
+    <decl><name>CMD_FATAL</name></decl>,
+    <decl><name>CMD_TOTAL_COMMANDS</name></decl>
+}</block></enum></type> <name>cmd_t</name>;</typedef>
+
+<typedef>typedef <type><enum>enum <name>cmd_status</name> <block>{
+    <decl><name>CMD_STATUS_SUCCESS</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <decl><name>CMD_STATUS_FAILURE</name></decl>,
+    <decl><name>CMD_STATUS_BUSY</name></decl>
+}</block></enum></type> <name>cmd_status_t</name>;</typedef>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>CMD_PREFIX_INFO</name></cpp:macro> <cpp:value>'O'</cpp:value></cpp:define>         <comment type="block">/* Following string should go to cli stdout */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>CMD_PREFIX_ERROR</name></cpp:macro> <cpp:value>'E'</cpp:value></cpp:define>        <comment type="block">/* Following string should go to cli stderr */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>CMD_PREFIX_EXIT_CODE</name></cpp:macro> <cpp:value>'X'</cpp:value></cpp:define>    <comment type="block">/* Following string is cli integer exit code */</comment>
+
+<typedef>typedef <type><enum>enum <name>cmd_type</name> <block>{
+    <comment type="block">/*
+     * No other command is allowed to run at the same time (except for CMD_TYPE_HIGH_PRIORITY).
+     */</comment>
+    <decl><name>CMD_TYPE_EXCLUSIVE</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>,
+    <comment type="block">/*
+     * Other commands are allowed to run concurrently (except for CMD_TYPE_EXCLUSIVE) but calls to this command are
+     * serialized.
+     */</comment>
+    <decl><name>CMD_TYPE_ORTHOGONAL</name></decl>,
+    <comment type="block">/*
+     * Other commands are allowed to run concurrently (except for CMD_TYPE_EXCLUSIVE) as are calls to this command.
+     */</comment>
+    <decl><name>CMD_TYPE_CONCURRENT</name></decl>,
+    <comment type="block">/*
+     * Those commands are always allowed to run.
+     */</comment>
+    <decl><name>CMD_TYPE_HIGH_PRIORITY</name></decl>
+}</block></enum></type> <name>cmd_type_t</name>;</typedef>
+
+<comment type="block" format="doxygen">/**
+ * Executes a command and returns the status.
+ *
+ * @param args a string that may contain additional parameters to be parsed
+ * @param message allocate and return a message if need be (up to MAX_COMMAND_LENGTH bytes)
+ * @return CMD_FAILURE or CMD_SUCCESS
+ */</comment>
+<typedef>typedef <function_decl><type><name>cmd_status_t</name></type> (<name>command_action_t</name>) <parameter_list>(<parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>args</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier><modifier>*</modifier></type><name>message</name></decl></parameter>)</parameter_list>;</function_decl></typedef>
+
+<typedef>typedef <type><struct>struct <name>command_info</name> <block>{
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>cmd_str</name></decl>;</decl_stmt>              <comment type="line">// the command string</comment>
+    <decl_stmt><decl><type><name>command_action_t</name> <modifier>*</modifier></type><name>func</name></decl>;</decl_stmt>     <comment type="line">// the function that executes the command</comment>
+    <decl_stmt><decl><type><name>cmd_type_t</name></type> <name>type</name></decl>;</decl_stmt>            <comment type="line">// Concurrency control information for the command</comment>
+}</block></struct></type> <name>command_info_t</name>;</typedef>
+
+<typedef>typedef <function_decl><type><name>void</name></type> (<name>command_lock_t</name>) <parameter_list>(<parameter><decl><type><name>unsigned</name></type> <name>index</name></decl></parameter>)</parameter_list>;</function_decl></typedef>
+
+<function_decl><type><name>cmd_status_t</name></type> <name>execute_command</name><parameter_list>(<parameter><decl><type><name>cmd_t</name></type> <name>idx</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>args</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier><modifier>*</modifier></type><name>message</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>commands_init</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>commands_exit</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">//NETDATA_COMMANDS_H</comment>
+</unit>

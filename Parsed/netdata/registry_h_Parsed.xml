@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/registry/registry.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+<comment type="block">/*
+ * netdata registry
+ *
+ * this header file describes the public interface
+ * to the netdata registry
+ *
+ * only these high level functions are exposed
+ *
+ */</comment>
+
+<comment type="line">// ----------------------------------------------------------------------------</comment>
+<comment type="line">// TODO</comment>
+<comment type="line">//</comment>
+<comment type="line">// 1. the default tracking cookie expires in 1 year, but the persons are not</comment>
+<comment type="line">//    removed from the db - this means the database only grows - ideally the</comment>
+<comment type="line">//    database should be cleaned in registry_db_save() for both on-disk and</comment>
+<comment type="line">//    on-memory entries.</comment>
+<comment type="line">//</comment>
+<comment type="line">//    Cleanup:</comment>
+<comment type="line">//    i. Find all the PERSONs that have expired cookie</comment>
+<comment type="line">//    ii. For each of their PERSON_URLs:</comment>
+<comment type="line">//     - decrement the linked MACHINE links</comment>
+<comment type="line">//     - if the linked MACHINE has no other links, remove the linked MACHINE too</comment>
+<comment type="line">//     - remove the PERSON_URL</comment>
+<comment type="line">//</comment>
+<comment type="line">// 2. add protection to prevent abusing the registry by flooding it with</comment>
+<comment type="line">//    requests to fill the memory and crash it.</comment>
+<comment type="line">//</comment>
+<comment type="line">//    Possible protections:</comment>
+<comment type="line">//    - limit the number of URLs per person</comment>
+<comment type="line">//    - limit the number of URLs per machine</comment>
+<comment type="line">//    - limit the number of persons</comment>
+<comment type="line">//    - limit the number of machines</comment>
+<comment type="line">//    - [DONE] limit the size of URLs</comment>
+<comment type="line">//    - [DONE] limit the size of PERSON_URL names</comment>
+<comment type="line">//    - limit the number of requests that add data to the registry,</comment>
+<comment type="line">//      per client IP per hour</comment>
+<comment type="line">//</comment>
+<comment type="line">// 3. lower memory requirements</comment>
+<comment type="line">//</comment>
+<comment type="line">//    - embed avl structures directly into registry objects, instead of DICTIONARY</comment>
+<comment type="line">//      [DONE for PERSON_URLs, PENDING for MACHINE_URLs]</comment>
+<comment type="line">//    - store GUIDs in memory as UUID instead of char *</comment>
+<comment type="line">//    - do not track persons using the demo machines only</comment>
+<comment type="line">//      (i.e. start tracking them only when they access a non-demo machine)</comment>
+<comment type="line">//    - [DONE] do not track custom dashboards by default</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_REGISTRY_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_REGISTRY_H</name></cpp:macro> <cpp:value>1</cpp:value></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"../daemon/common.h"</cpp:file></cpp:include>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_REGISTRY_COOKIE_NAME</name></cpp:macro> <cpp:value>"netdata_registry_id"</cpp:value></cpp:define>
+
+<comment type="line">// initialize the registry</comment>
+<comment type="line">// should only happen when netdata starts</comment>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>registry_init</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// free all data held by the registry</comment>
+<comment type="line">// should only happen when netdata exits</comment>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>registry_free</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// HTTP requests handled by the registry</comment>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>registry_request_access_json</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>web_client</name></name> <modifier>*</modifier></type><name>w</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>person_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>machine_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>url</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>when</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>registry_request_delete_json</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>web_client</name></name> <modifier>*</modifier></type><name>w</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>person_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>machine_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>url</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>delete_url</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>when</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>registry_request_search_json</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>web_client</name></name> <modifier>*</modifier></type><name>w</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>person_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>machine_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>url</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>request_machine</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>when</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>registry_request_switch_json</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>web_client</name></name> <modifier>*</modifier></type><name>w</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>person_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>machine_guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>url</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>new_person_guid</name></decl></parameter>, <parameter><decl><type><name>time_t</name></type> <name>when</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>registry_request_hello_json</name><parameter_list>(<parameter><decl><type><name>RRDHOST</name> <modifier>*</modifier></type><name>host</name></decl></parameter>, <parameter><decl><type><name><name>struct</name> <name>web_client</name></name> <modifier>*</modifier></type><name>w</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// update the registry monitoring charts</comment>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>registry_statistics</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>registry_get_this_machine_guid</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>registry_get_mgmt_api_key</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>registry_get_this_machine_hostname</name><parameter_list>(<parameter><decl><type><name>void</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>regenerate_guid</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>guid</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>result</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_REGISTRY_H */</comment>
+</unit>

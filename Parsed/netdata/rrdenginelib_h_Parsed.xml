@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/database/engine/rrdenginelib.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_RRDENGINELIB_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_RRDENGINELIB_H</name></cpp:macro></cpp:define>
+
+<comment type="block">/* Forward declarations */</comment>
+<struct_decl>struct <name>rrdeng_page_descr</name>;</struct_decl>
+<struct_decl>struct <name>rrdengine_instance</name>;</struct_decl>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STR_HELPER</name><parameter_list>(<parameter><type><name>x</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>#x</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STR</name><parameter_list>(<parameter><type><name>x</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>STR_HELPER(x)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITS_PER_ULONG</name></cpp:macro> <cpp:value>(sizeof(unsigned long) * 8)</cpp:value></cpp:define>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>UUID_STR_LEN</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>UUID_STR_LEN</name></cpp:macro> <cpp:value>(37)</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="block">/* Taken from linux kernel */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BUILD_BUG_ON</name><parameter_list>(<parameter><type><name>condition</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((void)sizeof(char[1 - 2*!!(condition)]))</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ALIGN_BYTES_FLOOR</name><parameter_list>(<parameter><type><name>x</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(((x) / RRDENG_BLOCK_SIZE) * RRDENG_BLOCK_SIZE)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ALIGN_BYTES_CEILING</name><parameter_list>(<parameter><type><name>x</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>((((x) + RRDENG_BLOCK_SIZE - 1) / RRDENG_BLOCK_SIZE) * RRDENG_BLOCK_SIZE)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ROUND_USEC_TO_SEC</name><parameter_list>(<parameter><type><name>x</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(((x) + USEC_PER_SEC / 2 - 1) / USEC_PER_SEC)</cpp:value></cpp:define>
+
+<typedef>typedef <type><name>uintptr_t</name></type> <name>rrdeng_stats_t</name>;</typedef>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>__ATOMIC_RELAXED</name></cpp:ifdef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_stat_atomic_add</name><parameter_list>(<parameter><type><name>p</name></type></parameter>, <parameter><type><name>n</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>do {(void) __atomic_fetch_add(p, n, __ATOMIC_RELAXED);} while(0)</cpp:value></cpp:define>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>rrd_stat_atomic_add</name><parameter_list>(<parameter><type><name>p</name></type></parameter>, <parameter><type><name>n</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>do {(void) __sync_fetch_and_add(p, n);} while(0)</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>RRDENG_PATH_MAX</name></cpp:macro> <cpp:value>(4096)</cpp:value></cpp:define>
+
+<comment type="block">/* returns old *ptr value */</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>unsigned</name> <name>long</name></type> <name>ulong_compare_and_swap</name><parameter_list>(<parameter><decl><type><specifier>volatile</specifier> <name>unsigned</name> <name>long</name> <modifier>*</modifier></type><name>ptr</name></decl></parameter>,
+                                                   <parameter><decl><type><name>unsigned</name> <name>long</name></type> <name>oldval</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>long</name></type> <name>newval</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>__sync_val_compare_and_swap</name><argument_list>(<argument><expr><name>ptr</name></expr></argument>, <argument><expr><name>oldval</name></expr></argument>, <argument><expr><name>newval</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>O_DIRECT</name></cpp:ifndef>
+<comment type="block">/* Workaround for OS X */</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>O_DIRECT</name></cpp:macro> <cpp:value>(0)</cpp:value></cpp:define>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<struct>struct <name>completion</name> <block>{
+    <decl_stmt><decl><type><name>uv_mutex_t</name></type> <name>mutex</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uv_cond_t</name></type> <name>cond</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>volatile</specifier> <name>unsigned</name></type> <name>completed</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type> <name>init_completion</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>p</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>completed</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><literal type="number">0</literal> <operator>==</operator> <call><name>uv_cond_init</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>cond</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><literal type="number">0</literal> <operator>==</operator> <call><name>uv_mutex_init</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type> <name>destroy_completion</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>p</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>uv_cond_destroy</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>cond</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>uv_mutex_destroy</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type> <name>wait_for_completion</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>p</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>uv_mutex_lock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <while>while <condition>(<expr><literal type="number">0</literal> <operator>==</operator> <name><name>p</name><operator>-&gt;</operator><name>completed</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>uv_cond_wait</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>cond</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><literal type="number">1</literal> <operator>==</operator> <name><name>p</name><operator>-&gt;</operator><name>completed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>uv_mutex_unlock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type> <name>complete</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>completion</name></name> <modifier>*</modifier></type><name>p</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>uv_mutex_lock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>p</name><operator>-&gt;</operator><name>completed</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>uv_mutex_unlock</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>mutex</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>uv_cond_broadcast</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>p</name><operator>-&gt;</operator><name>cond</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>int</name></type> <name>crc32cmp</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>crcp</name></decl></parameter>, <parameter><decl><type><name>uLong</name></type> <name>crc</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>(</operator><operator>*</operator><operator>(</operator><name>uint32_t</name> <operator>*</operator><operator>)</operator><name>crcp</name> <operator>!=</operator> <name>crc</name><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>void</name></type> <name>crc32set</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>crcp</name></decl></parameter>, <parameter><decl><type><name>uLong</name></type> <name>crc</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><operator>*</operator><operator>(</operator><name>uint32_t</name> <operator>*</operator><operator>)</operator><name>crcp</name> <operator>=</operator> <name>crc</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>print_page_cache_descr</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>page_cache_descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>print_page_descr</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdeng_page_descr</name></name> <modifier>*</modifier></type><name>descr</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>check_file_properties</name><parameter_list>(<parameter><decl><type><name>uv_file</name></type> <name>file</name></decl></parameter>, <parameter><decl><type><name>uint64_t</name> <modifier>*</modifier></type><name>file_size</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>min_size</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>open_file_direct_io</name><parameter_list>(<parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>path</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>flags</name></decl></parameter>, <parameter><decl><type><name>uv_file</name> <modifier>*</modifier></type><name>file</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>char</name> <modifier>*</modifier></type><name>get_rrdeng_statistics</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>rrdengine_instance</name></name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>, <parameter><decl><type><name>char</name> <modifier>*</modifier></type><name>str</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* NETDATA_RRDENGINELIB_H */</comment></unit>

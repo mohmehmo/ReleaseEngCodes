@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/netdata/libnetdata/adaptive_resortable_list/adaptive_resortable_list.h"><comment type="line">// SPDX-License-Identifier: GPL-3.0-or-later</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"../libnetdata.h"</cpp:file></cpp:include>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>NETDATA_ADAPTIVE_RESORTABLE_LIST_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>NETDATA_ADAPTIVE_RESORTABLE_LIST_H</name></cpp:macro> <cpp:value>1</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ARL_ENTRY_FLAG_FOUND</name></cpp:macro>    <cpp:value>0x01</cpp:value></cpp:define>    <comment type="line">// the entry has been found in the source data</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ARL_ENTRY_FLAG_EXPECTED</name></cpp:macro> <cpp:value>0x02</cpp:value></cpp:define>    <comment type="line">// the entry is expected by the program</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ARL_ENTRY_FLAG_DYNAMIC</name></cpp:macro>  <cpp:value>0x04</cpp:value></cpp:define>    <comment type="line">// the entry was dynamically allocated, from source data</comment>
+
+<typedef>typedef <type><struct>struct <name>arl_entry</name> <block>{
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl>;</decl_stmt>             <comment type="line">// the keywords</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>hash</name></decl>;</decl_stmt>          <comment type="line">// the hash of the keyword</comment>
+
+    <decl_stmt><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl>;</decl_stmt>              <comment type="line">// the dst to pass to the processor</comment>
+
+    <decl_stmt><decl><type><name>uint8_t</name></type> <name>flags</name></decl>;</decl_stmt>          <comment type="line">// ARL_ENTRY_FLAG_*</comment>
+
+    <comment type="line">// the processor to do the job</comment>
+    <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>processor</name>)<parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// double linked list for fast re-linkings</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>arl_entry</name></name> <modifier>*</modifier></type><name>prev</name></decl>, <modifier>*</modifier><name>next</name>;</decl_stmt>
+}</block></struct></type> <name>ARL_ENTRY</name>;</typedef>
+
+<typedef>typedef <type><struct>struct <name>arl_base</name> <block>{
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>name</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>iteration</name></decl>;</decl_stmt>   <comment type="line">// incremented on each iteration (arl_begin())</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>found</name></decl>;</decl_stmt>       <comment type="line">// the number of expected keywords found in this iteration</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>expected</name></decl>;</decl_stmt>    <comment type="line">// the number of expected keywords</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>wanted</name></decl>;</decl_stmt>      <comment type="line">// the number of wanted keywords</comment>
+                        <comment type="line">// i.e. the number of keywords found and expected</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>relinkings</name></decl>;</decl_stmt>  <comment type="line">// the number of relinkings we have made so far</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>allocated</name></decl>;</decl_stmt>   <comment type="line">// the number of keywords allocated</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>fred</name></decl>;</decl_stmt>        <comment type="line">// the number of keywords cleaned up</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>rechecks</name></decl>;</decl_stmt>    <comment type="line">// the number of iterations between re-checks of the</comment>
+                        <comment type="line">// wanted number of keywords</comment>
+                        <comment type="line">// this is only needed in cases where the source</comment>
+                        <comment type="line">// is having less lines over time.</comment>
+
+    <decl_stmt><decl><type><name>size_t</name></type> <name>added</name></decl>;</decl_stmt>       <comment type="line">// it is non-zero if new keywords have been added</comment>
+                        <comment type="line">// this is only needed to detect new lines have</comment>
+                        <comment type="line">// been added to the file, over time.</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_INTERNAL_CHECKS</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>fast</name></decl>;</decl_stmt>        <comment type="line">// the number of times we have taken the fast path</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>slow</name></decl>;</decl_stmt>        <comment type="line">// the number of times we have taken the slow path</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="line">// the processor to do the job</comment>
+    <function_decl><type><name>void</name></type> (<modifier>*</modifier><name>processor</name>)<parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// the linked list of the keywords</comment>
+    <decl_stmt><decl><type><name>ARL_ENTRY</name> <modifier>*</modifier></type><name>head</name></decl>;</decl_stmt>
+
+    <comment type="line">// since we keep the list of keywords sorted (as found in the source data)</comment>
+    <comment type="line">// this is next keyword that we expect to find in the source data.</comment>
+    <decl_stmt><decl><type><name>ARL_ENTRY</name> <modifier>*</modifier></type><name>next_keyword</name></decl>;</decl_stmt>
+}</block></struct></type> <name>ARL_BASE</name>;</typedef>
+
+<comment type="line">// create a new ARL</comment>
+<function_decl><type><specifier>extern</specifier> <name>ARL_BASE</name> <modifier>*</modifier></type><name>arl_create</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><function_decl><type><name>void</name></type> (<modifier>*</modifier><name>processor</name>)<parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type></decl></parameter>)</parameter_list></function_decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>rechecks</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// free an ARL</comment>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>arl_free</name><parameter_list>(<parameter><decl><type><name>ARL_BASE</name> <modifier>*</modifier></type><name>arl_base</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// register an expected keyword to the ARL</comment>
+<comment type="line">// together with its destination ( i.e. the output of the processor() )</comment>
+<function_decl><type><specifier>extern</specifier> <name>ARL_ENTRY</name> <modifier>*</modifier></type><name>arl_expect_custom</name><parameter_list>(<parameter><decl><type><name>ARL_BASE</name> <modifier>*</modifier></type><name>base</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>keyword</name></decl></parameter>, <parameter><function_decl><type><name>void</name></type> (<modifier>*</modifier><name>processor</name>)<parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list></function_decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>arl_expect</name><parameter_list>(<parameter><type><name>base</name></type></parameter>, <parameter><type><name>keyword</name></type></parameter>, <parameter><type><name>dst</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>arl_expect_custom(base, keyword, NULL, dst)</cpp:value></cpp:define>
+
+<comment type="line">// an internal call to complete the check() call</comment>
+<function_decl><type><specifier>extern</specifier> <name>int</name></type> <name>arl_find_or_create_and_relink</name><parameter_list>(<parameter><decl><type><name>ARL_BASE</name> <modifier>*</modifier></type><name>base</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>s</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// begin an ARL iteration</comment>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>arl_begin</name><parameter_list>(<parameter><decl><type><name>ARL_BASE</name> <modifier>*</modifier></type><name>base</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>arl_callback_str2ull</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>arl_callback_str2kernel_uint_t</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><specifier>extern</specifier> <name>void</name></type> <name>arl_callback_ssize_t</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>uint32_t</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>dst</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// check a keyword against the ARL</comment>
+<comment type="line">// this is to be called for each keyword read from source data</comment>
+<comment type="line">// s = the keyword, as collected</comment>
+<comment type="line">// src = the src data to be passed to the processor</comment>
+<comment type="line">// it is defined in the header file in order to be inlined</comment>
+<function><type><specifier>static</specifier> <specifier>inline</specifier> <name>int</name></type> <name>arl_check</name><parameter_list>(<parameter><decl><type><name>ARL_BASE</name> <modifier>*</modifier></type><name>base</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>keyword</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>value</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>ARL_ENTRY</name> <modifier>*</modifier></type><name>e</name> <init>= <expr><name><name>base</name><operator>-&gt;</operator><name>next_keyword</name></name></expr></init></decl>;</decl_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_INTERNAL_CHECKS</name></cpp:ifdef>
+    <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><operator>(</operator><name><name>base</name><operator>-&gt;</operator><name>fast</name></name> <operator>+</operator> <name><name>base</name><operator>-&gt;</operator><name>slow</name></name><operator>)</operator> <operator>%</operator> <operator>(</operator><name><name>base</name><operator>-&gt;</operator><name>expected</name></name> <operator>+</operator> <name><name>base</name><operator>-&gt;</operator><name>allocated</name></name><operator>)</operator> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <operator>(</operator><name><name>base</name><operator>-&gt;</operator><name>fast</name></name> <operator>+</operator> <name><name>base</name><operator>-&gt;</operator><name>slow</name></name><operator>)</operator> <operator>&gt;</operator> <operator>(</operator><name><name>base</name><operator>-&gt;</operator><name>expected</name></name> <operator>+</operator> <name><name>base</name><operator>-&gt;</operator><name>allocated</name></name><operator>)</operator> <operator>*</operator> <name><name>base</name><operator>-&gt;</operator><name>iteration</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>info</name><argument_list>(<argument><expr><literal type="string">"ARL '%s': Did you forget to call arl_begin()?"</literal></expr></argument>, <argument><expr><name><name>base</name><operator>-&gt;</operator><name>name</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="line">// it should be the first entry (pointed by base-&gt;next_keyword)</comment>
+    <if_stmt><if>if<condition>(<expr><call><name>likely</name><argument_list>(<argument><expr><operator>!</operator><call><name>strcmp</name><argument_list>(<argument><expr><name>keyword</name></expr></argument>, <argument><expr><name><name>e</name><operator>-&gt;</operator><name>name</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// it is</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_INTERNAL_CHECKS</name></cpp:ifdef>
+        <expr_stmt><expr><name><name>base</name><operator>-&gt;</operator><name>fast</name></name><operator>++</operator></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+        <expr_stmt><expr><name><name>e</name><operator>-&gt;</operator><name>flags</name></name> <operator>|=</operator> <name>ARL_ENTRY_FLAG_FOUND</name></expr>;</expr_stmt>
+
+        <comment type="line">// execute the processor</comment>
+        <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name><name>e</name><operator>-&gt;</operator><name>dst</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>e</name><operator>-&gt;</operator><name>processor</name></name><argument_list>(<argument><expr><name><name>e</name><operator>-&gt;</operator><name>name</name></name></expr></argument>, <argument><expr><name><name>e</name><operator>-&gt;</operator><name>hash</name></name></expr></argument>, <argument><expr><name>value</name></expr></argument>, <argument><expr><name><name>e</name><operator>-&gt;</operator><name>dst</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>base</name><operator>-&gt;</operator><name>found</name></name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// be prepared for the next iteration</comment>
+        <expr_stmt><expr><name><name>base</name><operator>-&gt;</operator><name>next_keyword</name></name> <operator>=</operator> <name><name>e</name><operator>-&gt;</operator><name>next</name></name></expr>;</expr_stmt>
+        <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><operator>!</operator><name><name>base</name><operator>-&gt;</operator><name>next_keyword</name></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>base</name><operator>-&gt;</operator><name>next_keyword</name></name> <operator>=</operator> <name><name>base</name><operator>-&gt;</operator><name>head</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+        <comment type="line">// stop if we collected all the values for this iteration</comment>
+        <if_stmt><if>if<condition>(<expr><call><name>unlikely</name><argument_list>(<argument><expr><name><name>base</name><operator>-&gt;</operator><name>found</name></name> <operator>==</operator> <name><name>base</name><operator>-&gt;</operator><name>wanted</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// fprintf(stderr, "FOUND ALL WANTED 2: found = %zu, wanted = %zu, expected %zu\n", base-&gt;found, base-&gt;wanted, base-&gt;expected);</comment>
+            <return>return <expr><literal type="number">1</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>NETDATA_INTERNAL_CHECKS</name></cpp:ifdef>
+    <expr_stmt><expr><name><name>base</name><operator>-&gt;</operator><name>slow</name></name><operator>++</operator></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+    <comment type="line">// we read from source, a not-expected keyword</comment>
+    <return>return <expr><call><name>arl_find_or_create_and_relink</name><argument_list>(<argument><expr><name>base</name></expr></argument>, <argument><expr><name>keyword</name></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">//NETDATA_ADAPTIVE_RESORTABLE_LIST_H</comment>
+</unit>
