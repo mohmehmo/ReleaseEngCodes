@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/electron/shell/common/gin_helper/promise.h"><comment type="line">// Copyright (c) 2018 GitHub, Inc.</comment>
+<comment type="line">// Use of this source code is governed by the MIT license that can be</comment>
+<comment type="line">// found in the LICENSE file.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SHELL_COMMON_GIN_HELPER_PROMISE_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SHELL_COMMON_GIN_HELPER_PROMISE_H_</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;tuple&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;type_traits&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/strings/string_piece.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/task/post_task.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"content/public/browser/browser_task_traits.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"content/public/browser/browser_thread.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_converters/std_converter.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"shell/common/gin_helper/locker.h"</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>gin_helper</name> <block>{<block_content>
+
+<comment type="line">// A wrapper around the v8::Promise.</comment>
+<comment type="line">//</comment>
+<comment type="line">// This is the non-template base class to share code between templates</comment>
+<comment type="line">// instances.</comment>
+<comment type="line">//</comment>
+<comment type="line">// This is a move-only type that should always be `std::move`d when passed to</comment>
+<comment type="line">// callbacks, and it should be destroyed on the same thread of creation.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>PromiseBase</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <decl_stmt><decl><type><name>explicit</name></type> <name>PromiseBase</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+  <expr_stmt><expr><call><name>PromiseBase</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>, <argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Promise</name><operator>::</operator><name>Resolver</name></expr></argument>&gt;</argument_list></name> <name>handle</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><operator>~</operator><call><name>PromiseBase</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// Support moving.</comment>
+  <expr_stmt><expr><call><name>PromiseBase</name><argument_list>(<argument><expr><name>PromiseBase</name><operator>&amp;&amp;</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>PromiseBase</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><name>PromiseBase</name><operator>&amp;&amp;</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+  <comment type="line">// Helper for rejecting promise with error message.</comment>
+  <comment type="line">//</comment>
+  <comment type="line">// Note: The parameter type is PromiseBase&amp;&amp; so it can take the instances of</comment>
+  <comment type="line">// Promise&lt;T&gt; type.</comment>
+  <decl_stmt><decl><type><specifier>static</specifier> <name>void</name></type> <name>RejectPromise</name><argument_list>(<argument><expr><name>PromiseBase</name><operator>&amp;&amp;</operator> <name>promise</name></expr></argument>, <argument><expr><name>base</name><operator>::</operator><name>StringPiece</name> <name>errmsg</name></expr></argument>)</argument_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>gin_helper</name><operator>::</operator><name>Locker</name><operator>::</operator><call><name>IsBrowserProcess</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator>
+        <operator>!</operator><name>content</name><operator>::</operator><name>BrowserThread</name><operator>::</operator><call><name>CurrentlyOn</name><argument_list>(<argument><expr><name>content</name><operator>::</operator><name>BrowserThread</name><operator>::</operator><name>UI</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>base</name><operator>::</operator><macro><name>PostTask</name><argument_list>(
+          <argument>FROM_HERE</argument>, <argument>{content::BrowserThread::UI}</argument>,
+          <argument>base::BindOnce(
+              <comment type="line">// Note that this callback can not take StringPiece,</comment>
+              <comment type="line">// as StringPiece only references string internally and</comment>
+              <comment type="line">// will blow when a temporary string is passed.</comment>
+              [](PromiseBase&amp;&amp; promise, std::string str) {
+                promise.RejectWithErrorMessage(str);
+              },
+              std::move(promise), std::string(errmsg.data(), errmsg.size()))</argument>)</argument_list></macro></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>promise</name><operator>.</operator><name>RejectWithErrorMessage</name></name><argument_list>(<argument><expr><name>errmsg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+  </block_content>}</block></decl></decl_stmt>
+
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Maybe</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <call><name>Reject</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Maybe</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <call><name>Reject</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>except</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Maybe</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <macro><name>RejectWithErrorMessage</name><argument_list>(<argument>base::StringPiece message</argument>)</argument_list></macro></expr>;</expr_stmt>
+
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Context</name></expr></argument>&gt;</argument_list></name> <macro><name>GetContext</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Promise</name></expr></argument>&gt;</argument_list></name> <macro><name>GetHandle</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <macro><name>isolate</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>isolate_</name></expr>;</return> }</block></expr></expr_stmt>
+
+ <label><name>protected</name>:</label>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Promise</name><operator>::</operator><name>Resolver</name></expr></argument>&gt;</argument_list></name> <macro><name>GetInner</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+ <label><name>private</name>:</label>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate_</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Global</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Context</name></expr></argument>&gt;</argument_list></name> <name>context_</name></expr>;</expr_stmt>
+  <expr_stmt><expr><name>v8</name><operator>::</operator><name><name>Global</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Promise</name><operator>::</operator><name>Resolver</name></expr></argument>&gt;</argument_list></name> <name>resolver_</name></expr>;</expr_stmt>
+
+  <expr_stmt><expr><call><name>DISALLOW_COPY_AND_ASSIGN</name><argument_list>(<argument><expr><name>PromiseBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Template implementation that returns values.</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>RT</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>Promise</name> <range>: <expr><name>public</name> <name>PromiseBase</name> <block>{
+ <expr><name>public</name><operator>:</operator>
+  <name>using</name> <name>PromiseBase</name><operator>::</operator><name>PromiseBase</name></expr>;
+
+  <comment type="line">// Helper for resolving the promise with |result|.</comment>
+  <expr><specifier>static</specifier> <name>void</name> <macro><name>ResolvePromise</name><argument_list>(<argument>Promise&lt;RT&gt; promise</argument>, <argument>RT result</argument>)</argument_list></macro> <block>{
+    <if_stmt><if>if <condition>(<expr><name>gin_helper</name><operator>::</operator><name>Locker</name><operator>::</operator><call><name>IsBrowserProcess</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator>
+        <operator>!</operator><name>content</name><operator>::</operator><name>BrowserThread</name><operator>::</operator><call><name>CurrentlyOn</name><argument_list>(<argument><expr><name>content</name><operator>::</operator><name>BrowserThread</name><operator>::</operator><name>UI</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>base</name><operator>::</operator><macro><name>PostTask</name><argument_list>(<argument>FROM_HERE</argument>, <argument>{content::BrowserThread::UI}</argument>,
+                     <argument>base::BindOnce([](Promise&lt;RT&gt; promise,
+                                       RT result) { promise.Resolve(result); },
+                                    std::move(promise), std::move(result))</argument>)</argument_list></macro></expr>;</expr_stmt>
+    <expr_stmt/>}</block_content> else <block>{<block_content>
+      <expr_stmt><expr><call><name><name>promise</name><operator>.</operator><name>Resolve</name></name><argument_list>(<argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt/>}</block_content>
+  }
+
+  <comment type="line">// Returns an already-resolved promise.</comment>
+  static v8::Local&lt;v8::Promise&gt; ResolvedPromise(v8::Isolate* isolate</block></block><operator>,</operator>
+                                                <expr_stmt><expr><name>RT</name> <name>result</name></expr></expr_stmt></if></if_stmt>) <block>{
+    <expr><name><name>Promise</name><argument_list type="generic">&lt;<argument><expr><name>RT</name></expr></argument>&gt;</argument_list></name> <call><name>resolved</name><argument_list>(<argument><expr><name>isolate</name></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name><name>resolved</name><operator>.</operator><name>Resolve</name></name><argument_list>(<argument><expr><name>result</name></expr></argument>)</argument_list></call></expr>;
+    <return>return <expr><call><name><name>resolved</name><operator>.</operator><name>GetHandle</name></name><argument_list>()</argument_list></call></expr>;</return>
+  }</block></block>
+
+  <comment type="line">// Promise resolution is a microtask</comment>
+  <comment type="line">// We use the MicrotasksRunner to trigger the running of pending microtasks</comment>
+  <name>v8</name><operator>::</operator><name><name>Maybe</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <macro><name>Resolve</name><argument_list>(<argument>const RT&amp; value</argument>)</argument_list></macro> <block>{
+    <expr><name>gin_helper</name><operator>::</operator><name>Locker</name> <call><name>locker</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>HandleScope</name> <call><name>handle_scope</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name> <call><name>script_scope</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>,
+                                     <argument><expr><name>v8</name><operator>::</operator><name>MicrotasksScope</name><operator>::</operator><name>kRunMicrotasks</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>Context</name><operator>::</operator><name>Scope</name> <call><name>context_scope</name><argument_list>(<argument><expr><call><name>GetContext</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+
+    <return>return <expr><call><name>GetInner</name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>Resolve</name><argument_list>(<argument><expr><call><name>GetContext</name><argument_list>()</argument_list></call></expr></argument>,
+                               <argument><expr><name>gin</name><operator>::</operator><call><name>ConvertToV8</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  }</block>
+
+  <name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name><modifier>...</modifier> <name>ResolveType</name></expr></argument>&gt;</argument_list></name>
+  <name>v8</name><operator>::</operator><name><name>MaybeLocal</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Promise</name></expr></argument>&gt;</argument_list></name> <macro><name>Then</name><argument_list>(
+      <argument>base::OnceCallback&lt;void(ResolveType...)&gt; cb</argument>)</argument_list></macro> <block>{
+    <expr><call><name>static_assert</name><argument_list>(<argument><expr><sizeof type="pack">sizeof...<argument_list>(<argument><expr><name>ResolveType</name></expr></argument>)</argument_list></sizeof> <operator>&lt;=</operator> <literal type="number">1</literal></expr></argument>,
+                  <argument><expr><literal type="string">"A promise's 'Then' callback should only receive at most one "</literal>
+                  <literal type="string">"parameter"</literal></expr></argument>)</argument_list></call></expr>;
+    <expr><call><name>static_assert</name><argument_list>(
+        <argument><expr><name>std</name><operator>::</operator><call><name><name>is_same</name><argument_list type="generic">&lt;<argument><expr><name>RT</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>tuple_element_t</name><argument_list type="generic">&lt;<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>tuple</name><argument_list type="generic">&lt;<argument><expr><name>ResolveType</name><modifier>...</modifier></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr></argument>,
+        <argument><expr><literal type="string">"A promises's 'Then' callback must handle the same type as the "</literal>
+        <literal type="string">"promises resolve type"</literal></expr></argument>)</argument_list></call></expr>;
+    <expr><name>gin_helper</name><operator>::</operator><name>Locker</name> <call><name>locker</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>HandleScope</name> <call><name>handle_scope</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name>Context</name><operator>::</operator><name>Scope</name> <call><name>context_scope</name><argument_list>(<argument><expr><call><name>GetContext</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <name>value</name> <operator>=</operator> <name>gin</name><operator>::</operator><call><name>ConvertToV8</name><argument_list>(<argument><expr><call><name>isolate</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>std</name><operator>::</operator><call><name>move</name><argument_list>(<argument><expr><name>cb</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+    <expr><name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name> <name>handler</name> <operator>=</operator> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Function</name></expr></argument>&gt;</argument_list></name><operator>::</operator><call><name>Cast</name><argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;
+
+    <return>return <expr><call><name>GetHandle</name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>Then</name><argument_list>(<argument><expr><call><name>GetContext</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>handler</name></expr></argument>)</argument_list></call></expr>;</return>
+  }</block>
+}</expr>;
+
+<comment type="line">// Template implementation that returns nothing.</comment>
+<expr><name><name>template</name> <argument_list type="generic">&lt;&gt;</argument_list></name>
+<name>class</name> <name><name>Promise</name><argument_list type="generic">&lt;<argument><expr><name>void</name></expr></argument>&gt;</argument_list></name> <operator>:</operator> <name>public</name> <name>PromiseBase</name> <block>{
+ <expr><name>public</name><operator>:</operator>
+  <name>using</name> <name>PromiseBase</name><operator>::</operator><name>PromiseBase</name></expr>;
+
+  <comment type="line">// Helper for resolving the empty promise.</comment>
+  <expr><specifier>static</specifier> <name>void</name> <call><name>ResolvePromise</name><argument_list>(<argument><expr><name><name>Promise</name><argument_list type="generic">&lt;<argument><expr><name>void</name></expr></argument>&gt;</argument_list></name> <name>promise</name></expr></argument>)</argument_list></call></expr>;
+
+  <comment type="line">// Returns an already-resolved promise.</comment>
+  <expr><specifier>static</specifier> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Promise</name></expr></argument>&gt;</argument_list></name> <call><name>ResolvedPromise</name><argument_list>(<argument><expr><name>v8</name><operator>::</operator><name>Isolate</name><operator>*</operator> <name>isolate</name></expr></argument>)</argument_list></call></expr>;
+
+  <expr><name>v8</name><operator>::</operator><name><name>Maybe</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name> <call><name>Resolve</name><argument_list>()</argument_list></call></expr>;
+}</block></expr>;
+
+}</block>  <comment type="line">// namespace gin_helper</comment>
+
+<name>namespace</name> <name>gin</name> <block>{
+
+<expr><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+struct <name><name>Converter</name><argument_list type="generic">&lt;<argument><expr><name>gin_helper</name><operator>::</operator><name><name>Promise</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <block>{
+  <expr><specifier>static</specifier> <name>v8</name><operator>::</operator><name><name>Local</name><argument_list type="generic">&lt;<argument><expr><name>v8</name><operator>::</operator><name>Value</name></expr></argument>&gt;</argument_list></name> <macro><name>ToV8</name><argument_list>(<argument>v8::Isolate* isolate</argument>,
+                                   <argument>const gin_helper::Promise&lt;T&gt;&amp; val</argument>)</argument_list></macro> <block>{
+    <return>return <expr><call><name><name>val</name><operator>.</operator><name>GetHandle</name></name><argument_list>()</argument_list></call></expr>;</return>
+  }</block>
+  <comment type="line">// TODO(MarshallOfSound): Implement FromV8 to allow promise chaining</comment>
+  <comment type="line">//                        in native land</comment>
+  <comment type="line">// static bool FromV8(v8::Isolate* isolate,</comment>
+  <comment type="line">//                    v8::Local&lt;v8::Value&gt; val,</comment>
+  <comment type="line">//                    Promise* out);</comment>
+}</expr>;
+
+}</block></expr></block></expr></range></decl></decl_stmt></block_content></block></decl></decl_stmt>  <comment type="line">// namespace gin</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SHELL_COMMON_GIN_HELPER_PROMISE_H_</comment>
+</unit>

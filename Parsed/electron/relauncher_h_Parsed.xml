@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/electron/shell/browser/relauncher.h"><comment type="line">// Copyright (c) 2016 GitHub, Inc.</comment>
+<comment type="line">// Use of this source code is governed by the MIT license that can be</comment>
+<comment type="line">// found in the LICENSE file.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>SHELL_BROWSER_RELAUNCHER_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>SHELL_BROWSER_RELAUNCHER_H_</name></cpp:macro></cpp:define>
+
+<comment type="line">// relauncher implements main browser application relaunches across platforms.</comment>
+<comment type="line">// When a browser wants to relaunch itself, it can't simply fork off a new</comment>
+<comment type="line">// process and exec a new browser from within. That leaves open a window</comment>
+<comment type="line">// during which two browser applications might be running concurrently. If</comment>
+<comment type="line">// that happens, each will wind up with a distinct Dock icon, which is</comment>
+<comment type="line">// especially bad if the user expected the Dock icon to be persistent by</comment>
+<comment type="line">// choosing Keep in Dock from the icon's contextual menu.</comment>
+<comment type="line">//</comment>
+<comment type="line">// relauncher approaches this problem by introducing an intermediate</comment>
+<comment type="line">// process (the "relauncher") in between the original browser ("parent") and</comment>
+<comment type="line">// replacement browser ("relaunched"). The helper executable is used for the</comment>
+<comment type="line">// relauncher process; because it's an LSUIElement, it doesn't get a Dock</comment>
+<comment type="line">// icon and isn't visible as a running application at all. The parent will</comment>
+<comment type="line">// start a relauncher process, giving it the "writer" side of a pipe that it</comment>
+<comment type="line">// retains the "reader" end of. When the relauncher starts up, it will</comment>
+<comment type="line">// establish a kqueue to wait for the parent to exit, and will then write to</comment>
+<comment type="line">// the pipe. The parent, upon reading from the pipe, is free to exit. When the</comment>
+<comment type="line">// relauncher is notified via its kqueue that the parent has exited, it</comment>
+<comment type="line">// proceeds, launching the relaunched process. The handshake to synchronize</comment>
+<comment type="line">// the parent with the relauncher is necessary to avoid races: the relauncher</comment>
+<comment type="line">// needs to be sure that it's monitoring the parent and not some other process</comment>
+<comment type="line">// in light of PID reuse, so the parent must remain alive long enough for the</comment>
+<comment type="line">// relauncher to set up its kqueue.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/command_line.h"</cpp:file></cpp:include>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>OS_WIN</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"base/process/process_handle.h"</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>content</name> <block>{<block_content>
+<struct_decl>struct <name>MainFunctionParams</name>;</struct_decl>
+</block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>relauncher</name> <block>{<block_content>
+
+<decl_stmt><decl><type><name>using</name></type> <name>CharType</name> <init>= <expr><name>base</name><operator>::</operator><name>CommandLine</name><operator>::</operator><name>CharType</name></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>using</name></type> <name>StringType</name> <init>= <expr><name>base</name><operator>::</operator><name>CommandLine</name><operator>::</operator><name>StringType</name></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>using</name></type> <name>StringVector</name> <init>= <expr><name>base</name><operator>::</operator><name>CommandLine</name><operator>::</operator><name>StringVector</name></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Relaunches the application using the helper application associated with the</comment>
+<comment type="line">// currently running instance of Chrome in the parent browser process as the</comment>
+<comment type="line">// executable for the relauncher process. |args| is an argv-style vector of</comment>
+<comment type="line">// command line arguments of the form normally passed to execv. args[0] is</comment>
+<comment type="line">// also the path to the relaunched process. Because the relauncher process</comment>
+<comment type="line">// will ultimately launch the relaunched process via Launch Services, args[0]</comment>
+<comment type="line">// may be either a pathname to an executable file or a pathname to an .app</comment>
+<comment type="line">// bundle directory. The caller should exit soon after RelaunchApp returns</comment>
+<comment type="line">// successfully. Returns true on success, although some failures can occur</comment>
+<comment type="line">// after this function returns true if, for example, they occur within the</comment>
+<comment type="line">// relauncher process. Returns false when the relaunch definitely failed.</comment>
+<function_decl><type><name>bool</name></type> <name>RelaunchApp</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>StringVector</name><modifier>&amp;</modifier></type> <name>argv</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// Identical to RelaunchApp, but uses |helper| as the path to the relauncher</comment>
+<comment type="line">// process, and allows additional arguments to be supplied to the relauncher</comment>
+<comment type="line">// process in relauncher_args. Unlike args[0], |helper| must be a pathname to</comment>
+<comment type="line">// an executable file. The helper path given must be from the same version of</comment>
+<comment type="line">// Chrome as the running parent browser process, as there are no guarantees</comment>
+<comment type="line">// that the parent and relauncher processes from different versions will be</comment>
+<comment type="line">// able to communicate with one another. This variant can be useful to</comment>
+<comment type="line">// relaunch the same version of Chrome from another location, using that</comment>
+<comment type="line">// location's helper.</comment>
+<decl_stmt><decl><type><name>bool</name></type> <name>RelaunchAppWithHelper</name><argument_list>(<argument><expr><specifier>const</specifier> <name>base</name><operator>::</operator><name>FilePath</name><operator>&amp;</operator> <name>helper</name></expr></argument>,
+                           <argument><expr><specifier>const</specifier> <name>StringVector</name><operator>&amp;</operator> <name>relauncher_args</name></expr></argument>,
+                           <argument><expr><specifier>const</specifier> <name>StringVector</name><operator>&amp;</operator> <name>args</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="line">// The entry point from ChromeMain into the relauncher process.</comment>
+<decl_stmt><decl><type><name>int</name></type> <name>RelauncherMain</name><argument_list>(<argument><expr><specifier>const</specifier> <name>content</name><operator>::</operator><name>MainFunctionParams</name><operator>&amp;</operator> <name>main_parameters</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>internal</name> <block>{<block_content>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>OS_POSIX</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<comment type="line">// The "magic" file descriptor that the relauncher process' write side of the</comment>
+<comment type="line">// pipe shows up on. Chosen to avoid conflicting with stdin, stdout, and</comment>
+<comment type="line">// stderr.</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <specifier>const</specifier> <name>int</name></type> <name>kRelauncherSyncFD</name></decl>;</decl_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="line">// The "type" argument identifying a relauncher process ("--type=relauncher").</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <specifier>const</specifier> <name>CharType</name><modifier>*</modifier></type> <name>kRelauncherTypeArg</name></decl>;</decl_stmt>
+
+<comment type="line">// The argument separating arguments intended for the relauncher process from</comment>
+<comment type="line">// those intended for the relaunched process. "---" is chosen instead of "--"</comment>
+<comment type="line">// because CommandLine interprets "--" as meaning "end of switches", but</comment>
+<comment type="line">// for many purposes, the relauncher process' CommandLine ought to interpret</comment>
+<comment type="line">// arguments intended for the relaunched process, to get the correct settings</comment>
+<comment type="line">// for such things as logging and the user-data-dir in case it affects crash</comment>
+<comment type="line">// reporting.</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <specifier>const</specifier> <name>CharType</name><modifier>*</modifier></type> <name>kRelauncherArgSeparator</name></decl>;</decl_stmt>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>OS_WIN</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<decl_stmt><decl><type><name>StringType</name></type> <name>GetWaitEventName</name><argument_list>(<argument><expr><name>base</name><operator>::</operator><name>ProcessId</name> <name>pid</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<function_decl><type><name>StringType</name></type> <name>ArgvToCommandLineString</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>StringVector</name><modifier>&amp;</modifier></type> <name>argv</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="line">// In the relauncher process, performs the necessary synchronization steps</comment>
+<comment type="line">// with the parent by setting up a kqueue to watch for it to exit, writing a</comment>
+<comment type="line">// byte to the pipe, and then waiting for the exit notification on the kqueue.</comment>
+<comment type="line">// If anything fails, this logs a message and returns immediately. In those</comment>
+<comment type="line">// situations, it can be assumed that something went wrong with the parent</comment>
+<comment type="line">// process and the best recovery approach is to attempt relaunch anyway.</comment>
+<function_decl><type><name>void</name></type> <name>RelauncherSynchronizeWithParent</name><parameter_list>()</parameter_list>;</function_decl>
+
+<function_decl><type><name>int</name></type> <name>LaunchProgram</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>StringVector</name><modifier>&amp;</modifier></type> <name>relauncher_args</name></decl></parameter>,
+                  <parameter><decl><type><specifier>const</specifier> <name>StringVector</name><modifier>&amp;</modifier></type> <name>argv</name></decl></parameter>)</parameter_list>;</function_decl>
+
+</block_content>}</block></decl></decl_stmt>  <comment type="line">// namespace internal</comment>
+
+</block_content>}</block></decl></decl_stmt>  <comment type="line">// namespace relauncher</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// SHELL_BROWSER_RELAUNCHER_H_</comment>
+</unit>
