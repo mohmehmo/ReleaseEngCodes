@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/validationinterface.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_VALIDATIONINTERFACE_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_VALIDATIONINTERFACE_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include> <comment type="line">// CTransaction(Ref)</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;functional&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>extern</specifier> <name>CCriticalSection</name></type> <name>cs_main</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>BlockValidationState</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CBlock</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockIndex</name></decl>;</decl_stmt>
+<struct_decl>struct <name>CBlockLocator</name>;</struct_decl>
+<decl_stmt><decl><type><name>class</name></type> <name>CConnman</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CValidationInterface</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint256</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CScheduler</name></decl>;</decl_stmt>
+
+<comment type="line">// These functions dispatch to one or all registered wallets</comment>
+
+<comment type="block" format="doxygen">/** Register a wallet to receive updates from core */</comment>
+<function_decl><type><name>void</name></type> <name>RegisterValidationInterface</name><parameter_list>(<parameter><decl><type><name>CValidationInterface</name><modifier>*</modifier></type> <name>pwalletIn</name></decl></parameter>)</parameter_list>;</function_decl>
+<comment type="block" format="doxygen">/** Unregister a wallet from core */</comment>
+<function_decl><type><name>void</name></type> <name>UnregisterValidationInterface</name><parameter_list>(<parameter><decl><type><name>CValidationInterface</name><modifier>*</modifier></type> <name>pwalletIn</name></decl></parameter>)</parameter_list>;</function_decl>
+<comment type="block" format="doxygen">/** Unregister all wallets from core */</comment>
+<function_decl><type><name>void</name></type> <name>UnregisterAllValidationInterfaces</name><parameter_list>()</parameter_list>;</function_decl>
+<comment type="block" format="doxygen">/**
+ * Pushes a function to callback onto the notification queue, guaranteeing any
+ * callbacks generated prior to now are finished when the function is called.
+ *
+ * Be very careful blocking on func to be called if any locks are held -
+ * validation interface clients may not be able to make progress as they often
+ * wait for things like cs_main, so blocking until func is called with cs_main
+ * will result in a deadlock (that DEBUG_LOCKORDER will miss).
+ */</comment>
+<decl_stmt><decl><type><name>void</name></type> <name>CallFunctionInValidationInterfaceQueue</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>func</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/**
+ * This is a synonym for the following, which asserts certain locks are not
+ * held:
+ *     std::promise&lt;void&gt; promise;
+ *     CallFunctionInValidationInterfaceQueue([&amp;promise] {
+ *         promise.set_value();
+ *     });
+ *     promise.get_future().wait();
+ */</comment>
+<function_decl><type><name>void</name></type> <name>SyncWithValidationInterfaceQueue</name><parameter_list>()</parameter_list> LOCKS_EXCLUDED<parameter_list>(<parameter><decl><type><name>cs_main</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * Implement this to subscribe to events generated in validation
+ *
+ * Each CValidationInterface() subscriber will receive event callbacks
+ * in the order in which the events were generated by validation.
+ * Furthermore, each ValidationInterface() subscriber may assume that
+ * callbacks effectively run in a single thread with single-threaded
+ * memory consistency. That is, for a given ValidationInterface()
+ * instantiation, each callback will complete before the next one is
+ * invoked. This means, for example when a block is connected that the
+ * UpdatedBlockTip() callback may depend on an operation performed in
+ * the BlockConnected() callback without worrying about explicit
+ * synchronization. No ordering should be assumed across
+ * ValidationInterface() subscribers.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CValidationInterface</name> <block>{<block_content>
+<label><name>protected</name>:</label>
+    <comment type="block" format="doxygen">/**
+     * Protected destructor so that instances can only be deleted by derived classes.
+     * If that restriction is no longer desired, this should be made public and virtual.
+     */</comment>
+    <expr_stmt><expr><operator>~</operator><call><name>CValidationInterface</name><argument_list>()</argument_list></call> <operator>=</operator> default</expr>;</expr_stmt>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners when the block chain tip advances.
+     *
+     * When multiple blocks are connected at once, UpdatedBlockTip will be called on the final tip
+     * but may not be called on every intermediate tip. If the latter behavior is desired,
+     * subscribe to BlockConnected() instead.
+     *
+     * Called on a background thread.
+     */</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>UpdatedBlockTip</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindexNew</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindexFork</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fInitialDownload</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners of a transaction having been added to mempool.
+     *
+     * Called on a background thread.
+     */</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>TransactionAddedToMempool</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name> <modifier>&amp;</modifier></type><name>ptxn</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners of a transaction leaving mempool.
+     *
+     * This only fires for transactions which leave mempool because of expiry,
+     * size limiting, reorg (changes in lock times/coinbase maturity), or
+     * replacement. This does not include any transactions which are included
+     * in BlockConnectedDisconnected either in block-&gt;vtx or in txnConflicted.
+     *
+     * Called on a background thread.
+     */</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>TransactionRemovedFromMempool</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name> <modifier>&amp;</modifier></type><name>ptx</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners of a block being connected.
+     * Provides a vector of transactions evicted from the mempool as a result.
+     *
+     * Called on a background thread.
+     */</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>BlockConnected</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlock</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>block</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockIndex</name> <operator>*</operator><name>pindex</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CTransactionRef</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>txnConflicted</name></expr></argument>)</argument_list> <block>{<block_content/>}</block></decl></decl_stmt>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners of a block being disconnected
+     *
+     * Called on a background thread.
+     */</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>BlockDisconnected</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlock</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>block</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindex</name></expr></argument>)</argument_list> <block>{<block_content/>}</block></decl></decl_stmt>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners of the new active block chain on-disk.
+     *
+     * Prior to this callback, any updates are not guaranteed to persist on disk
+     * (ie clients need to handle shutdown/restart safety by being able to
+     * understand when some updates were lost due to unclean shutdown).
+     *
+     * When this callback is invoked, the validation changes done by any prior
+     * callback are guaranteed to exist on disk and survive a restart, including
+     * an unclean shutdown.
+     *
+     * Provides a locator describing the best chain, which is likely useful for
+     * storing current state on disk in client DBs.
+     *
+     * Called on a background thread.
+     */</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>ChainStateFlushed</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockLocator</name> <modifier>&amp;</modifier></type><name>locator</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners of a block validation result.
+     * If the provided BlockValidationState IsValid, the provided block
+     * is guaranteed to be the current best block at the time the
+     * callback was generated (not necessarily now)
+     */</comment>
+    <function><type><name>virtual</name> <name>void</name></type> <name>BlockChecked</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>BlockValidationState</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+    <comment type="block" format="doxygen">/**
+     * Notifies listeners that a block which builds directly on our current tip
+     * has been received and connected to the headers tree, though not validated yet */</comment>
+    <decl_stmt><decl><type><name>virtual</name> <name>void</name></type> <name>NewPoWValidBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name> <operator>*</operator><name>pindex</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlock</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>block</name></expr></argument>)</argument_list> <block>{<block_content/>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>RegisterValidationInterface</name><argument_list>(<argument><expr><name>CValidationInterface</name><operator>*</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>UnregisterValidationInterface</name><argument_list>(<argument><expr><name>CValidationInterface</name><operator>*</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>UnregisterAllValidationInterfaces</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<struct_decl>struct <name>MainSignalsInstance</name>;</struct_decl>
+<decl_stmt><decl><type><name>class</name></type> <name>CMainSignals</name> <block>{<block_content>
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>MainSignalsInstance</name></expr></argument>&gt;</argument_list></name> <name>m_internals</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>RegisterValidationInterface</name><argument_list>(<argument><expr><name>CValidationInterface</name><operator>*</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>UnregisterValidationInterface</name><argument_list>(<argument><expr><name>CValidationInterface</name><operator>*</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>UnregisterAllValidationInterfaces</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>friend</name> <name>void</name> <operator>::</operator><call><name>CallFunctionInValidationInterfaceQueue</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>func</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Register a CScheduler to give callbacks which should run in the background (may only be called once) */</comment>
+    <function_decl><type><name>void</name></type> <name>RegisterBackgroundSignalScheduler</name><parameter_list>(<parameter><decl><type><name>CScheduler</name><modifier>&amp;</modifier></type> <name>scheduler</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Unregister a CScheduler to give callbacks which should run in the background - these callbacks will now be dropped! */</comment>
+    <function_decl><type><name>void</name></type> <name>UnregisterBackgroundSignalScheduler</name><parameter_list>()</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Call any remaining callbacks on the calling thread */</comment>
+    <function_decl><type><name>void</name></type> <name>FlushBackgroundCallbacks</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <function_decl><type><name>size_t</name></type> <name>CallbacksPending</name><parameter_list>()</parameter_list>;</function_decl>
+
+
+    <function_decl><type><name>void</name></type> <name>UpdatedBlockTip</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fInitialDownload</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>TransactionAddedToMempool</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name> <modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>TransactionRemovedFromMempool</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name> <modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>void</name></type> <name>BlockConnected</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlock</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockIndex</name> <operator>*</operator><name>pindex</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CTransactionRef</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>void</name></type> <name>BlockDisconnected</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlock</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindex</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>ChainStateFlushed</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockLocator</name> <modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>BlockChecked</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>BlockValidationState</name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>void</name></type> <name>NewPoWValidBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name> <operator>*</operator></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlock</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<function_decl><type><name>CMainSignals</name><modifier>&amp;</modifier></type> <name>GetMainSignals</name><parameter_list>()</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_VALIDATIONINTERFACE_H</comment>
+</unit>

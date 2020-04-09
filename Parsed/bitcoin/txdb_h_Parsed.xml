@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/txdb.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_TXDB_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_TXDB_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;coins.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;dbwrapper.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/block.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;memory&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockIndex</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsViewDBCursor</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint256</name></decl>;</decl_stmt>
+
+<comment type="line" format="doxygen">//! No need to periodic flush if at least this much space still available.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>constexpr</name> <name>int</name></type> <name>MAX_BLOCK_COINSDB_USAGE</name> <init>= <expr><literal type="number">10</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! -dbcache default (MiB)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nDefaultDbCache</name> <init>= <expr><literal type="number">450</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! -dbbatchsize default (bytes)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nDefaultDbBatchSize</name> <init>= <expr><literal type="number">16</literal> <operator>&lt;&lt;</operator> <literal type="number">20</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! max. -dbcache (MiB)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nMaxDbCache</name> <init>= <expr><ternary><condition><expr><sizeof>sizeof<argument_list>(<argument><expr><name>void</name><operator>*</operator></expr></argument>)</argument_list></sizeof> <operator>&gt;</operator> <literal type="number">4</literal></expr> ?</condition><then> <expr><literal type="number">16384</literal></expr> </then><else>: <expr><literal type="number">1024</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! min. -dbcache (MiB)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nMinDbCache</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Max memory allocated to block tree DB specific cache, if no -txindex (MiB)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nMaxBlockDBCache</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Max memory allocated to block tree DB specific cache, if -txindex (MiB)</comment>
+<comment type="line">// Unlike for the UTXO database, for the txindex scenario the leveldb cache make</comment>
+<comment type="line">// a meaningful difference: https://github.com/bitcoin/bitcoin/pull/8273#issuecomment-229601991</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nMaxTxIndexCache</name> <init>= <expr><literal type="number">1024</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Max memory allocated to all block filter index caches combined in MiB.</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>max_filter_index_cache</name> <init>= <expr><literal type="number">1024</literal></expr></init></decl>;</decl_stmt>
+<comment type="line" format="doxygen">//! Max memory allocated to coin DB specific cache (MiB)</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int64_t</name></type> <name>nMaxCoinsDBCache</name> <init>= <expr><literal type="number">8</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** CCoinsView backed by the coin database (chainstate/) */</comment>
+<decl_stmt><decl><type><name>class</name> <name>CCoinsViewDB</name></type> <name>final</name> <range>: <expr><name>public</name> <name>CCoinsView</name>
+<block>{
+<expr><name>protected</name><operator>:</operator>
+    <name>CDBWrapper</name> <name>db</name></expr>;
+<expr><name>public</name><operator>:</operator>
+    <comment type="block" format="doxygen">/**
+     * @param[in] ldb_path    Location in the filesystem where leveldb data will be stored.
+     */</comment>
+    <name>explicit</name> <macro><name>CCoinsViewDB</name><argument_list>(<argument>fs::path ldb_path</argument>, <argument>size_t nCacheSize</argument>, <argument>bool fMemory</argument>, <argument>bool fWipe</argument>)</argument_list></macro></expr>;
+
+    <expr><name>bool</name> <macro><name>GetCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>, <argument>Coin &amp;coin</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>HaveCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>uint256</name> <macro><name>GetBestBlock</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <macro><name>GetHeadBlocks</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>BatchWrite</name><argument_list>(<argument>CCoinsMap &amp;mapCoins</argument>, <argument>const uint256 &amp;hashBlock</argument>)</argument_list></macro> <name>override</name></expr>;
+    <expr><name>CCoinsViewCursor</name> <operator>*</operator><macro><name>Cursor</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+
+    <comment type="line" format="doxygen">//! Attempt to update from an older database format. Returns whether an error occurred.</comment>
+    <expr><name>bool</name> <call><name>Upgrade</name><argument_list>()</argument_list></call></expr>;
+    <expr><name>size_t</name> <macro><name>EstimateSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Specialization of CCoinsViewCursor to iterate over a CCoinsViewDB */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsViewDBCursor</name><range>: <expr><name>public</name> <name>CCoinsViewCursor</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <operator>~</operator><macro><name>CCoinsViewDBCursor</name><argument_list>()</argument_list></macro> <block>{}</block>
+
+    <name>bool</name> <macro><name>GetKey</name><argument_list>(<argument>COutPoint &amp;key</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>bool</name> <macro><name>GetValue</name><argument_list>(<argument>Coin &amp;coin</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>unsigned</name> <name>int</name> <macro><name>GetValueSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+
+    <expr><name>bool</name> <macro><name>Valid</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+    <expr><name>void</name> <macro><name>Next</name><argument_list>()</argument_list></macro> <name>override</name></expr>;
+
+<expr><name>private</name><operator>:</operator>
+    <call><name>CCoinsViewDBCursor</name><argument_list>(<argument><expr><name>CDBIterator</name><operator>*</operator> <name>pcursorIn</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>uint256</name> <operator>&amp;</operator><name>hashBlockIn</name></expr></argument>)</argument_list></call><operator>:</operator>
+        <call><name>CCoinsViewCursor</name><argument_list>(<argument><expr><name>hashBlockIn</name></expr></argument>)</argument_list></call></expr>, <macro><name>pcursor</name><argument_list>(<argument>pcursorIn</argument>)</argument_list></macro> <expr><block>{}</block>
+    <name>std</name><operator>::</operator><name><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CDBIterator</name></expr></argument>&gt;</argument_list></name> <name>pcursor</name></expr>;
+    <expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>, <argument><expr><name>COutPoint</name></expr></argument>&gt;</argument_list></name> <name>keyTmp</name></expr>;
+
+    <expr><name>friend</name> <name>class</name> <name>CCoinsViewDB</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Access to the block database (blocks/index/) */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockTreeDB</name> <range>: <expr><name>public</name> <name>CDBWrapper</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <name>explicit</name> <macro><name>CBlockTreeDB</name><argument_list>(<argument>size_t nCacheSize</argument>, <argument>bool fMemory = false</argument>, <argument>bool fWipe = false</argument>)</argument_list></macro></expr>;
+
+    <expr><name>bool</name> <macro><name>WriteBatchSync</name><argument_list>(<argument>const std::vector&lt;std::pair&lt;int</argument>, <argument>const CBlockFileInfo*&gt; &gt;&amp; fileInfo</argument>, <argument>int nLastFile</argument>, <argument>const std::vector&lt;const CBlockIndex*&gt;&amp; blockinfo</argument>)</argument_list></macro></expr>;
+    <expr><name>bool</name> <macro><name>ReadBlockFileInfo</name><argument_list>(<argument>int nFile</argument>, <argument>CBlockFileInfo &amp;info</argument>)</argument_list></macro></expr>;
+    <expr><name>bool</name> <call><name>ReadLastBlockFile</name><argument_list>(<argument><expr><name>int</name> <operator>&amp;</operator><name>nFile</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <macro><name>WriteReindexing</name><argument_list>(<argument>bool fReindexing</argument>)</argument_list></macro></expr>;
+    <expr><name>void</name> <call><name>ReadReindexing</name><argument_list>(<argument><expr><name>bool</name> <operator>&amp;</operator><name>fReindexing</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <macro><name>WriteFlag</name><argument_list>(<argument>const std::string &amp;name</argument>, <argument>bool fValue</argument>)</argument_list></macro></expr>;
+    <expr><name>bool</name> <call><name>ReadFlag</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>name</name></expr></argument>, <argument><expr><name>bool</name> <operator>&amp;</operator><name>fValue</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <call><name>LoadBlockIndexGuts</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>consensusParams</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>function</name><argument_list type="generic">&lt;<argument><expr><name>CBlockIndex</name><operator>*</operator><operator>(</operator><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>insertBlockIndex</name></expr></argument>)</argument_list></call></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_TXDB_H</comment>
+</unit>

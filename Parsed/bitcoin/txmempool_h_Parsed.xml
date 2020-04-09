@@ -1,0 +1,856 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/txmempool.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_TXMEMPOOL_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_TXMEMPOOL_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;atomic&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;set&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;utility&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;amount.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;coins.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/siphash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;indirectmap.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;optional.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;policy/feerate.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/multi_index_container.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/multi_index/hashed_index.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/multi_index/ordered_index.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/multi_index/sequenced_index.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/signals2/signal.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockIndex</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>CCriticalSection</name></type> <name>cs_main</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Fake height value used in Coin to signify they are only in the memory pool (since 0.8) */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>uint32_t</name></type> <name>MEMPOOL_HEIGHT</name> <init>= <expr><literal type="number">0x7FFFFFFF</literal></expr></init></decl>;</decl_stmt>
+
+<struct>struct <name>LockPoints</name>
+<block>{
+    <comment type="line">// Will be set to the blockchain height and median time past</comment>
+    <comment type="line">// values that would be necessary to satisfy all relative locktime</comment>
+    <comment type="line">// constraints (BIP68) of this tx given our view of block chain history</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>height</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>time</name></decl>;</decl_stmt>
+    <comment type="line">// As long as the current chain descends from the highest height block</comment>
+    <comment type="line">// containing one of the inputs used in the calculation, then the cached</comment>
+    <comment type="line">// values are still valid even after a reorg.</comment>
+    <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>maxInputBlock</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>LockPoints</name><argument_list>()</argument_list></call> <operator>:</operator> <call><name>height</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>time</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>maxInputBlock</name><argument_list>(<argument>nullptr</argument>)</argument_list></macro> <expr><block>{ }</block></expr></expr_stmt>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** \class CTxMemPoolEntry
+ *
+ * CTxMemPoolEntry stores data about the corresponding transaction, as well
+ * as data about all in-mempool transactions that depend on the transaction
+ * ("descendant" transactions).
+ *
+ * When a new entry is added to the mempool, we update the descendant state
+ * (nCountWithDescendants, nSizeWithDescendants, and nModFeesWithDescendants) for
+ * all ancestors of the newly added transaction.
+ *
+ */</comment>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CTxMemPoolEntry</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CTransactionRef</name></type> <name>tx</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CAmount</name></type> <name>nFee</name></decl>;</decl_stmt>             <comment type="line" format="doxygen">//!&lt; Cached to avoid expensive parent-transaction lookups</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>nTxWeight</name></decl>;</decl_stmt>         <comment type="line" format="doxygen">//!&lt; ... and avoid recomputing tx weight (also used for GetTxSize())</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>nUsageSize</name></decl>;</decl_stmt>        <comment type="line" format="doxygen">//!&lt; ... and total memory usage</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>nTime</name></decl>;</decl_stmt>            <comment type="line" format="doxygen">//!&lt; Local time when entering the mempool</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>unsigned</name> <name>int</name></type> <name>entryHeight</name></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; Chain height when entering the mempool</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>bool</name></type> <name>spendsCoinbase</name></decl>;</decl_stmt>      <comment type="line" format="doxygen">//!&lt; keep track of transactions that spend a coinbase</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>sigOpCost</name></decl>;</decl_stmt>        <comment type="line" format="doxygen">//!&lt; Total sigop cost</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>feeDelta</name></decl>;</decl_stmt>          <comment type="line" format="doxygen">//!&lt; Used for determining the priority of the transaction for mining in a block</comment>
+    <decl_stmt><decl><type><name>LockPoints</name></type> <name>lockPoints</name></decl>;</decl_stmt>     <comment type="line" format="doxygen">//!&lt; Track the height and time at which tx was final</comment>
+
+    <comment type="line">// Information about descendants of this transaction that are in the</comment>
+    <comment type="line">// mempool; if we remove this transaction we must remove all of these</comment>
+    <comment type="line">// descendants as well.</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>nCountWithDescendants</name></decl>;</decl_stmt>  <comment type="line" format="doxygen">//!&lt; number of descendant transactions</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>nSizeWithDescendants</name></decl>;</decl_stmt>   <comment type="line" format="doxygen">//!&lt; ... and size</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>nModFeesWithDescendants</name></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; ... and total fees (all including us)</comment>
+
+    <comment type="line">// Analogous statistics for ancestor transactions</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>nCountWithAncestors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>nSizeWithAncestors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>nModFeesWithAncestors</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nSigOpCostWithAncestors</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <macro><name>CTxMemPoolEntry</name><argument_list>(<argument>const CTransactionRef&amp; _tx</argument>, <argument>const CAmount&amp; _nFee</argument>,
+                    <argument>int64_t _nTime</argument>, <argument>unsigned int _entryHeight</argument>,
+                    <argument>bool spendsCoinbase</argument>,
+                    <argument>int64_t nSigOpsCost</argument>, <argument>LockPoints lp</argument>)</argument_list></macro><empty_stmt>;</empty_stmt>
+
+    <expr_stmt><expr><specifier>const</specifier> <name>CTransaction</name><operator>&amp;</operator> <macro><name>GetTx</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><operator>*</operator><name><name>this</name><operator>-&gt;</operator><name>tx</name></name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>CTransactionRef</name> <macro><name>GetSharedTx</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name><name>this</name><operator>-&gt;</operator><name>tx</name></name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>const</specifier> <name>CAmount</name><operator>&amp;</operator> <macro><name>GetFee</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nFee</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>size_t</name> <macro><name>GetTxSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <expr_stmt><expr><name>size_t</name> <macro><name>GetTxWeight</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nTxWeight</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name> <macro><name>GetTime</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name><block>{<expr><name>nTime</name></expr>}</block></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>GetHeight</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>entryHeight</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>int64_t</name> <macro><name>GetSigOpCost</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>sigOpCost</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>int64_t</name> <macro><name>GetModifiedFee</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nFee</name> <operator>+</operator> <name>feeDelta</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>size_t</name> <macro><name>DynamicMemoryUsage</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nUsageSize</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><specifier>const</specifier> <name>LockPoints</name><operator>&amp;</operator> <macro><name>GetLockPoints</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>lockPoints</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <comment type="line">// Adjusts the descendant state.</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateDescendantState</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>modifySize</name></decl></parameter>, <parameter><decl><type><name>CAmount</name></type> <name>modifyFee</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>modifyCount</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line">// Adjusts the ancestor state</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateAncestorState</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>modifySize</name></decl></parameter>, <parameter><decl><type><name>CAmount</name></type> <name>modifyFee</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>modifyCount</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>modifySigOps</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line">// Updates the fee delta used for mining priority score, and the</comment>
+    <comment type="line">// modified fees with descendants.</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateFeeDelta</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>feeDelta</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line">// Update the LockPoints after a reorg</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateLockPoints</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>LockPoints</name><modifier>&amp;</modifier></type> <name>lp</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>uint64_t</name> <macro><name>GetCountWithDescendants</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nCountWithDescendants</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>uint64_t</name> <macro><name>GetSizeWithDescendants</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nSizeWithDescendants</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>CAmount</name> <macro><name>GetModFeesWithDescendants</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nModFeesWithDescendants</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>bool</name> <macro><name>GetSpendsCoinbase</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>spendsCoinbase</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>uint64_t</name> <macro><name>GetCountWithAncestors</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nCountWithAncestors</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>uint64_t</name> <macro><name>GetSizeWithAncestors</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nSizeWithAncestors</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>CAmount</name> <macro><name>GetModFeesWithAncestors</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nModFeesWithAncestors</name></expr>;</return> }</block></expr></expr_stmt>
+    <expr_stmt><expr><name>int64_t</name> <macro><name>GetSigOpCostWithAncestors</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>nSigOpCostWithAncestors</name></expr>;</return> }</block></expr></expr_stmt>
+
+    <decl_stmt><decl><type><name>mutable</name> <name>size_t</name></type> <name>vTxHashesIdx</name></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; Index in mempool's vTxHashes</comment>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Helpers for modifying CTxMemPool::mapTx, which is a boost multi_index.</comment>
+<struct>struct <name>update_descendant_state</name>
+<block>{
+    <macro><name>update_descendant_state</name><argument_list>(<argument>int64_t _modifySize</argument>, <argument>CAmount _modifyFee</argument>, <argument>int64_t _modifyCount</argument>)</argument_list></macro> :
+        <expr_stmt><expr><call><name>modifySize</name><argument_list>(<argument><expr><name>_modifySize</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>modifyFee</name><argument_list>(<argument><expr><name>_modifyFee</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>modifyCount</name><argument_list>(<argument>_modifyCount</argument>)</argument_list></macro>
+    <expr><block>{}</block>
+
+    <name>void</name> <macro><name>operator</name><argument_list>()</argument_list></macro> <operator>(</operator><name>CTxMemPoolEntry</name> <operator>&amp;</operator><name>e</name><operator>)</operator>
+        <block>{ <expr><call><name><name>e</name><operator>.</operator><name>UpdateDescendantState</name></name><argument_list>(<argument><expr><name>modifySize</name></expr></argument>, <argument><expr><name>modifyFee</name></expr></argument>, <argument><expr><name>modifyCount</name></expr></argument>)</argument_list></call></expr>; }</block>
+
+    <name>private</name><operator>:</operator>
+        <name>int64_t</name> <name>modifySize</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CAmount</name></type> <name>modifyFee</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>modifyCount</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>update_ancestor_state</name>
+<block>{
+    <macro><name>update_ancestor_state</name><argument_list>(<argument>int64_t _modifySize</argument>, <argument>CAmount _modifyFee</argument>, <argument>int64_t _modifyCount</argument>, <argument>int64_t _modifySigOpsCost</argument>)</argument_list></macro> :
+        <expr_stmt><expr><call><name>modifySize</name><argument_list>(<argument><expr><name>_modifySize</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>modifyFee</name><argument_list>(<argument><expr><name>_modifyFee</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>modifyCount</name><argument_list>(<argument><expr><name>_modifyCount</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>modifySigOpsCost</name><argument_list>(<argument>_modifySigOpsCost</argument>)</argument_list></macro>
+    <expr><block>{}</block>
+
+    <name>void</name> <macro><name>operator</name><argument_list>()</argument_list></macro> <operator>(</operator><name>CTxMemPoolEntry</name> <operator>&amp;</operator><name>e</name><operator>)</operator>
+        <block>{ <expr><call><name><name>e</name><operator>.</operator><name>UpdateAncestorState</name></name><argument_list>(<argument><expr><name>modifySize</name></expr></argument>, <argument><expr><name>modifyFee</name></expr></argument>, <argument><expr><name>modifyCount</name></expr></argument>, <argument><expr><name>modifySigOpsCost</name></expr></argument>)</argument_list></call></expr>; }</block>
+
+    <name>private</name><operator>:</operator>
+        <name>int64_t</name> <name>modifySize</name></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CAmount</name></type> <name>modifyFee</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>modifyCount</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>modifySigOpsCost</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<struct>struct <name>update_fee_delta</name>
+<block>{
+    <macro><name>explicit</name></macro> <macro><name>update_fee_delta</name><argument_list>(<argument>int64_t _feeDelta</argument>)</argument_list></macro> : <macro><name>feeDelta</name><argument_list>(<argument>_feeDelta</argument>)</argument_list></macro> <block>{<block_content> </block_content>}</block>
+
+    <expr_stmt><expr><name>void</name> <macro><name>operator</name><argument_list>()</argument_list></macro> <operator>(</operator><name>CTxMemPoolEntry</name> <operator>&amp;</operator><name>e</name><operator>)</operator> <block>{ <expr><call><name><name>e</name><operator>.</operator><name>UpdateFeeDelta</name></name><argument_list>(<argument><expr><name>feeDelta</name></expr></argument>)</argument_list></call></expr>; }</block>
+
+<name>private</name><operator>:</operator>
+    <name>int64_t</name> <name>feeDelta</name></expr>;</expr_stmt>
+}</block>;</struct>
+
+<struct>struct <name>update_lock_points</name>
+<block>{
+    <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>update_lock_points</name><argument_list>(<argument><expr><specifier>const</specifier> <name>LockPoints</name><operator>&amp;</operator> <name>_lp</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>lp</name><argument_list>(<argument>_lp</argument>)</argument_list></macro> <block>{ }</block>
+
+    <name>void</name> <macro><name>operator</name><argument_list>()</argument_list></macro> <operator>(</operator><name>CTxMemPoolEntry</name> <operator>&amp;</operator><name>e</name><operator>)</operator> <block>{ <expr><call><name><name>e</name><operator>.</operator><name>UpdateLockPoints</name></name><argument_list>(<argument><expr><name>lp</name></expr></argument>)</argument_list></call></expr>; }</block>
+
+<name>private</name><operator>:</operator>
+    <specifier>const</specifier> <name>LockPoints</name><operator>&amp;</operator> <name>lp</name></expr>;</expr_stmt>
+}</block>;</struct>
+
+<comment type="line">// extracts a transaction hash from CTxMemPoolEntry or CTransactionRef</comment>
+<struct>struct <name>mempoolentry_txid</name>
+<block>{
+    <typedef>typedef <type><name>uint256</name></type> <name>result_type</name>;</typedef>
+    <expr_stmt><expr><name>result_type</name> <macro><name>operator</name><argument_list>()</argument_list></macro> <operator>(</operator><specifier>const</specifier> <name>CTxMemPoolEntry</name> <operator>&amp;</operator><name>entry</name><operator>)</operator> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name><name>entry</name><operator>.</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>result_type</name> <macro><name>operator</name><argument_list>()</argument_list></macro> <operator>(</operator><specifier>const</specifier> <name>CTransactionRef</name><operator>&amp;</operator> <name>tx</name><operator>)</operator> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** \class CompareTxMemPoolEntryByDescendantScore
+ *
+ *  Sort an entry by max(score/size of entry's tx, score/size with all descendants).
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CompareTxMemPoolEntryByDescendantScore</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>bool</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>b</name><operator>)</operator> <specifier>const</specifier>
+    <block>{
+        <expr><name>double</name> <name>a_mod_fee</name></expr>, <expr><name>a_size</name></expr>, <expr><name>b_mod_fee</name></expr>, <expr><name>b_size</name></expr>;
+
+        <expr><call><name>GetModFeeAndSize</name><argument_list>(<argument><expr><name>a</name></expr></argument>, <argument><expr><name>a_mod_fee</name></expr></argument>, <argument><expr><name>a_size</name></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name>GetModFeeAndSize</name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><name>b_mod_fee</name></expr></argument>, <argument><expr><name>b_size</name></expr></argument>)</argument_list></call></expr>;
+
+        <comment type="line">// Avoid division by rewriting (a/b &gt; c/d) as (a*d &gt; c*b).</comment>
+        <expr><name>double</name> <name>f1</name> <operator>=</operator> <name>a_mod_fee</name> <operator>*</operator> <name>b_size</name></expr>;
+        <expr><name>double</name> <name>f2</name> <operator>=</operator> <name>a_size</name> <operator>*</operator> <name>b_mod_fee</name></expr>;
+
+        <if_stmt><if>if <condition>(<expr><name>f1</name> <operator>==</operator> <name>f2</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name><name>a</name><operator>.</operator><name>GetTime</name></name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <call><name><name>b</name><operator>.</operator><name>GetTime</name></name><argument_list>()</argument_list></call></expr>;</return>
+        <expr_stmt/>}</block_content>
+        return f1 &lt; f2</block><empty_stmt>;</empty_stmt></if></if_stmt>
+    }</block></expr></expr_stmt>
+
+    <comment type="line">// Return the fee/size we're using for sorting this entry.</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>GetModFeeAndSize</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTxMemPoolEntry</name> <operator>&amp;</operator><name>a</name></expr></argument>, <argument><expr><name>double</name> <operator>&amp;</operator><name>mod_fee</name></expr></argument>, <argument><expr><name>double</name> <operator>&amp;</operator><name>size</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <comment type="line">// Compare feerate with descendants to feerate of the transaction, and</comment>
+        <comment type="line">// return the fee/size for the max.</comment>
+        <decl_stmt><decl><type><name>double</name></type> <name>f1</name> <init>= <expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>a</name><operator>.</operator><name>GetModifiedFee</name></name><argument_list>()</argument_list></call> <operator>*</operator> <call><name><name>a</name><operator>.</operator><name>GetSizeWithDescendants</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>double</name></type> <name>f2</name> <init>= <expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>a</name><operator>.</operator><name>GetModFeesWithDescendants</name></name><argument_list>()</argument_list></call> <operator>*</operator> <call><name><name>a</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>f2</name> <operator>&gt;</operator> <name>f1</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>mod_fee</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetModFeesWithDescendants</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>size</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetSizeWithDescendants</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><name>mod_fee</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetModifiedFee</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>size</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></decl></decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** \class CompareTxMemPoolEntryByScore
+ *
+ *  Sort by feerate of entry (fee/size) in descending order
+ *  This is only used for transaction relay, so we use GetFee()
+ *  instead of GetModifiedFee() to avoid leaking prioritization
+ *  information via the sort order.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CompareTxMemPoolEntryByScore</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>bool</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>b</name><operator>)</operator> <specifier>const</specifier>
+    <block>{
+        <expr><name>double</name> <name>f1</name> <operator>=</operator> <operator>(</operator><name>double</name><operator>)</operator><call><name><name>a</name><operator>.</operator><name>GetFee</name></name><argument_list>()</argument_list></call> <operator>*</operator> <call><name><name>b</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr>;
+        <expr><name>double</name> <name>f2</name> <operator>=</operator> <operator>(</operator><name>double</name><operator>)</operator><call><name><name>b</name><operator>.</operator><name>GetFee</name></name><argument_list>()</argument_list></call> <operator>*</operator> <call><name><name>a</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr>;
+        <if_stmt><if>if <condition>(<expr><name>f1</name> <operator>==</operator> <name>f2</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name><name>b</name><operator>.</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <call><name><name>a</name><operator>.</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call></expr>;</return>
+        <expr_stmt/>}</block_content>
+        return f1 &gt; f2</block><empty_stmt>;</empty_stmt></if></if_stmt>
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CompareTxMemPoolEntryByEntryTime</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name>bool</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>b</name><operator>)</operator> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><call><name><name>a</name><operator>.</operator><name>GetTime</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <call><name><name>b</name><operator>.</operator><name>GetTime</name></name><argument_list>()</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** \class CompareTxMemPoolEntryByAncestorScore
+ *
+ *  Sort an entry by min(score/size of entry's tx, score/size with all ancestors).
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CompareTxMemPoolEntryByAncestorFee</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+    <name>bool</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>T</name><operator>&amp;</operator> <name>a</name><operator>,</operator> <specifier>const</specifier> <name>T</name><operator>&amp;</operator> <name>b</name><operator>)</operator> <specifier>const</specifier>
+    <block>{
+        <expr><name>double</name> <name>a_mod_fee</name></expr>, <expr><name>a_size</name></expr>, <expr><name>b_mod_fee</name></expr>, <expr><name>b_size</name></expr>;
+
+        <expr><call><name>GetModFeeAndSize</name><argument_list>(<argument><expr><name>a</name></expr></argument>, <argument><expr><name>a_mod_fee</name></expr></argument>, <argument><expr><name>a_size</name></expr></argument>)</argument_list></call></expr>;
+        <expr><call><name>GetModFeeAndSize</name><argument_list>(<argument><expr><name>b</name></expr></argument>, <argument><expr><name>b_mod_fee</name></expr></argument>, <argument><expr><name>b_size</name></expr></argument>)</argument_list></call></expr>;
+
+        <comment type="line">// Avoid division by rewriting (a/b &gt; c/d) as (a*d &gt; c*b).</comment>
+        <expr><name>double</name> <name>f1</name> <operator>=</operator> <name>a_mod_fee</name> <operator>*</operator> <name>b_size</name></expr>;
+        <expr><name>double</name> <name>f2</name> <operator>=</operator> <name>a_size</name> <operator>*</operator> <name>b_mod_fee</name></expr>;
+
+        <if_stmt><if>if <condition>(<expr><name>f1</name> <operator>==</operator> <name>f2</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name><name>a</name><operator>.</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <call><name><name>b</name><operator>.</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call></expr>;</return>
+        <expr_stmt/>}</block_content>
+        return f1 &gt; f2</block><empty_stmt>;</empty_stmt></if></if_stmt>
+    }</block></expr></expr_stmt>
+
+    <comment type="line">// Return the fee/size we're using for sorting this entry.</comment>
+    <decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+    <name>void</name></type> <name>GetModFeeAndSize</name><argument_list>(<argument><expr><specifier>const</specifier> <name>T</name> <operator>&amp;</operator><name>a</name></expr></argument>, <argument><expr><name>double</name> <operator>&amp;</operator><name>mod_fee</name></expr></argument>, <argument><expr><name>double</name> <operator>&amp;</operator><name>size</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <comment type="line">// Compare feerate with ancestors to feerate of the transaction, and</comment>
+        <comment type="line">// return the fee/size for the min.</comment>
+        <decl_stmt><decl><type><name>double</name></type> <name>f1</name> <init>= <expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>a</name><operator>.</operator><name>GetModifiedFee</name></name><argument_list>()</argument_list></call> <operator>*</operator> <call><name><name>a</name><operator>.</operator><name>GetSizeWithAncestors</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>double</name></type> <name>f2</name> <init>= <expr><operator>(</operator><name>double</name><operator>)</operator><call><name><name>a</name><operator>.</operator><name>GetModFeesWithAncestors</name></name><argument_list>()</argument_list></call> <operator>*</operator> <call><name><name>a</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name>f1</name> <operator>&gt;</operator> <name>f2</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>mod_fee</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetModFeesWithAncestors</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>size</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetSizeWithAncestors</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><name>mod_fee</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetModifiedFee</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>size</name> <operator>=</operator> <call><name><name>a</name><operator>.</operator><name>GetTxSize</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></decl></decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Multi_index tag names</comment>
+<struct>struct <name>descendant_score</name> <block>{}</block>;</struct>
+<struct>struct <name>entry_time</name> <block>{}</block>;</struct>
+<struct>struct <name>ancestor_score</name> <block>{}</block>;</struct>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CBlockPolicyEstimator</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Information about a mempool transaction.
+ */</comment>
+<struct>struct <name>TxMempoolInfo</name>
+<block>{
+    <comment type="block" format="doxygen">/** The transaction itself */</comment>
+    <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>tx</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Time the transaction entered the mempool. */</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name> <name>m_time</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Fee of the transaction. */</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>fee</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Virtual size of the transaction. */</comment>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>vsize</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** The fee delta. */</comment>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nFeeDelta</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/** Reason why a transaction was removed from the mempool,
+ * this is passed to the notification signal.
+ */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>MemPoolRemovalReason</name> <block>{<block_content>
+    <expr_stmt><expr><name>EXPIRY</name></expr><operator>,</operator>      <comment type="line" format="doxygen">//!&lt; Expired from mempool</comment>
+    <expr><name>SIZELIMIT</name></expr><operator>,</operator>   <comment type="line" format="doxygen">//!&lt; Removed in size limiting</comment>
+    <expr><name>REORG</name></expr><operator>,</operator>       <comment type="line" format="doxygen">//!&lt; Removed for reorganization</comment>
+    <expr><name>BLOCK</name></expr><operator>,</operator>       <comment type="line" format="doxygen">//!&lt; Removed for block</comment>
+    <expr><name>CONFLICT</name></expr><operator>,</operator>    <comment type="line" format="doxygen">//!&lt; Removed for conflict with in-block transaction</comment>
+    <expr><name>REPLACED</name></expr><operator>,</operator></expr_stmt>    <comment type="line" format="doxygen">//!&lt; Removed for replacement</comment>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>SaltedTxidHasher</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <comment type="block" format="doxygen">/** Salt */</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>uint64_t</name></type> <name>k0</name></decl>, <decl><type ref="prev"/><name>k1</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <expr_stmt><expr><call><name>SaltedTxidHasher</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>size_t</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>txid</name><operator>)</operator> <specifier>const</specifier> <block>{
+        <return>return <expr><call><name>SipHashUint256</name><argument_list>(<argument><expr><name>k0</name></expr></argument>, <argument><expr><name>k1</name></expr></argument>, <argument><expr><name>txid</name></expr></argument>)</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * CTxMemPool stores valid-according-to-the-current-best-chain transactions
+ * that may be included in the next block.
+ *
+ * Transactions are added when they are seen on the network (or created by the
+ * local node), but not all transactions seen are added to the pool. For
+ * example, the following new transactions will not be added to the mempool:
+ * - a transaction which doesn't meet the minimum fee requirements.
+ * - a new transaction that double-spends an input of a transaction already in
+ * the pool where the new transaction does not meet the Replace-By-Fee
+ * requirements as defined in BIP 125.
+ * - a non-standard transaction.
+ *
+ * CTxMemPool::mapTx, and CTxMemPoolEntry bookkeeping:
+ *
+ * mapTx is a boost::multi_index that sorts the mempool on 4 criteria:
+ * - transaction hash
+ * - descendant feerate [we use max(feerate of tx, feerate of tx with all descendants)]
+ * - time in mempool
+ * - ancestor feerate [we use min(feerate of tx, feerate of tx with all unconfirmed ancestors)]
+ *
+ * Note: the term "descendant" refers to in-mempool transactions that depend on
+ * this one, while "ancestor" refers to in-mempool transactions that a given
+ * transaction depends on.
+ *
+ * In order for the feerate sort to remain correct, we must update transactions
+ * in the mempool when new descendants arrive.  To facilitate this, we track
+ * the set of in-mempool direct parents and direct children in mapLinks.  Within
+ * each CTxMemPoolEntry, we track the size and fees of all descendants.
+ *
+ * Usually when a new transaction is added to the mempool, it has no in-mempool
+ * children (because any such children would be an orphan).  So in
+ * addUnchecked(), we:
+ * - update a new entry's setMemPoolParents to include all in-mempool parents
+ * - update the new entry's direct parents to include the new tx as a child
+ * - update all ancestors of the transaction to include the new tx's size/fee
+ *
+ * When a transaction is removed from the mempool, we must:
+ * - update all in-mempool parents to not track the tx in setMemPoolChildren
+ * - update all ancestors to not include the tx's size/fees in descendant state
+ * - update all in-mempool children to not include it as a parent
+ *
+ * These happen in UpdateForRemoveFromMempool().  (Note that when removing a
+ * transaction along with its descendants, we must calculate that set of
+ * transactions to be removed before doing the removal, or else the mempool can
+ * be in an inconsistent state where it's impossible to walk the ancestors of
+ * a transaction.)
+ *
+ * In the event of a reorg, the assumption that a newly added tx has no
+ * in-mempool children is false.  In particular, the mempool is in an
+ * inconsistent state while new transactions are being added, because there may
+ * be descendant transactions of a tx coming from a disconnected block that are
+ * unreachable from just looking at transactions in the mempool (the linking
+ * transactions may also be in the disconnected block, waiting to be added).
+ * Because of this, there's not much benefit in trying to search for in-mempool
+ * children in addUnchecked().  Instead, in the special case of transactions
+ * being added from a disconnected block, we require the caller to clean up the
+ * state, to account for in-mempool, out-of-block descendants for all the
+ * in-block transactions by calling UpdateTransactionsFromBlock().  Note that
+ * until this is called, the mempool state is not consistent, and in particular
+ * mapLinks may not be correct (and therefore functions like
+ * CalculateMemPoolAncestors() and CalculateDescendants() that rely
+ * on them to walk the mempool are not generally safe to use).
+ *
+ * Computational limits:
+ *
+ * Updating all in-mempool ancestors of a newly added transaction can be slow,
+ * if no bound exists on how many in-mempool ancestors there may be.
+ * CalculateMemPoolAncestors() takes configurable limits that are designed to
+ * prevent these calculations from being too CPU intensive.
+ *
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CTxMemPool</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <function_decl><type><name>uint32_t</name> <name>nCheckFrequency</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl> <comment type="line" format="doxygen">//!&lt; Value n means that n times in 2^32 we check.</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>int</name></expr></argument>&gt;</argument_list></name> <name>nTransactionsUpdated</name></expr>;</expr_stmt> <comment type="line" format="doxygen">//!&lt; Used by getblocktemplate to trigger CreateNewBlock() invocation</comment>
+    <decl_stmt><decl><type><name>CBlockPolicyEstimator</name><modifier>*</modifier></type> <name>minerPolicyEstimator</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>totalTxSize</name></decl>;</decl_stmt>      <comment type="line" format="doxygen">//!&lt; sum of all mempool tx's virtual sizes. Differs from serialized tx size since witness data is discounted. Defined in BIP 141.</comment>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>cachedInnerUsage</name></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; sum of dynamic memory usage of all the map elements (NOT the maps themselves)</comment>
+
+    <decl_stmt><decl><type><name>mutable</name> <name>int64_t</name></type> <name>lastRollingFeeUpdate</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>mutable</name> <name>bool</name></type> <name>blockSinceLastRollingFeeBump</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>mutable</name> <name>double</name></type> <name>rollingMinimumFeeRate</name></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; minimum fee to get into the pool, decreases exponentially</comment>
+
+    <function_decl><type><name>void</name></type> <name>trackPackageRemoved</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CFeeRate</name><modifier>&amp;</modifier></type> <name>rate</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function><type><name>bool</name> <name>m_is_loaded</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list><block>{<block_content><expr><name>false</name></expr></block_content>}</block></function><empty_stmt>;</empty_stmt>
+
+<label><name>public</name>:</label>
+
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>ROLLING_FEE_HALFLIFE</name> <init>= <expr><literal type="number">60</literal> <operator>*</operator> <literal type="number">60</literal> <operator>*</operator> <literal type="number">12</literal></expr></init></decl>;</decl_stmt> <comment type="line">// public only for testing</comment>
+
+    <typedef>typedef <expr_stmt><expr><name>boost</name><operator>::</operator><name><name>multi_index_container</name><argument_list type="generic">&lt;
+        <argument><expr><name>CTxMemPoolEntry</name></expr></argument>,
+        <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>indexed_by</name><argument_list type="generic">&lt;
+            <comment type="line">// sorted by txid</comment>
+            <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>hashed_unique</name><argument_list type="generic">&lt;<argument><expr><name>mempoolentry_txid</name></expr></argument>, <argument><expr><name>SaltedTxidHasher</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+            <comment type="line">// sorted by fee rate</comment>
+            <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>ordered_non_unique</name><argument_list type="generic">&lt;
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>tag</name><argument_list type="generic">&lt;<argument><expr><name>descendant_score</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>identity</name><argument_list type="generic">&lt;<argument><expr><name>CTxMemPoolEntry</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>CompareTxMemPoolEntryByDescendantScore</name></expr></argument>
+            &gt;</argument_list></name></expr></argument>,
+            <comment type="line">// sorted by entry time</comment>
+            <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>ordered_non_unique</name><argument_list type="generic">&lt;
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>tag</name><argument_list type="generic">&lt;<argument><expr><name>entry_time</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>identity</name><argument_list type="generic">&lt;<argument><expr><name>CTxMemPoolEntry</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>CompareTxMemPoolEntryByEntryTime</name></expr></argument>
+            &gt;</argument_list></name></expr></argument>,
+            <comment type="line">// sorted by fee rate with ancestors</comment>
+            <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>ordered_non_unique</name><argument_list type="generic">&lt;
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>tag</name><argument_list type="generic">&lt;<argument><expr><name>ancestor_score</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>identity</name><argument_list type="generic">&lt;<argument><expr><name>CTxMemPoolEntry</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>CompareTxMemPoolEntryByAncestorFee</name></expr></argument>
+            &gt;</argument_list></name></expr></argument>
+        &gt;</argument_list></name></expr></argument>
+    &gt;</argument_list></name> <name>indexed_transaction_set</name></expr>;</expr_stmt></typedef>
+
+    <comment type="block" format="doxygen">/**
+     * This mutex needs to be locked when accessing `mapTx` or other members
+     * that are guarded by it.
+     *
+     * @par Consistency guarantees
+     *
+     * By design, it is guaranteed that:
+     *
+     * 1. Locking both `cs_main` and `mempool.cs` will give a view of mempool
+     *    that is consistent with current chain tip (`::ChainActive()` and
+     *    `CoinsTip()`) and is fully populated. Fully populated means that if the
+     *    current active chain is missing transactions that were present in a
+     *    previously active chain, all the missing transactions will have been
+     *    re-added to the mempool and should be present if they meet size and
+     *    consistency constraints.
+     *
+     * 2. Locking `mempool.cs` without `cs_main` will give a view of a mempool
+     *    consistent with some chain that was active since `cs_main` was last
+     *    locked, and that is fully populated as described above. It is ok for
+     *    code that only needs to query or remove transactions from the mempool
+     *    to lock just `mempool.cs` without `cs_main`.
+     *
+     * To provide these guarantees, it is necessary to lock both `cs_main` and
+     * `mempool.cs` whenever adding transactions to the mempool and whenever
+     * changing the chain tip. It's necessary to keep both mutexes locked until
+     * the mempool is consistent with the new chain tip and fully populated.
+     */</comment>
+    <decl_stmt><decl><type><name>mutable</name> <name>RecursiveMutex</name></type> <name>cs</name></decl>;</decl_stmt>
+    <function_decl><type><name>indexed_transaction_set</name> <name>mapTx</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <decl_stmt><decl><type><name>using</name></type> <name>txiter</name> <init>= <expr><name>indexed_transaction_set</name><operator>::</operator><name><name>nth_index</name><argument_list type="generic">&lt;<argument><expr><literal type="number">0</literal></expr></argument>&gt;</argument_list></name><operator>::</operator><name>type</name><operator>::</operator><name>const_iterator</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>txiter</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name> <name>vTxHashes</name> <call><name>GUARDED_BY</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line" format="doxygen">//!&lt; All tx witness hashes/entries in mapTx, in random order</comment>
+
+    <struct>struct <name>CompareIteratorByHash</name> <block>{
+        <expr_stmt><expr><name>bool</name> <macro><name>operator</name><argument_list>()</argument_list></macro><operator>(</operator><specifier>const</specifier> <name>txiter</name> <operator>&amp;</operator><name>a</name><operator>,</operator> <specifier>const</specifier> <name>txiter</name> <operator>&amp;</operator><name>b</name><operator>)</operator> <specifier>const</specifier> <block>{
+            <return>return <expr><call><name><name>a</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call> <operator>&lt;</operator> <call><name><name>b</name><operator>-&gt;</operator><name>GetTx</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHash</name><argument_list>()</argument_list></call></expr>;</return>
+        }</block></expr></expr_stmt>
+    }</block>;</struct>
+    <typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>txiter</name></expr></argument>, <argument><expr><name>CompareIteratorByHash</name></expr></argument>&gt;</argument_list></name> <name>setEntries</name></expr>;</expr_stmt></typedef>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>setEntries</name> <modifier>&amp;</modifier></type> <name>GetMemPoolParents</name><argument_list>(<argument><expr><name>txiter</name> <name>entry</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>setEntries</name> <modifier>&amp;</modifier></type> <name>GetMemPoolChildren</name><argument_list>(<argument><expr><name>txiter</name> <name>entry</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>CalculateDescendantMaximum</name><argument_list>(<argument><expr><name>txiter</name> <name>entry</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<label><name>private</name>:</label>
+    <typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>txiter</name></expr></argument>, <argument><expr><name>setEntries</name></expr></argument>, <argument><expr><name>CompareIteratorByHash</name></expr></argument>&gt;</argument_list></name> <name>cacheMap</name></expr>;</expr_stmt></typedef>
+
+    <struct>struct <name>TxLinks</name> <block>{
+        <decl_stmt><decl><type><name>setEntries</name></type> <name>parents</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>setEntries</name></type> <name>children</name></decl>;</decl_stmt>
+    }</block>;</struct>
+
+    <typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>txiter</name></expr></argument>, <argument><expr><name>TxLinks</name></expr></argument>, <argument><expr><name>CompareIteratorByHash</name></expr></argument>&gt;</argument_list></name> <name>txlinksMap</name></expr>;</expr_stmt></typedef>
+    <decl_stmt><decl><type><name>txlinksMap</name></type> <name>mapLinks</name></decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>UpdateParent</name><parameter_list>(<parameter><decl><type><name>txiter</name></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>txiter</name></type> <name>parent</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>add</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>UpdateChild</name><parameter_list>(<parameter><decl><type><name>txiter</name></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>txiter</name></type> <name>child</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>add</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>indexed_transaction_set</name><operator>::</operator><name>const_iterator</name></expr></argument>&gt;</argument_list></name> <macro><name>GetSortedDepthAndScore</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <call><name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+<label><name>public</name>:</label>
+    <function_decl><type><name><name>indirectmap</name><argument_list type="generic">&lt;<argument><expr><name>COutPoint</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CTransaction</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name> <name>mapNextTx</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>CAmount</name></expr></argument>&gt;</argument_list></name> <name>mapDeltas</name></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Create a new CTxMemPool.
+     */</comment>
+    <function_decl><type><name>explicit</name></type> <name>CTxMemPool</name><parameter_list>(<parameter><decl><type><name>CBlockPolicyEstimator</name><modifier>*</modifier></type> <name>estimator</name> <init>= <expr><name>nullptr</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * If sanity-checking is turned on, check makes sure the pool is
+     * consistent (does not contain two transactions that spend the same inputs,
+     * all inputs are in the mapNextTx array). If sanity-checking is turned off,
+     * check does nothing.
+     */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>check</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CCoinsViewCache</name> <operator>*</operator><name>pcoins</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <function><type><name>void</name></type> <name>setSanityCheck</name><parameter_list>(<parameter><decl><type><name>double</name></type> <name>dFrequency</name> <init>= <expr><literal type="number">1.0</literal></expr></init></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <expr_stmt><expr><name>nCheckFrequency</name> <operator>=</operator> <call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>dFrequency</name> <operator>*</operator> <literal type="number">4294967295.0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+    <comment type="line">// addUnchecked must updated state for all ancestors of a given transaction,</comment>
+    <comment type="line">// to track size/count of descendant transactions.  First version of</comment>
+    <comment type="line">// addUnchecked can be used to have it call CalculateMemPoolAncestors(), and</comment>
+    <comment type="line">// then invoke the second version.</comment>
+    <comment type="line">// Note that addUnchecked is ONLY called from ATMP outside of tests</comment>
+    <comment type="line">// and any other callers may break wallet's in-mempool tracking (due to</comment>
+    <comment type="line">// lack of CValidationInterface::TransactionAddedToMempool callbacks).</comment>
+    <function_decl><type><name>void</name></type> <name>addUnchecked</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>&amp;</modifier></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>validFeeEstimate</name> <init>= <expr><name>true</name></expr></init></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>, <parameter><decl><type><name>cs_main</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>addUnchecked</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTxMemPoolEntry</name><modifier>&amp;</modifier></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>setEntries</name><modifier>&amp;</modifier></type> <name>setAncestors</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>validFeeEstimate</name> <init>= <expr><name>true</name></expr></init></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>, <parameter><decl><type><name>cs_main</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>void</name></type> <name>removeRecursive</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>MemPoolRemovalReason</name></type> <name>reason</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>removeForReorg</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>*</modifier></type> <name>pcoins</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nMemPoolHeight</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>flags</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>, <parameter><decl><type><name>cs_main</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>removeConflicts</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>void</name></type> <name>removeForBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CTransactionRef</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vtx</name></expr></argument>, <argument><expr><name>unsigned</name> <name>int</name> <name>nBlockHeight</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>clear</name><parameter_list>()</parameter_list>;</function_decl>
+    <function_decl><type><name>void</name></type> <name>_clear</name><parameter_list>()</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl> <comment type="line">//lock free</comment>
+    <function_decl><type><name>bool</name></type> <name>CompareDepthAndScore</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hasha</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hashb</name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>void</name></type> <name>queryHashes</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vtxid</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>isSpent</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name><operator>&amp;</operator> <name>outpoint</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <expr_stmt><expr><name>unsigned</name> <name>int</name> <macro><name>GetTransactionsUpdated</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+    <function_decl><type><name>void</name></type> <name>AddTransactionsUpdated</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>n</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/**
+     * Check that none of this transactions inputs are in the mempool, and thus
+     * the tx is not dependent on other mempool transactions to be included in a block.
+     */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>HasNoInputsOf</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTransaction</name><operator>&amp;</operator> <name>tx</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Affect CreateNewBlock prioritisation of transactions */</comment>
+    <function_decl><type><name>void</name></type> <name>PrioritiseTransaction</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CAmount</name><modifier>&amp;</modifier></type> <name>nFeeDelta</name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>void</name></type> <name>ApplyDelta</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name> <name>hash</name></expr></argument>, <argument><expr><name>CAmount</name> <operator>&amp;</operator><name>nFeeDelta</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <function_decl><type><name>void</name></type> <name>ClearPrioritisation</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Get the transaction in the pool that spends the same prevout */</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>*</modifier></type> <name>GetConflictTx</name><argument_list>(<argument><expr><specifier>const</specifier> <name>COutPoint</name><operator>&amp;</operator> <name>prevout</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Returns an iterator to the given hash, if found */</comment>
+    <decl_stmt><decl><type><name><name>Optional</name><argument_list type="generic">&lt;<argument><expr><name>txiter</name></expr></argument>&gt;</argument_list></name></type> <name>GetIter</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>txid</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Translate a set of hashes into a set of pool iterators to avoid repeated lookups */</comment>
+    <decl_stmt><decl><type><name>setEntries</name></type> <name>GetIterSet</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>hashes</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Remove a set of transactions from the mempool.
+     *  If a transaction is in this set, then all in-mempool descendants must
+     *  also be in the set, unless this transaction is being removed for being
+     *  in a block.
+     *  Set updateDescendants to true when removing a tx that was in a block, so
+     *  that any in-mempool descendants have their ancestor state updated.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>RemoveStaged</name><parameter_list>(<parameter><decl><type><name>setEntries</name><modifier>&amp;</modifier></type> <name>stage</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>updateDescendants</name></decl></parameter>, <parameter><decl><type><name>MemPoolRemovalReason</name></type> <name>reason</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** When adding transactions from a disconnected block back to the mempool,
+     *  new mempool entries may have children in the mempool (which is generally
+     *  not the case when otherwise adding transactions).
+     *  UpdateTransactionsFromBlock() will find child transactions and update the
+     *  descendant state for each transaction in vHashesToUpdate (excluding any
+     *  child transactions present in vHashesToUpdate, which are already accounted
+     *  for).  Note: vHashesToUpdate should be the set of transactions from the
+     *  disconnected block that have been accepted back into the mempool.
+     */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>UpdateTransactionsFromBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vHashesToUpdate</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>, <argument><expr><name>cs_main</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Try to calculate all in-mempool ancestors of entry.
+     *  (these are all calculated including the tx itself)
+     *  limitAncestorCount = max number of ancestors
+     *  limitAncestorSize = max size of ancestors
+     *  limitDescendantCount = max number of descendants any ancestor can have
+     *  limitDescendantSize = max size of descendants any ancestor can have
+     *  errString = populated with error reason if any limits are hit
+     *  fSearchForParents = whether to search a tx's vin for in-mempool parents, or
+     *    look up parents from mapLinks. Must be true for entries not in the mempool
+     */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>CalculateMemPoolAncestors</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CTxMemPoolEntry</name><operator>&amp;</operator> <name>entry</name></expr></argument>, <argument><expr><name>setEntries</name><operator>&amp;</operator> <name>setAncestors</name></expr></argument>, <argument><expr><name>uint64_t</name> <name>limitAncestorCount</name></expr></argument>, <argument><expr><name>uint64_t</name> <name>limitAncestorSize</name></expr></argument>, <argument><expr><name>uint64_t</name> <name>limitDescendantCount</name></expr></argument>, <argument><expr><name>uint64_t</name> <name>limitDescendantSize</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>errString</name></expr></argument>, <argument><expr><name>bool</name> <name>fSearchForParents</name> <operator>=</operator> <name>true</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Populate setDescendants with all in-mempool descendants of hash.
+     *  Assumes that setDescendants includes all in-mempool descendants of anything
+     *  already in it.  */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>CalculateDescendants</name><argument_list>(<argument><expr><name>txiter</name> <name>it</name></expr></argument>, <argument><expr><name>setEntries</name><operator>&amp;</operator> <name>setDescendants</name></expr></argument>)</argument_list> const <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** The minimum fee to get into the mempool, which may itself not be enough
+      *  for larger-sized transactions.
+      *  The incrementalRelayFee policy variable is used to bound the time it
+      *  takes the fee rate to go back down all the way to 0. When the feerate
+      *  would otherwise be half of this, it is set to 0 instead.
+      */</comment>
+    <decl_stmt><decl><type><name>CFeeRate</name></type> <name>GetMinFee</name><argument_list>(<argument><expr><name>size_t</name> <name>sizelimit</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Remove transactions from the mempool until its dynamic size is &lt;= sizelimit.
+      *  pvNoSpendsRemaining, if set, will be populated with the list of outpoints
+      *  which are not in mempool which no longer have any spends in this mempool.
+      */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>TrimToSize</name><argument_list>(<argument><expr><name>size_t</name> <name>sizelimit</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>COutPoint</name></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>pvNoSpendsRemaining</name> <operator>=</operator> <name>nullptr</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Expire all transaction (and their dependencies) in the mempool older than time. Return the number of removed transactions. */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>Expire</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name> <name>time</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/**
+     * Calculate the ancestor and descendant count for the given transaction.
+     * The counts include the transaction itself.
+     */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>GetTransactionAncestry</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>txid</name></expr></argument>, <argument><expr><name>size_t</name><operator>&amp;</operator> <name>ancestors</name></expr></argument>, <argument><expr><name>size_t</name><operator>&amp;</operator> <name>descendants</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** @returns true if the mempool is fully loaded */</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>IsLoaded</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="block" format="doxygen">/** Sets the current loaded state */</comment>
+    <function_decl><type><name>void</name></type> <name>SetIsLoaded</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>loaded</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <expr_stmt><expr><name>unsigned</name> <name>long</name> <macro><name>size</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><call><name><name>mapTx</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><name>uint64_t</name> <macro><name>GetTotalTxSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;
+        <return>return <expr><name>totalTxSize</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>exists</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>)</argument_list> const
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><operator>(</operator><call><name><name>mapTx</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return>
+    </block_content>}</block></decl></decl_stmt>
+
+    <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>get</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>TxMempoolInfo</name></type> <name>info</name><argument_list>(<argument><expr><specifier>const</specifier> <name>uint256</name><operator>&amp;</operator> <name>hash</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>TxMempoolInfo</name></expr></argument>&gt;</argument_list></name> <macro><name>infoAll</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>size_t</name> <macro><name>DynamicMemoryUsage</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>signals2</name><operator>::</operator><name><name>signal</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><name>CTransactionRef</name><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>NotifyEntryAdded</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>boost</name><operator>::</operator><name>signals2</name><operator>::</operator><name><name>signal</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><name>CTransactionRef</name>, <name>MemPoolRemovalReason</name><operator>)</operator></expr></argument>&gt;</argument_list></name> <name>NotifyEntryRemoved</name></expr>;</expr_stmt>
+
+<label><name>private</name>:</label>
+    <comment type="block" format="doxygen">/** UpdateForDescendants is used by UpdateTransactionsFromBlock to update
+     *  the descendants for a single transaction that has been added to the
+     *  mempool but may have child transactions in the mempool, eg during a
+     *  chain reorg.  setExclude is the set of descendant transactions in the
+     *  mempool that must not be accounted for (because any descendants in
+     *  setExclude were added to the mempool after the transaction being
+     *  updated and hence their state is already reflected in the parent
+     *  state).
+     *
+     *  cachedDescendants will be updated with the descendants of the transaction
+     *  being updated, so that future invocations don't need to walk the
+     *  same transaction again, if encountered in another transaction chain.
+     */</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>UpdateForDescendants</name><argument_list>(<argument><expr><name>txiter</name> <name>updateIt</name></expr></argument>,
+            <argument><expr><name>cacheMap</name> <operator>&amp;</operator><name>cachedDescendants</name></expr></argument>,
+            <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name> <operator>&amp;</operator><name>setExclude</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>cs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Update ancestors of hash to add/remove it as a descendant transaction. */</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateAncestorsOf</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>add</name></decl></parameter>, <parameter><decl><type><name>txiter</name></type> <name>hash</name></decl></parameter>, <parameter><decl><type><name>setEntries</name> <modifier>&amp;</modifier></type><name>setAncestors</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Set ancestor state for an entry */</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateEntryForAncestors</name><parameter_list>(<parameter><decl><type><name>txiter</name></type> <name>it</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>setEntries</name> <modifier>&amp;</modifier></type><name>setAncestors</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** For each transaction being removed, update ancestors and any direct children.
+      * If updateDescendants is true, then also update in-mempool descendants'
+      * ancestor state. */</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateForRemoveFromMempool</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>setEntries</name> <modifier>&amp;</modifier></type><name>entriesToRemove</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>updateDescendants</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Sever link between specified transaction and direct children. */</comment>
+    <function_decl><type><name>void</name></type> <name>UpdateChildrenForRemoval</name><parameter_list>(<parameter><decl><type><name>txiter</name></type> <name>entry</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Before calling removeUnchecked for a given transaction,
+     *  UpdateForRemoveFromMempool must be called on the entire (dependent) set
+     *  of transactions being removed at the same time.  We use each
+     *  CTxMemPoolEntry's setMemPoolParents in order to walk ancestors of a
+     *  given transaction that is removed, so we can't remove intermediate
+     *  transactions in a chain before we've updated all the state for the
+     *  removal.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>removeUnchecked</name><parameter_list>(<parameter><decl><type><name>txiter</name></type> <name>entry</name></decl></parameter>, <parameter><decl><type><name>MemPoolRemovalReason</name></type> <name>reason</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCKS_REQUIRED<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/**
+ * CCoinsView that brings transactions from a mempool into view.
+ * It does not check for spendings by memory pool transactions.
+ * Instead, it provides access to all Coins which are either unspent in the
+ * base CCoinsView, or are outputs from any mempool transaction!
+ * This allows transaction replacement to work as expected, as you want to
+ * have all inputs "available" to check signatures, and any cycles in the
+ * dependency graph are checked directly in AcceptToMemoryPool.
+ * It also allows you to sign a double-spend directly in
+ * signrawtransactionwithkey and signrawtransactionwithwallet,
+ * as long as the conflicting transaction is not yet confirmed.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CCoinsViewMemPool</name> <range>: <expr><name>public</name> <name>CCoinsViewBacked</name>
+<block>{
+<expr><name>protected</name><operator>:</operator>
+    <specifier>const</specifier> <name>CTxMemPool</name><operator>&amp;</operator> <name>mempool</name></expr>;
+
+<expr><name>public</name><operator>:</operator>
+    <call><name>CCoinsViewMemPool</name><argument_list>(<argument><expr><name>CCoinsView</name><operator>*</operator> <name>baseIn</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CTxMemPool</name><operator>&amp;</operator> <name>mempoolIn</name></expr></argument>)</argument_list></call></expr>;
+    <expr><name>bool</name> <macro><name>GetCoin</name><argument_list>(<argument>const COutPoint &amp;outpoint</argument>, <argument>Coin &amp;coin</argument>)</argument_list></macro> <specifier>const</specifier> <name>override</name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * DisconnectedBlockTransactions
+
+ * During the reorg, it's desirable to re-add previously confirmed transactions
+ * to the mempool, so that anything not re-confirmed in the new chain is
+ * available to be mined. However, it's more efficient to wait until the reorg
+ * is complete and process all still-unconfirmed transactions at that time,
+ * since we expect most confirmed transactions to (typically) still be
+ * confirmed in the new chain, and re-accepting to the memory pool is expensive
+ * (and therefore better to not do in the middle of reorg-processing).
+ * Instead, store the disconnected transactions (in order!) as we go, remove any
+ * that are included in blocks in the new chain, and then process the remaining
+ * still-unconfirmed transactions at the end.
+ */</comment>
+
+<comment type="line">// multi_index tag names</comment>
+<struct>struct <name>txid_index</name> <block>{}</block>;</struct>
+<struct>struct <name>insertion_order</name> <block>{}</block>;</struct>
+
+<struct>struct <name>DisconnectedBlockTransactions</name> <block>{
+    <typedef>typedef <expr_stmt><expr><name>boost</name><operator>::</operator><name><name>multi_index_container</name><argument_list type="generic">&lt;
+        <argument><expr><name>CTransactionRef</name></expr></argument>,
+        <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>indexed_by</name><argument_list type="generic">&lt;
+            <comment type="line">// sorted by txid</comment>
+            <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>hashed_unique</name><argument_list type="generic">&lt;
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>tag</name><argument_list type="generic">&lt;<argument><expr><name>txid_index</name></expr></argument>&gt;</argument_list></name></expr></argument>,
+                <argument><expr><name>mempoolentry_txid</name></expr></argument>,
+                <argument><expr><name>SaltedTxidHasher</name></expr></argument>
+            &gt;</argument_list></name></expr></argument>,
+            <comment type="line">// sorted by order in the blockchain</comment>
+            <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>sequenced</name><argument_list type="generic">&lt;
+                <argument><expr><name>boost</name><operator>::</operator><name>multi_index</name><operator>::</operator><name><name>tag</name><argument_list type="generic">&lt;<argument><expr><name>insertion_order</name></expr></argument>&gt;</argument_list></name></expr></argument>
+            &gt;</argument_list></name></expr></argument>
+        &gt;</argument_list></name></expr></argument>
+    &gt;</argument_list></name> <name>indexed_disconnected_transactions</name></expr>;</expr_stmt></typedef>
+
+    <comment type="line">// It's almost certainly a logic bug if we don't clear out queuedTx before</comment>
+    <comment type="line">// destruction, as we add to it while disconnecting blocks, and then we</comment>
+    <comment type="line">// need to re-process remaining transactions to ensure mempool consistency.</comment>
+    <comment type="line">// For now, assert() that we've emptied out this object on destruction.</comment>
+    <comment type="line">// This assert() can always be removed if the reorg-processing code were</comment>
+    <comment type="line">// to be refactored such that this assumption is no longer true (for</comment>
+    <comment type="line">// instance if there was some other way we cleaned up the mempool after a</comment>
+    <comment type="line">// reorg, besides draining this object).</comment>
+    <expr_stmt><expr><operator>~</operator><macro><name>DisconnectedBlockTransactions</name><argument_list>()</argument_list></macro> <block>{ <expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>queuedTx</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>; }</block>
+
+    <name>indexed_disconnected_transactions</name> <name>queuedTx</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>uint64_t</name></type> <name>cachedInnerUsage</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Estimate the overhead of queuedTx to be 6 pointers + an allocation, as</comment>
+    <comment type="line">// no exact formula for boost::multi_index_contained is implemented.</comment>
+    <expr_stmt><expr><name>size_t</name> <macro><name>DynamicMemoryUsage</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+        <return>return <expr><name>memusage</name><operator>::</operator><call><name>MallocUsage</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>CTransactionRef</name></expr></argument>)</argument_list></sizeof> <operator>+</operator> <literal type="number">6</literal> <operator>*</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>void</name><operator>*</operator></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call> <operator>*</operator> <call><name><name>queuedTx</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>+</operator> <name>cachedInnerUsage</name></expr>;</return>
+    }</block></expr></expr_stmt>
+
+    <function><type><name>void</name></type> <name>addTransaction</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransactionRef</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>queuedTx</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>cachedInnerUsage</name> <operator>+=</operator> <call><name>RecursiveDynamicUsage</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <comment type="line">// Remove entries based on txid_index, and update memory usage.</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>removeForBlock</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CTransactionRef</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vtx</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+        <comment type="line">// Short-circuit in the common case of a block being added to the tip</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>queuedTx</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return;</return>
+        </block_content>}</block></if></if_stmt>
+        <for>for <control>(<init><decl><type><specifier>auto</specifier> <specifier>const</specifier> <modifier>&amp;</modifier></type><name>tx</name> <range>: <expr><name>vtx</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>queuedTx</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>it</name> <operator>!=</operator> <call><name><name>queuedTx</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>cachedInnerUsage</name> <operator>-=</operator> <call><name>RecursiveDynamicUsage</name><argument_list>(<argument><expr><operator>*</operator><name>it</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>queuedTx</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></decl></decl_stmt>
+
+    <comment type="line">// Remove an entry by insertion_order index, and update memory usage.</comment>
+    <decl_stmt><decl><type><name>void</name></type> <name>removeEntry</name><argument_list>(<argument><expr><name>indexed_disconnected_transactions</name><operator>::</operator><name><name>index</name><argument_list type="generic">&lt;<argument><expr><name>insertion_order</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>type</name><operator>::</operator><name>iterator</name> <name>entry</name></expr></argument>)</argument_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>cachedInnerUsage</name> <operator>-=</operator> <call><name>RecursiveDynamicUsage</name><argument_list>(<argument><expr><operator>*</operator><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>queuedTx</name><operator>.</operator><name>get</name></name><operator>&lt;</operator><name>insertion_order</name><operator>&gt;</operator><operator>(</operator><operator>)</operator><operator>.</operator><call><name>erase</name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <function><type><name>void</name></type> <name>clear</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>cachedInnerUsage</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>queuedTx</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+}</block>;</struct>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_TXMEMPOOL_H</comment>
+</unit>

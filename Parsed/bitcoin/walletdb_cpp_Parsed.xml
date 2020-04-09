@@ -1,0 +1,778 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/wallet/walletdb.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/walletdb.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;fs.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;key_io.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;protocol.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/time.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/wallet.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;atomic&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+
+<namespace>namespace <name>DBKeys</name> <block>{
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>ACENTRY</name><argument_list>{<argument><expr><literal type="string">"acentry"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>BESTBLOCK_NOMERKLE</name><argument_list>{<argument><expr><literal type="string">"bestblock_nomerkle"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>BESTBLOCK</name><argument_list>{<argument><expr><literal type="string">"bestblock"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>CRYPTED_KEY</name><argument_list>{<argument><expr><literal type="string">"ckey"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>CSCRIPT</name><argument_list>{<argument><expr><literal type="string">"cscript"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>DEFAULTKEY</name><argument_list>{<argument><expr><literal type="string">"defaultkey"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>DESTDATA</name><argument_list>{<argument><expr><literal type="string">"destdata"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>FLAGS</name><argument_list>{<argument><expr><literal type="string">"flags"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>HDCHAIN</name><argument_list>{<argument><expr><literal type="string">"hdchain"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>KEYMETA</name><argument_list>{<argument><expr><literal type="string">"keymeta"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>KEY</name><argument_list>{<argument><expr><literal type="string">"key"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>MASTER_KEY</name><argument_list>{<argument><expr><literal type="string">"mkey"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>MINVERSION</name><argument_list>{<argument><expr><literal type="string">"minversion"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>NAME</name><argument_list>{<argument><expr><literal type="string">"name"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>OLD_KEY</name><argument_list>{<argument><expr><literal type="string">"wkey"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>ORDERPOSNEXT</name><argument_list>{<argument><expr><literal type="string">"orderposnext"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>POOL</name><argument_list>{<argument><expr><literal type="string">"pool"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>PURPOSE</name><argument_list>{<argument><expr><literal type="string">"purpose"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>SETTINGS</name><argument_list>{<argument><expr><literal type="string">"settings"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>TX</name><argument_list>{<argument><expr><literal type="string">"tx"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>VERSION</name><argument_list>{<argument><expr><literal type="string">"version"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>WATCHMETA</name><argument_list>{<argument><expr><literal type="string">"watchmeta"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>WATCHS</name><argument_list>{<argument><expr><literal type="string">"watchs"</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+}</block></namespace> <comment type="line">// namespace DBKeys</comment>
+
+<comment type="line">//</comment>
+<comment type="line">// WalletBatch</comment>
+<comment type="line">//</comment>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteName</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAddress</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strName</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>NAME</name></name></expr></argument>, <argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>strName</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>EraseName</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAddress</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// This should only be used for sending addresses, never for receiving addresses,</comment>
+    <comment type="line">// receiving addresses must always have an address book entry if they're not change return.</comment>
+    <return>return <expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>NAME</name></name></expr></argument>, <argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WritePurpose</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAddress</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strPurpose</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>PURPOSE</name></name></expr></argument>, <argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>strPurpose</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>ErasePurpose</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>strAddress</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>PURPOSE</name></name></expr></argument>, <argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteTx</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CWalletTx</name><modifier>&amp;</modifier></type> <name>wtx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>TX</name></name></expr></argument>, <argument><expr><call><name><name>wtx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>wtx</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>EraseTx</name></name><parameter_list>(<parameter><decl><type><name>uint256</name></type> <name>hash</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>TX</name></name></expr></argument>, <argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteKeyMetadata</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name><modifier>&amp;</modifier></type> <name>meta</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>pubkey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>bool</name></type> <name>overwrite</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>KEYMETA</name></name></expr></argument>, <argument><expr><name>pubkey</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>meta</name></expr></argument>, <argument><expr><name>overwrite</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteKey</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>vchPubKey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPrivKey</name><modifier>&amp;</modifier></type> <name>vchPrivKey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name><modifier>&amp;</modifier></type> <name>keyMeta</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>WriteKeyMetadata</name><argument_list>(<argument><expr><name>keyMeta</name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// hash pubkey/privkey to accelerate wallet load</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vchKey</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>vchPrivKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchPrivKey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchPrivKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>KEY</name></name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>vchPrivKey</name></expr></argument>, <argument><expr><call><name>Hash</name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteCryptedKey</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>vchPubKey</name></decl></parameter>,
+                                <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vchCryptedSecret</name></decl></parameter>,
+                                <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name> <modifier>&amp;</modifier></type><name>keyMeta</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>WriteKeyMetadata</name><argument_list>(<argument><expr><name>keyMeta</name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>CRYPTED_KEY</name></name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>vchCryptedSecret</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>KEY</name></name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteMasterKey</name></name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nID</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CMasterKey</name><modifier>&amp;</modifier></type> <name>kMasterKey</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>MASTER_KEY</name></name></expr></argument>, <argument><expr><name>nID</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>kMasterKey</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteCScript</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint160</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>redeemScript</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>CSCRIPT</name></name></expr></argument>, <argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>redeemScript</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteWatchOnly</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>dest</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name><modifier>&amp;</modifier></type> <name>keyMeta</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>WATCHMETA</name></name></expr></argument>, <argument><expr><name>dest</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>keyMeta</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>WATCHS</name></name></expr></argument>, <argument><expr><name>dest</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="char">'1'</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>EraseWatchOnly</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>dest</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>WATCHMETA</name></name></expr></argument>, <argument><expr><name>dest</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>WATCHS</name></name></expr></argument>, <argument><expr><name>dest</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteBestBlock</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockLocator</name><modifier>&amp;</modifier></type> <name>locator</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>WriteIC</name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>BESTBLOCK</name></name></expr></argument>, <argument><expr><call><name>CBlockLocator</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Write empty block locator so versions that require a merkle branch automatically rescan</comment>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>BESTBLOCK_NOMERKLE</name></name></expr></argument>, <argument><expr><name>locator</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>ReadBestBlock</name></name><parameter_list>(<parameter><decl><type><name>CBlockLocator</name><modifier>&amp;</modifier></type> <name>locator</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>m_batch</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>BESTBLOCK</name></name></expr></argument>, <argument><expr><name>locator</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><call><name><name>locator</name><operator>.</operator><name>vHave</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><call><name><name>m_batch</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>BESTBLOCK_NOMERKLE</name></name></expr></argument>, <argument><expr><name>locator</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteOrderPosNext</name></name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nOrderPosNext</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>ORDERPOSNEXT</name></name></expr></argument>, <argument><expr><name>nOrderPosNext</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>ReadPool</name></name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nPool</name></decl></parameter>, <parameter><decl><type><name>CKeyPool</name><modifier>&amp;</modifier></type> <name>keypool</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>m_batch</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>POOL</name></name></expr></argument>, <argument><expr><name>nPool</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>keypool</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WritePool</name></name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nPool</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyPool</name><modifier>&amp;</modifier></type> <name>keypool</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>POOL</name></name></expr></argument>, <argument><expr><name>nPool</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>keypool</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>ErasePool</name></name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nPool</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>POOL</name></name></expr></argument>, <argument><expr><name>nPool</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteMinVersion</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>nVersion</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>MINVERSION</name></name></expr></argument>, <argument><expr><name>nVersion</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<class>class <name>CWalletScanState</name> <block>{<private type="default">
+</private><public>public:
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nKeys</name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nCKeys</name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nWatchKeys</name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nKeyMeta</name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>m_unknown_records</name><argument_list>{<argument><expr><literal type="number">0</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fIsEncrypted</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fAnyUnordered</name><argument_list>{<argument><expr><literal type="boolean">false</literal></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>vWalletUpgrade</name></decl>;</decl_stmt>
+
+    <constructor><name>CWalletScanState</name><parameter_list>()</parameter_list> <block>{<block_content>
+    </block_content>}</block></constructor>
+</public>}</block>;</class>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type>
+<name>ReadKeyValue</name><argument_list>(<argument><expr><name>CWallet</name><operator>*</operator> <name>pwallet</name></expr></argument>, <argument><expr><name>CDataStream</name><operator>&amp;</operator> <name>ssKey</name></expr></argument>, <argument><expr><name>CDataStream</name><operator>&amp;</operator> <name>ssValue</name></expr></argument>,
+             <argument><expr><name>CWalletScanState</name> <operator>&amp;</operator><name>wss</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name><operator>&amp;</operator> <name>strType</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name><operator>&amp;</operator> <name>strErr</name></expr></argument>)</argument_list> <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name><name>pwallet</name><operator>-&gt;</operator><name>cs_wallet</name></name></expr></argument>, <argument><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>cs_wallet</name></expr></argument>)</argument_list>
+<argument_list>{
+    <argument><expr><macro><name>try</name></macro> <block>{
+        <comment type="line">// Unserialize</comment>
+        <comment type="line">// Taking advantage of the fact that pair serialization</comment>
+        <comment type="line">// is just the two items serialized one after the other</comment>
+        <expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>strType</name></expr>;
+        <if_stmt><if>if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>NAME</name></name></expr>)</condition> <expr_stmt><expr><block>{
+            <expr><name><name>std</name><operator>::</operator><name>string</name></name> <name>strAddress</name></expr>;
+            <name>ssKey</name> <operator>&gt;&gt;</operator> <name>strAddress</name></block></expr>;</expr_stmt></if></if_stmt>
+            <name>ssValue</name> <operator>&gt;&gt;</operator> <name><name>pwallet</name><operator>-&gt;</operator><name>mapAddressBook</name><index>[<expr><call><name>DecodeDestination</name><argument_list>(<argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr>]</index></name><operator>.</operator><name>name</name></block></expr></argument>;
+        }</argument_list> else if <argument_list>(<argument><expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>PURPOSE</name></name></expr></argument>)</argument_list> <argument_list>{
+            <argument><expr><name><name>std</name><operator>::</operator><name>string</name></name> <name>strAddress</name></expr></argument>;
+            <argument><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>strAddress</name></expr></argument>;
+            <argument><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name><name>pwallet</name><operator>-&gt;</operator><name>mapAddressBook</name><index>[<expr><call><name>DecodeDestination</name><argument_list>(<argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr>]</index></name><operator>.</operator><name>purpose</name></expr></argument>;
+        }</argument_list> else if <argument_list>(<argument><expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>TX</name></name></expr></argument>)</argument_list> <argument_list>{
+            <argument><expr><name>uint256</name> <name>hash</name></expr></argument>;
+            <argument><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>hash</name></expr></argument>;
+            <argument><expr><name>CWalletTx</name> <call><name>wtx</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument> <comment type="block">/* pwallet */</comment>, <argument><expr><call><name>MakeTransactionRef</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>;
+            <argument><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>wtx</name></expr></argument>;
+            if <argument><expr><operator>(</operator><call><name><name>wtx</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>hash</name><operator>)</operator></expr></argument>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></argument_list></decl></decl_stmt>
+
+            <comment type="line">// Undo serialize changes in 31600</comment>
+            <if_stmt><if>if <condition>(<expr><literal type="number">31404</literal> <operator>&lt;=</operator> <name><name>wtx</name><operator>.</operator><name>fTimeReceivedIsTxTime</name></name> <operator>&amp;&amp;</operator> <name><name>wtx</name><operator>.</operator><name>fTimeReceivedIsTxTime</name></name> <operator>&lt;=</operator> <literal type="number">31703</literal></expr>)</condition>
+            <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>ssValue</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition>
+                <block>{<block_content>
+                    <decl_stmt><decl><type><name>char</name></type> <name>fTmp</name></decl>;</decl_stmt>
+                    <decl_stmt><decl><type><name>char</name></type> <name>fUnused</name></decl>;</decl_stmt>
+                    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>unused_string</name></decl>;</decl_stmt>
+                    <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>fTmp</name> <operator>&gt;&gt;</operator> <name>fUnused</name> <operator>&gt;&gt;</operator> <name>unused_string</name></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>strErr</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"LoadWallet() upgrading tx ver=%d %d %s"</literal></expr></argument>,
+                                       <argument><expr><name><name>wtx</name><operator>.</operator><name>fTimeReceivedIsTxTime</name></name></expr></argument>, <argument><expr><name>fTmp</name></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>wtx</name><operator>.</operator><name>fTimeReceivedIsTxTime</name></name> <operator>=</operator> <name>fTmp</name></expr>;</expr_stmt>
+                </block_content>}</block></if>
+                <else>else
+                <block>{<block_content>
+                    <expr_stmt><expr><name>strErr</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"LoadWallet() repairing tx ver=%d %s"</literal></expr></argument>, <argument><expr><name><name>wtx</name><operator>.</operator><name>fTimeReceivedIsTxTime</name></name></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><name><name>wtx</name><operator>.</operator><name>fTimeReceivedIsTxTime</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+                <expr_stmt><expr><call><name><name>wss</name><operator>.</operator><name>vWalletUpgrade</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name><name>wtx</name><operator>.</operator><name>nOrderPos</name></name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>fAnyUnordered</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>LoadToWallet</name></name><argument_list>(<argument><expr><name>wtx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        } else <if_stmt><if>if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>WATCHS</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>nWatchKeys</name></name><operator>++</operator></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CScript</name></type> <name>script</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>script</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>char</name></type> <name>fYes</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>fYes</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>fYes</name> <operator>==</operator> <literal type="char">'1'</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadWatchOnly</name><argument_list>(<argument><expr><name>script</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>KEY</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CPubKey</name></type> <name>vchPubKey</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>vchPubKey</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vchPubKey</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: CPubKey corrupt"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name>CKey</name></type> <name>key</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>CPrivKey</name></type> <name>pkey</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>nKeys</name></name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>pkey</name></expr>;</expr_stmt>
+
+            <comment type="line">// Old wallets store keys as DBKeys::KEY [pubkey] =&gt; [privkey]</comment>
+            <comment type="line">// ... which was slow for wallets with lots of keys, because the public key is re-derived from the private key</comment>
+            <comment type="line">// using EC operations as a checksum.</comment>
+            <comment type="line">// Newer wallets store keys as DBKeys::KEY [pubkey] =&gt; [privkey][hash(pubkey,privkey)], which is much faster while</comment>
+            <comment type="line">// remaining backwards-compatible.</comment>
+            <try>try
+            <block>{<block_content>
+                <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>hash</name></expr>;</expr_stmt>
+            </block_content>}</block>
+            <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></catch></try>
+
+            <decl_stmt><decl><type><name>bool</name></type> <name>fSkipCheck</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>hash</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <comment type="line">// hash pubkey/privkey to accelerate wallet load</comment>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vchKey</name></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>pkey</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>vchKey</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>pkey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>pkey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+                <if_stmt><if>if <condition>(<expr><call><name>Hash</name><argument_list>(<argument><expr><call><name><name>vchKey</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vchKey</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>!=</operator> <name>hash</name></expr>)</condition>
+                <block>{<block_content>
+                    <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: CPubKey/CPrivKey corrupt"</literal></expr>;</expr_stmt>
+                    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+                </block_content>}</block></if></if_stmt>
+
+                <expr_stmt><expr><name>fSkipCheck</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>key</name><operator>.</operator><name>Load</name></name><argument_list>(<argument><expr><name>pkey</name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>, <argument><expr><name>fSkipCheck</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: CPrivKey corrupt"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadKey</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>vchPubKey</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: LegacyScriptPubKeyMan::LoadKey failed"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>MASTER_KEY</name></name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Master encryption key is loaded into only the wallet and not any of the ScriptPubKeyMans.</comment>
+            <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nID</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>nID</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CMasterKey</name></type> <name>kMasterKey</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>kMasterKey</name></expr>;</expr_stmt>
+            <if_stmt><if>if<condition>(<expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>mapMasterKeys</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>nID</name></expr></argument>)</argument_list></call> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"Error reading wallet database: duplicate CMasterKey id %u"</literal></expr></argument>, <argument><expr><name>nID</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name><name>pwallet</name><operator>-&gt;</operator><name>mapMasterKeys</name><index>[<expr><name>nID</name></expr>]</index></name> <operator>=</operator> <name>kMasterKey</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name><name>pwallet</name><operator>-&gt;</operator><name>nMasterKeyMaxID</name></name> <operator>&lt;</operator> <name>nID</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name><name>pwallet</name><operator>-&gt;</operator><name>nMasterKeyMaxID</name></name> <operator>=</operator> <name>nID</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>CRYPTED_KEY</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CPubKey</name></type> <name>vchPubKey</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>vchPubKey</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vchPubKey</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: CPubKey corrupt"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>vchPrivKey</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>vchPrivKey</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>nCKeys</name></name><operator>++</operator></expr>;</expr_stmt>
+
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadCryptedKey</name><argument_list>(<argument><expr><name>vchPubKey</name></expr></argument>, <argument><expr><name>vchPrivKey</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: LegacyScriptPubKeyMan::LoadCryptedKey failed"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>fIsEncrypted</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>KEYMETA</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CPubKey</name></type> <name>vchPubKey</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>vchPubKey</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CKeyMetadata</name></type> <name>keyMeta</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>keyMeta</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>nKeyMeta</name></name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadKeyMetadata</name><argument_list>(<argument><expr><call><name><name>vchPubKey</name><operator>.</operator><name>GetID</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>keyMeta</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>WATCHMETA</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CScript</name></type> <name>script</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>script</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CKeyMetadata</name></type> <name>keyMeta</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>keyMeta</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>nKeyMeta</name></name><operator>++</operator></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadScriptMetadata</name><argument_list>(<argument><expr><call><name>CScriptID</name><argument_list>(<argument><expr><name>script</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>keyMeta</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>DEFAULTKEY</name></name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// We don't want or need the default key, but if there is one set,</comment>
+            <comment type="line">// we want to make sure that it is valid so that we can detect corruption</comment>
+            <decl_stmt><decl><type><name>CPubKey</name></type> <name>vchPubKey</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>vchPubKey</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vchPubKey</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: Default Key corrupt"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>POOL</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>int64_t</name></type> <name>nIndex</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>nIndex</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CKeyPool</name></type> <name>keypool</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>keypool</name></expr>;</expr_stmt>
+
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadKeyPool</name><argument_list>(<argument><expr><name>nIndex</name></expr></argument>, <argument><expr><name>keypool</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>CSCRIPT</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint160</name></type> <name>hash</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>hash</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>CScript</name></type> <name>script</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>script</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>LoadCScript</name><argument_list>(<argument><expr><name>script</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: LegacyScriptPubKeyMan::LoadCScript failed"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>ORDERPOSNEXT</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name><name>pwallet</name><operator>-&gt;</operator><name>nOrderPosNext</name></name></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>DESTDATA</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strAddress</name></decl>, <decl><type ref="prev"/><name>strKey</name></decl>, <decl><type ref="prev"/><name>strValue</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>strAddress</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>strKey</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>strValue</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>LoadDestData</name></name><argument_list>(<argument><expr><call><name>DecodeDestination</name><argument_list>(<argument><expr><name>strAddress</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>strKey</name></expr></argument>, <argument><expr><name>strValue</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>HDCHAIN</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CHDChain</name></type> <name>chain</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>chain</name></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>SetHDChain</name><argument_list>(<argument><expr><name>chain</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>FLAGS</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>uint64_t</name></type> <name>flags</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>flags</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pwallet</name><operator>-&gt;</operator><name>SetWalletFlags</name></name><argument_list>(<argument><expr><name>flags</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Error reading wallet database: Unknown non-tolerable wallet flags found"</literal></expr>;</expr_stmt>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>OLD_KEY</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Found unsupported 'wkey' record, try loading with version 0.18"</literal></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>BESTBLOCK</name></name> <operator>&amp;&amp;</operator> <name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>BESTBLOCK_NOMERKLE</name></name> <operator>&amp;&amp;</operator>
+                   <name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>MINVERSION</name></name> <operator>&amp;&amp;</operator> <name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>ACENTRY</name></name> <operator>&amp;&amp;</operator>
+                   <name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>VERSION</name></name> <operator>&amp;&amp;</operator> <name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>SETTINGS</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>wss</name><operator>.</operator><name>m_unknown_records</name></name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    } catch <expr_stmt><expr><operator>(</operator><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><operator>&amp;</operator> <name>e</name><operator>)</operator> <block>{
+        <if_stmt><if>if <condition>(<expr><call><name><name>strErr</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>strErr</name> <operator>=</operator> <call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt/></block_content></block></if></if_stmt>}</block></expr></expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    } catch <expr_stmt><expr><operator>(</operator><operator>...</operator><operator>)</operator> <block>{
+        <if_stmt><if>if <condition>(<expr><call><name><name>strErr</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>strErr</name> <operator>=</operator> <literal type="string">"Caught unknown exception in ReadKeyValue"</literal></expr>;</expr_stmt>
+        <expr_stmt/></block_content></block></if></if_stmt>}</block></expr></expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    }
+    return <expr_stmt><expr><literal type="boolean">true</literal></expr>;</expr_stmt>
+}
+
+bool <macro><name>WalletBatch</name></macro><expr_stmt><expr><name><operator>::</operator><name>IsKeyType</name></name><operator>(</operator><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><operator>&amp;</operator> <name>strType</name><operator>)</operator>
+<block>{
+    <return>return <expr><operator>(</operator><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>KEY</name></name> <operator>||</operator>
+            <name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>MASTER_KEY</name></name> <operator>||</operator> <name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>CRYPTED_KEY</name></name><operator>)</operator></expr>;</return>
+}</block></expr></expr_stmt>
+
+<function><type><name>DBErrors</name></type> <name><name>WalletBatch</name><operator>::</operator><name>LoadWallet</name></name><parameter_list>(<parameter><decl><type><name>CWallet</name><modifier>*</modifier></type> <name>pwallet</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CWalletScanState</name></type> <name>wss</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fNoncriticalErrors</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>result</name> <init>= <expr><name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>pwallet</name><operator>-&gt;</operator><name>cs_wallet</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>AssertLockHeld</name><argument_list>(<argument><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nMinVersion</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_batch</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>MINVERSION</name></name></expr></argument>, <argument><expr><name>nMinVersion</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>nMinVersion</name> <operator>&gt;</operator> <name>FEATURE_LATEST</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>TOO_NEW</name></name></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>LoadMinVersion</name></name><argument_list>(<argument><expr><name>nMinVersion</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Get cursor</comment>
+        <decl_stmt><decl><type><name>Dbc</name><modifier>*</modifier></type> <name>pcursor</name> <init>= <expr><call><name><name>m_batch</name><operator>.</operator><name>GetCursor</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>pcursor</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>WalletLogPrintf</name></name><argument_list>(<argument><expr><literal type="string">"Error getting wallet database cursor\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition>
+        <block>{<block_content>
+            <comment type="line">// Read next record</comment>
+            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssKey</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssValue</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>m_batch</name><operator>.</operator><name>ReadAtCursor</name></name><argument_list>(<argument><expr><name>pcursor</name></expr></argument>, <argument><expr><name>ssKey</name></expr></argument>, <argument><expr><name>ssValue</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>==</operator> <name>DB_NOTFOUND</name></expr>)</condition><block type="pseudo"><block_content>
+                <break>break;</break></block_content></block></if>
+            <if type="elseif">else if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>WalletLogPrintf</name></name><argument_list>(<argument><expr><literal type="string">"Error reading next record from wallet database\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+
+            <comment type="line">// Try to be tolerant of single corrupt records:</comment>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strType</name></decl>, <decl><type ref="prev"/><name>strErr</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>ReadKeyValue</name><argument_list>(<argument><expr><name>pwallet</name></expr></argument>, <argument><expr><name>ssKey</name></expr></argument>, <argument><expr><name>ssValue</name></expr></argument>, <argument><expr><name>wss</name></expr></argument>, <argument><expr><name>strType</name></expr></argument>, <argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>)</condition>
+            <block>{<block_content>
+                <comment type="line">// losing keys is considered a catastrophic error, anything else</comment>
+                <comment type="line">// we assume the user can live with:</comment>
+                <if_stmt><if>if <condition>(<expr><call><name>IsKeyType</name><argument_list>(<argument><expr><name>strType</name></expr></argument>)</argument_list></call> <operator>||</operator> <name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>DEFAULTKEY</name></name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>result</name> <operator>=</operator> <name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</expr_stmt>
+                </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>FLAGS</name></name></expr>)</condition> <block>{<block_content>
+                    <comment type="line">// reading the wallet flags can only fail if unknown flags are present</comment>
+                    <expr_stmt><expr><name>result</name> <operator>=</operator> <name><name>DBErrors</name><operator>::</operator><name>TOO_NEW</name></name></expr>;</expr_stmt>
+                </block_content>}</block></if> <else>else <block>{<block_content>
+                    <comment type="line">// Leave other errors alone, if we try to fix them we might make things worse.</comment>
+                    <expr_stmt><expr><name>fNoncriticalErrors</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt> <comment type="line">// ... but do warn the user there is something wrong.</comment>
+                    <if_stmt><if>if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>TX</name></name></expr>)</condition><block type="pseudo"><block_content>
+                        <comment type="line">// Rescan if there is a bad transaction record:</comment>
+                        <expr_stmt><expr><call><name><name>gArgs</name><operator>.</operator><name>SoftSetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-rescan"</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                </block_content>}</block></else></if_stmt>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>strErr</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>WalletLogPrintf</name></name><argument_list>(<argument><expr><literal type="string">"%s\n"</literal></expr></argument>, <argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></while>
+        <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>boost</name><operator>::</operator><name>thread_interrupted</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <throw>throw;</throw>
+    </block_content>}</block></catch>
+    <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>result</name> <operator>=</operator> <name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+
+    <if_stmt><if>if <condition>(<expr><name>fNoncriticalErrors</name> <operator>&amp;&amp;</operator> <name>result</name> <operator>==</operator> <name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>result</name> <operator>=</operator> <name><name>DBErrors</name><operator>::</operator><name>NONCRITICAL_ERROR</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Any wallet corruption at all: skip any rewriting or</comment>
+    <comment type="line">// upgrading, we don't want to make it worse.</comment>
+    <if_stmt><if>if <condition>(<expr><name>result</name> <operator>!=</operator> <name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>result</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Last client version to open this wallet, was previously the file version number</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>last_client</name> <init>= <expr><name>CLIENT_VERSION</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>m_batch</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>VERSION</name></name></expr></argument>, <argument><expr><name>last_client</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>wallet_version</name> <init>= <expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetVersion</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>WalletLogPrintf</name></name><argument_list>(<argument><expr><literal type="string">"Wallet File Version = %d\n"</literal></expr></argument>, <argument><expr><ternary><condition><expr><name>wallet_version</name> <operator>&gt;</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><name>wallet_version</name></expr> </then><else>: <expr><name>last_client</name></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>WalletLogPrintf</name></name><argument_list>(<argument><expr><literal type="string">"Keys: %u plaintext, %u encrypted, %u w/ metadata, %u total. Unknown wallet records: %u\n"</literal></expr></argument>,
+           <argument><expr><name><name>wss</name><operator>.</operator><name>nKeys</name></name></expr></argument>, <argument><expr><name><name>wss</name><operator>.</operator><name>nCKeys</name></name></expr></argument>, <argument><expr><name><name>wss</name><operator>.</operator><name>nKeyMeta</name></name></expr></argument>, <argument><expr><name><name>wss</name><operator>.</operator><name>nKeys</name></name> <operator>+</operator> <name><name>wss</name><operator>.</operator><name>nCKeys</name></name></expr></argument>, <argument><expr><name><name>wss</name><operator>.</operator><name>m_unknown_records</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// nTimeFirstKey is only reliable if all keys have metadata</comment>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name><name>wss</name><operator>.</operator><name>nKeys</name></name> <operator>+</operator> <name><name>wss</name><operator>.</operator><name>nCKeys</name></name> <operator>+</operator> <name><name>wss</name><operator>.</operator><name>nWatchKeys</name></name><operator>)</operator> <operator>!=</operator> <name><name>wss</name><operator>.</operator><name>nKeyMeta</name></name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>spk_man</name> <init>= <expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>spk_man</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>spk_man</name><operator>-&gt;</operator><name>UpdateTimeFirstKey</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name> <range>: <expr><name><name>wss</name><operator>.</operator><name>vWalletUpgrade</name></name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>WriteTx</name><argument_list>(<argument><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>mapWallet</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+    <comment type="line">// Rewrite encrypted wallets of versions 0.4.0 and 0.5.0rc:</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>wss</name><operator>.</operator><name>fIsEncrypted</name></name> <operator>&amp;&amp;</operator> <operator>(</operator><name>last_client</name> <operator>==</operator> <literal type="number">40000</literal> <operator>||</operator> <name>last_client</name> <operator>==</operator> <literal type="number">50000</literal><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>NEED_REWRITE</name></name></expr>;</return></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>last_client</name> <operator>&lt;</operator> <name>CLIENT_VERSION</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Update</comment>
+        <expr_stmt><expr><call><name><name>m_batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>VERSION</name></name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name><name>wss</name><operator>.</operator><name>fAnyUnordered</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>result</name> <operator>=</operator> <call><name><name>pwallet</name><operator>-&gt;</operator><name>ReorderTransactions</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <comment type="line">// Upgrade all of the wallet keymetadata to have the hd master key id</comment>
+    <comment type="line">// This operation is not atomic, but if it fails, updated entries are still backwards compatible with older software</comment>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>UpgradeKeyMetadata</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>result</name> <operator>=</operator> <name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>DBErrors</name></type> <name><name>WalletBatch</name><operator>::</operator><name>FindWalletTx</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vTxHash</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CWalletTx</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vWtx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>result</name> <init>= <expr><name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr></init></decl>;</decl_stmt>
+
+    <try>try <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nMinVersion</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>m_batch</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>MINVERSION</name></name></expr></argument>, <argument><expr><name>nMinVersion</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>nMinVersion</name> <operator>&gt;</operator> <name>FEATURE_LATEST</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>TOO_NEW</name></name></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Get cursor</comment>
+        <decl_stmt><decl><type><name>Dbc</name><modifier>*</modifier></type> <name>pcursor</name> <init>= <expr><call><name><name>m_batch</name><operator>.</operator><name>GetCursor</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>pcursor</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Error getting wallet database cursor\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition>
+        <block>{<block_content>
+            <comment type="line">// Read next record</comment>
+            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssKey</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>CDataStream</name></type> <name>ssValue</name><argument_list>(<argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>ret</name> <init>= <expr><call><name><name>m_batch</name><operator>.</operator><name>ReadAtCursor</name></name><argument_list>(<argument><expr><name>pcursor</name></expr></argument>, <argument><expr><name>ssKey</name></expr></argument>, <argument><expr><name>ssValue</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>ret</name> <operator>==</operator> <name>DB_NOTFOUND</name></expr>)</condition><block type="pseudo"><block_content>
+                <break>break;</break></block_content></block></if>
+            <if type="elseif">else if <condition>(<expr><name>ret</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Error reading next record from wallet database\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strType</name></decl>;</decl_stmt>
+            <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>strType</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>strType</name> <operator>==</operator> <name><name>DBKeys</name><operator>::</operator><name>TX</name></name></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+                <expr_stmt><expr><name>ssKey</name> <operator>&gt;&gt;</operator> <name>hash</name></expr>;</expr_stmt>
+
+                <decl_stmt><decl><type><name>CWalletTx</name></type> <name>wtx</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument> <comment type="block">/* pwallet */</comment>, <argument><expr><call><name>MakeTransactionRef</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <expr_stmt><expr><name>ssValue</name> <operator>&gt;&gt;</operator> <name>wtx</name></expr>;</expr_stmt>
+
+                <expr_stmt><expr><call><name><name>vTxHash</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>vWtx</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>wtx</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></while>
+        <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>close</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>boost</name><operator>::</operator><name>thread_interrupted</name></name><modifier>&amp;</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <throw>throw;</throw>
+    </block_content>}</block></catch>
+    <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>result</name> <operator>=</operator> <name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</expr_stmt>
+    </block_content>}</block></catch></try>
+
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>DBErrors</name></type> <name><name>WalletBatch</name><operator>::</operator><name>ZapSelectTx</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vTxHashIn</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vTxHashOut</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// build list of wallet TXs and hashes</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>vTxHash</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CWalletTx</name></expr></argument>&gt;</argument_list></name></type> <name>vWtx</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>err</name> <init>= <expr><call><name>FindWalletTx</name><argument_list>(<argument><expr><name>vTxHash</name></expr></argument>, <argument><expr><name>vWtx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>err</name> <operator>!=</operator> <name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name>err</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>sort</name></name><argument_list>(<argument><expr><call><name><name>vTxHash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vTxHash</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>sort</name></name><argument_list>(<argument><expr><call><name><name>vTxHashIn</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>vTxHashIn</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// erase each matching wallet TX</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>delerror</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>it</name> <init>= <expr><call><name><name>vTxHashIn</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name> <range>: <expr><name>vTxHash</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <while>while <condition>(<expr><name>it</name> <operator>&lt;</operator> <call><name><name>vTxHashIn</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>(</operator><operator>*</operator><name>it</name><operator>)</operator> <operator>&lt;</operator> <name>hash</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>it</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <if_stmt><if>if <condition>(<expr><name>it</name> <operator>==</operator> <call><name><name>vTxHashIn</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <break>break;</break>
+        </block_content>}</block></if>
+        <if type="elseif">else if <condition>(<expr><operator>(</operator><operator>*</operator><name>it</name><operator>)</operator> <operator>==</operator> <name>hash</name></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name>EraseTx</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>WALLETDB</name></name></expr></argument>, <argument><expr><literal type="string">"Transaction was found for deletion but returned database error: %s\n"</literal></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>delerror</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>vTxHashOut</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <if_stmt><if>if <condition>(<expr><name>delerror</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>DBErrors</name></type> <name><name>WalletBatch</name><operator>::</operator><name>ZapWalletTx</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CWalletTx</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>vWtx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// build list of wallet TXs</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>vTxHash</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>err</name> <init>= <expr><call><name>FindWalletTx</name><argument_list>(<argument><expr><name>vTxHash</name></expr></argument>, <argument><expr><name>vWtx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>err</name> <operator>!=</operator> <name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>err</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// erase each wallet TX</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>hash</name> <range>: <expr><name>vTxHash</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>EraseTx</name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>CORRUPT</name></name></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><name><name>DBErrors</name><operator>::</operator><name>LOAD_OK</name></name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>MaybeCompactWalletDB</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>fOneThread</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>fOneThread</name><operator>.</operator><name>exchange</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>gArgs</name><operator>.</operator><name>GetBoolArg</name></name><argument_list>(<argument><expr><literal type="string">"-flushwallet"</literal></expr></argument>, <argument><expr><name>DEFAULT_FLUSHWALLET</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>shared_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CWallet</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>pwallet</name> <range>: <expr><call><name>GetWallets</name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>WalletDatabase</name><modifier>&amp;</modifier></type> <name>dbh</name> <init>= <expr><call><name><name>pwallet</name><operator>-&gt;</operator><name>GetDBHandle</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nUpdateCounter</name> <init>= <expr><name><name>dbh</name><operator>.</operator><name>nUpdateCounter</name></name></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name><name>dbh</name><operator>.</operator><name>nLastSeen</name></name> <operator>!=</operator> <name>nUpdateCounter</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name><name>dbh</name><operator>.</operator><name>nLastSeen</name></name> <operator>=</operator> <name>nUpdateCounter</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name><name>dbh</name><operator>.</operator><name>nLastWalletUpdate</name></name> <operator>=</operator> <call><name>GetTime</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name><name>dbh</name><operator>.</operator><name>nLastFlushed</name></name> <operator>!=</operator> <name>nUpdateCounter</name> <operator>&amp;&amp;</operator> <call><name>GetTime</name><argument_list>()</argument_list></call> <operator>-</operator> <name><name>dbh</name><operator>.</operator><name>nLastWalletUpdate</name></name> <operator>&gt;=</operator> <literal type="number">2</literal></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>BerkeleyBatch</name><operator>::</operator><name>PeriodicFlush</name></name><argument_list>(<argument><expr><name>dbh</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name><name>dbh</name><operator>.</operator><name>nLastFlushed</name></name> <operator>=</operator> <name>nUpdateCounter</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <expr_stmt><expr><name>fOneThread</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="line">//</comment>
+<comment type="line">// Try to (very carefully!) recover wallet file if there is a problem.</comment>
+<comment type="line">//</comment>
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>Recover</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>callbackDataIn</name></decl></parameter>, <parameter><function_decl><type><name>bool</name></type> (<modifier>*</modifier><name>recoverKVcallback</name>)<parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>callbackData</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssKey</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssValue</name></decl></parameter>)</parameter_list></function_decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>out_backup_filename</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>BerkeleyBatch</name><operator>::</operator><name>Recover</name></name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><name>callbackDataIn</name></expr></argument>, <argument><expr><name>recoverKVcallback</name></expr></argument>, <argument><expr><name>out_backup_filename</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>Recover</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>out_backup_filename</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// recover without a key filter callback</comment>
+    <comment type="line">// results in recovering all record types</comment>
+    <return>return <expr><call><name><name>WalletBatch</name><operator>::</operator><name>Recover</name></name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name>out_backup_filename</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>RecoverKeysOnlyFilter</name></name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>callbackData</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssKey</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssValue</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CWallet</name> <modifier>*</modifier></type><name>dummyWallet</name> <init>= <expr><cast type="reinterpret">reinterpret_cast<argument_list type="generic">&lt;<argument><expr><name>CWallet</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>callbackData</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CWalletScanState</name></type> <name>dummyWss</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strType</name></decl>, <decl><type ref="prev"/><name>strErr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fReadOK</name></decl>;</decl_stmt>
+    <block>{<block_content>
+        <comment type="line">// Required in LoadKeyMetadata():</comment>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name><name>dummyWallet</name><operator>-&gt;</operator><name>cs_wallet</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>AssertLockHeld</name><argument_list>(<argument><expr><call><name><name>dummyWallet</name><operator>-&gt;</operator><name>GetLegacyScriptPubKeyMan</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><name>cs_wallet</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fReadOK</name> <operator>=</operator> <call><name>ReadKeyValue</name><argument_list>(<argument><expr><name>dummyWallet</name></expr></argument>, <argument><expr><name>ssKey</name></expr></argument>, <argument><expr><name>ssValue</name></expr></argument>,
+                               <argument><expr><name>dummyWss</name></expr></argument>, <argument><expr><name>strType</name></expr></argument>, <argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>IsKeyType</name><argument_list>(<argument><expr><name>strType</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <name>strType</name> <operator>!=</operator> <name><name>DBKeys</name><operator>::</operator><name>HDCHAIN</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fReadOK</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"WARNING: WalletBatch::Recover skipping %s: %s\n"</literal></expr></argument>, <argument><expr><name>strType</name></expr></argument>, <argument><expr><name>strErr</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>VerifyEnvironment</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>errorStr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>BerkeleyBatch</name><operator>::</operator><name>VerifyEnvironment</name></name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><name>errorStr</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>VerifyDatabaseFile</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>wallet_path</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>warnings</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>errorStr</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>BerkeleyBatch</name><operator>::</operator><name>VerifyDatabaseFile</name></name><argument_list>(<argument><expr><name>wallet_path</name></expr></argument>, <argument><expr><name>warnings</name></expr></argument>, <argument><expr><name>errorStr</name></expr></argument>, <argument><expr><name><name>WalletBatch</name><operator>::</operator><name>Recover</name></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteDestData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>address</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>value</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>DESTDATA</name></name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>EraseDestData</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>address</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>key</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>EraseIC</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>DESTDATA</name></name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteHDChain</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CHDChain</name><modifier>&amp;</modifier></type> <name>chain</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>HDCHAIN</name></name></expr></argument>, <argument><expr><name>chain</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>WriteWalletFlags</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint64_t</name></type> <name>flags</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>WriteIC</name><argument_list>(<argument><expr><name><name>DBKeys</name><operator>::</operator><name>FLAGS</name></name></expr></argument>, <argument><expr><name>flags</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>TxnBegin</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>m_batch</name><operator>.</operator><name>TxnBegin</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>TxnCommit</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>m_batch</name><operator>.</operator><name>TxnCommit</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>WalletBatch</name><operator>::</operator><name>TxnAbort</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>m_batch</name><operator>.</operator><name>TxnAbort</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+</unit>

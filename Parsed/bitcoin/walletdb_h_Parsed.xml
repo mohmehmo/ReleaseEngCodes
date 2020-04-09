@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/wallet/walletdb.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_WALLET_WALLETDB_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_WALLET_WALLETDB_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;amount.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/sign.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/db.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;key.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/**
+ * Overview of wallet database classes:
+ *
+ * - WalletBatch is an abstract modifier object for the wallet database, and encapsulates a database
+ *   batch update as well as methods to act on the database. It should be agnostic to the database implementation.
+ *
+ * The following classes are implementation specific:
+ * - BerkeleyEnvironment is an environment in which the database exists.
+ * - BerkeleyDatabase represents a wallet database.
+ * - BerkeleyBatch is a low-level database batch update.
+ */</comment>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>bool</name></type> <name>DEFAULT_FLUSHWALLET</name> <init>= <expr><name>true</name></expr></init></decl>;</decl_stmt>
+
+<struct_decl>struct <name>CBlockLocator</name>;</struct_decl>
+<decl_stmt><decl><type><name>class</name></type> <name>CKeyPool</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CMasterKey</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CScript</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CWallet</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>CWalletTx</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint160</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>uint256</name></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Backend-agnostic database type. */</comment>
+<decl_stmt><decl><type><name>using</name></type> <name>WalletDatabase</name> <init>= <expr><name>BerkeleyDatabase</name></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** Error statuses for the wallet database */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>DBErrors</name>
+<block>{<block_content>
+    <expr_stmt><expr><name>LOAD_OK</name></expr><operator>,</operator>
+    <expr><name>CORRUPT</name></expr><operator>,</operator>
+    <expr><name>NONCRITICAL_ERROR</name></expr><operator>,</operator>
+    <expr><name>TOO_NEW</name></expr><operator>,</operator>
+    <expr><name>LOAD_FAIL</name></expr><operator>,</operator>
+    <expr><name>NEED_REWRITE</name></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>DBKeys</name> <block>{<block_content>
+<extern>extern const std::string ACENTRY;</extern>
+<extern>extern const std::string BESTBLOCK;</extern>
+<extern>extern const std::string BESTBLOCK_NOMERKLE;</extern>
+<extern>extern const std::string CRYPTED_KEY;</extern>
+<extern>extern const std::string CSCRIPT;</extern>
+<extern>extern const std::string DEFAULTKEY;</extern>
+<extern>extern const std::string DESTDATA;</extern>
+<extern>extern const std::string FLAGS;</extern>
+<extern>extern const std::string HDCHAIN;</extern>
+<extern>extern const std::string KEY;</extern>
+<extern>extern const std::string KEYMETA;</extern>
+<extern>extern const std::string MASTER_KEY;</extern>
+<extern>extern const std::string MINVERSION;</extern>
+<extern>extern const std::string NAME;</extern>
+<extern>extern const std::string OLD_KEY;</extern>
+<extern>extern const std::string ORDERPOSNEXT;</extern>
+<extern>extern const std::string POOL;</extern>
+<extern>extern const std::string PURPOSE;</extern>
+<extern>extern const std::string SETTINGS;</extern>
+<extern>extern const std::string TX;</extern>
+<extern>extern const std::string VERSION;</extern>
+<extern>extern const std::string WATCHMETA;</extern>
+<extern>extern const std::string WATCHS;</extern>
+</block_content>}</block></decl></decl_stmt> <comment type="line">// namespace DBKeys</comment>
+
+<comment type="block">/* simple HD chain data model */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CHDChain</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nExternalChainCounter</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>nInternalChainCounter</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CKeyID</name></type> <name>seed_id</name></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; seed hash160</comment>
+
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>VERSION_HD_BASE</name>        <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>VERSION_HD_CHAIN_SPLIT</name> <init>= <expr><literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>CURRENT_VERSION</name>        <init>= <expr><name>VERSION_HD_CHAIN_SPLIT</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nVersion</name></decl>;</decl_stmt>
+
+    <macro><name>CHDChain</name><argument_list>()</argument_list></macro> <block>{<block_content> <expr_stmt><expr><call><name>SetNull</name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block>
+    <expr_stmt><expr><name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name><name>this</name><operator>-&gt;</operator><name>nVersion</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nExternalChainCounter</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>seed_id</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>this</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>&gt;=</operator> <name>VERSION_HD_CHAIN_SPLIT</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nInternalChainCounter</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name>void</name></type> <name>SetNull</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nVersion</name> <operator>=</operator> <name>CHDChain</name><operator>::</operator><name>CURRENT_VERSION</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nExternalChainCounter</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nInternalChainCounter</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>seed_id</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CKeyMetadata</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>VERSION_BASIC</name><init>=<expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>VERSION_WITH_HDDATA</name><init>=<expr><literal type="number">10</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>VERSION_WITH_KEY_ORIGIN</name> <init>= <expr><literal type="number">12</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>CURRENT_VERSION</name><init>=<expr><name>VERSION_WITH_KEY_ORIGIN</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nVersion</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nCreateTime</name></decl>;</decl_stmt> <comment type="line">// 0 means unknown</comment>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <name>hdKeypath</name></expr>;</expr_stmt> <comment type="line">//optional HD/bip32 keypath. Still used to determine whether a key is a seed. Also kept for backwards compatibility</comment>
+    <decl_stmt><decl><type><name>CKeyID</name></type> <name>hd_seed_id</name></decl>;</decl_stmt> <comment type="line">//id of the HD seed used to derive this key</comment>
+    <decl_stmt><decl><type><name>KeyOriginInfo</name></type> <name>key_origin</name></decl>;</decl_stmt> <comment type="line">// Key origin info with path and fingerprint</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>has_key_origin</name> <init>= <expr><name>false</name></expr></init></decl>;</decl_stmt> <comment type="line">//&lt; Whether the key_origin is useful</comment>
+
+    <macro><name>CKeyMetadata</name><argument_list>()</argument_list></macro>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>SetNull</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block>
+    <function><type><name>explicit</name></type> <name>CKeyMetadata</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nCreateTime_</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>SetNull</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nCreateTime</name> <operator>=</operator> <name>nCreateTime_</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <expr_stmt><expr><name>ADD_SERIALIZE_METHODS</name></expr>;</expr_stmt>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Stream</name></expr></argument>, <argument><expr><name>typename</name> <name>Operation</name></expr></argument>&gt;</argument_list></name>
+    <specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name><name>this</name><operator>-&gt;</operator><name>nVersion</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>nCreateTime</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>this</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>&gt;=</operator> <name>VERSION_WITH_HDDATA</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>hdKeypath</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>hd_seed_id</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>this</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>&gt;=</operator> <name>VERSION_WITH_KEY_ORIGIN</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>key_origin</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><name>has_key_origin</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name>void</name></type> <name>SetNull</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nVersion</name> <operator>=</operator> <name>CKeyMetadata</name><operator>::</operator><name>CURRENT_VERSION</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nCreateTime</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>hdKeypath</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>hd_seed_id</name><operator>.</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>key_origin</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>has_key_origin</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** Access to the wallet database.
+ * Opens the database and provides read and write access to it. Each read and write is its own transaction.
+ * Multiple operation transactions can be started using TxnBegin() and committed using TxnCommit()
+ * Otherwise the transaction will be committed when the object goes out of scope.
+ * Optionally (on by default) it will flush to disk on close.
+ * Every 1000 writes will automatically trigger a flush to disk.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>WalletBatch</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>K</name></expr></argument>, <argument><expr><name>typename</name> <name>T</name></expr></argument>&gt;</argument_list></name>
+    <name>bool</name></type> <name>WriteIC</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>K</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>T</name><modifier>&amp;</modifier></type> <name>value</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fOverwrite</name> <init>= <expr><name>true</name></expr></init></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>value</name></expr></argument>, <argument><expr><name>fOverwrite</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><name>false</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>m_database</name><operator>.</operator><name>IncrementUpdateCounter</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>m_database</name><operator>.</operator><name>nUpdateCounter</name></name> <operator>%</operator> <literal type="number">1000</literal> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>m_batch</name><operator>.</operator><name>Flush</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <return>return <expr><name>true</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>K</name></expr></argument>&gt;</argument_list></name>
+    <name>bool</name></type> <name>EraseIC</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>K</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_batch</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><name>false</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>m_database</name><operator>.</operator><name>IncrementUpdateCounter</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>m_database</name><operator>.</operator><name>nUpdateCounter</name></name> <operator>%</operator> <literal type="number">1000</literal> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>m_batch</name><operator>.</operator><name>Flush</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <return>return <expr><name>true</name></expr>;</return>
+    </block_content>}</block></function>
+
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <macro><name>WalletBatch</name><argument_list>(<argument>WalletDatabase&amp; database</argument>, <argument>const char* pszMode = <literal type="string">"r+"</literal></argument>, <argument>bool _fFlushOnClose = true</argument>)</argument_list></macro> :
+        <expr_stmt><expr><call><name>m_batch</name><argument_list>(<argument><expr><name>database</name></expr></argument>, <argument><expr><name>pszMode</name></expr></argument>, <argument><expr><name>_fFlushOnClose</name></expr></argument>)</argument_list></call></expr><operator>,</operator>
+        <macro><name>m_database</name><argument_list>(<argument>database</argument>)</argument_list></macro>
+    <expr><block>{
+    }</block>
+    <call><name>WalletBatch</name><argument_list>(<argument><expr><specifier>const</specifier> <name>WalletBatch</name><operator>&amp;</operator></expr></argument>)</argument_list></call> <operator>=</operator> <name>delete</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>WalletBatch</name><modifier>&amp;</modifier></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>WalletBatch</name><operator>&amp;</operator><operator>)</operator> <operator>=</operator> <name>delete</name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>WriteName</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>strAddress</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>strName</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>EraseName</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>strAddress</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>WritePurpose</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>strAddress</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>purpose</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ErasePurpose</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>strAddress</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <function_decl><type><name>bool</name></type> <name>WriteTx</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CWalletTx</name><modifier>&amp;</modifier></type> <name>wtx</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>EraseTx</name><parameter_list>(<parameter><decl><type><name>uint256</name></type> <name>hash</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteKeyMetadata</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name><modifier>&amp;</modifier></type> <name>meta</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>pubkey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>bool</name></type> <name>overwrite</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>WriteKey</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CPubKey</name><modifier>&amp;</modifier></type> <name>vchPubKey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CPrivKey</name><modifier>&amp;</modifier></type> <name>vchPrivKey</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name> <modifier>&amp;</modifier></type><name>keyMeta</name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>bool</name></type> <name>WriteCryptedKey</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CPubKey</name><operator>&amp;</operator> <name>vchPubKey</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vchCryptedSecret</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CKeyMetadata</name> <operator>&amp;</operator><name>keyMeta</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <function_decl><type><name>bool</name></type> <name>WriteMasterKey</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nID</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CMasterKey</name><modifier>&amp;</modifier></type> <name>kMasterKey</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteCScript</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint160</name><modifier>&amp;</modifier></type> <name>hash</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CScript</name><modifier>&amp;</modifier></type> <name>redeemScript</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteWatchOnly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>script</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyMetadata</name> <modifier>&amp;</modifier></type><name>keymeta</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>EraseWatchOnly</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CScript</name> <modifier>&amp;</modifier></type><name>script</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteBestBlock</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockLocator</name><modifier>&amp;</modifier></type> <name>locator</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>ReadBestBlock</name><parameter_list>(<parameter><decl><type><name>CBlockLocator</name><modifier>&amp;</modifier></type> <name>locator</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteOrderPosNext</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nOrderPosNext</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>ReadPool</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nPool</name></decl></parameter>, <parameter><decl><type><name>CKeyPool</name><modifier>&amp;</modifier></type> <name>keypool</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>WritePool</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nPool</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CKeyPool</name><modifier>&amp;</modifier></type> <name>keypool</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><name>bool</name></type> <name>ErasePool</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nPool</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteMinVersion</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>nVersion</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">/// Write destination data key,value tuple to database</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>WriteDestData</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>address</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>key</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>value</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="line" format="doxygen">/// Erase destination data tuple from wallet database</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>EraseDestData</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>address</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>key</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <function_decl><type><name>DBErrors</name></type> <name>LoadWallet</name><parameter_list>(<parameter><decl><type><name>CWallet</name><modifier>*</modifier></type> <name>pwallet</name></decl></parameter>)</parameter_list>;</function_decl>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>FindWalletTx</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vTxHash</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CWalletTx</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vWtx</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>ZapWalletTx</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CWalletTx</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vWtx</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>DBErrors</name></type> <name>ZapSelectTx</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vHashIn</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>vHashOut</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block">/* Try to (very carefully!) recover wallet database (with a possible key type filter) */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>Recover</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>path</name><operator>&amp;</operator> <name>wallet_path</name></expr></argument>, <argument><expr><name>void</name> <operator>*</operator><name>callbackDataIn</name></expr></argument>, <argument><expr><macro><name>bool</name> <argument_list>(<argument>*recoverKVcallback</argument>)</argument_list></macro><operator>(</operator><name>void</name><operator>*</operator> <name>callbackData</name><operator>,</operator> <name>CDataStream</name> <name>ssKey</name><operator>,</operator> <name>CDataStream</name> <name>ssValue</name><operator>)</operator></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>out_backup_filename</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block">/* Recover convenience-function to bypass the key filter callback, called when verify fails, recovers everything */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>Recover</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>path</name><operator>&amp;</operator> <name>wallet_path</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>out_backup_filename</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block">/* Recover filter (used as callback), will only let keys (cryptographical keys) as KV/key-type pass through */</comment>
+    <function_decl><type><specifier>static</specifier> <name>bool</name></type> <name>RecoverKeysOnlyFilter</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>callbackData</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssKey</name></decl></parameter>, <parameter><decl><type><name>CDataStream</name></type> <name>ssValue</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block">/* Function to determine if a certain KV/key-type is a key (cryptographical key) type */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>IsKeyType</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>strType</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block">/* verifies the database environment */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>VerifyEnvironment</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>path</name><operator>&amp;</operator> <name>wallet_path</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>errorStr</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <comment type="block">/* verifies the database file */</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>VerifyDatabaseFile</name><argument_list>(<argument><expr><specifier>const</specifier> <name>fs</name><operator>::</operator><name>path</name><operator>&amp;</operator> <name>wallet_path</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>string</name></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>warnings</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>errorStr</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! write the hdchain model (external chain child index counter)</comment>
+    <function_decl><type><name>bool</name></type> <name>WriteHDChain</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CHDChain</name><modifier>&amp;</modifier></type> <name>chain</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <function_decl><type><name>bool</name></type> <name>WriteWalletFlags</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint64_t</name></type> <name>flags</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Begin a new transaction</comment>
+    <function_decl><type><name>bool</name></type> <name>TxnBegin</name><parameter_list>()</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Commit current transaction</comment>
+    <function_decl><type><name>bool</name></type> <name>TxnCommit</name><parameter_list>()</parameter_list>;</function_decl>
+    <comment type="line" format="doxygen">//! Abort current transaction</comment>
+    <function_decl><type><name>bool</name></type> <name>TxnAbort</name><parameter_list>()</parameter_list>;</function_decl>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>BerkeleyBatch</name></type> <name>m_batch</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>WalletDatabase</name><modifier>&amp;</modifier></type> <name>m_database</name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line" format="doxygen">//! Compacts BDB state so that wallet.dat is self-contained (if there are changes)</comment>
+<function_decl><type><name>void</name></type> <name>MaybeCompactWalletDB</name><parameter_list>()</parameter_list>;</function_decl>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_WALLET_WALLETDB_H</comment>
+</unit>

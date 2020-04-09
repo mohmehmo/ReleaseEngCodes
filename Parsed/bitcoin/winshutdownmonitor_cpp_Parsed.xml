@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/winshutdownmonitor.cpp"><comment type="line">// Copyright (c) 2014-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/winshutdownmonitor.h&gt;</cpp:file></cpp:include>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>Q_OS_WIN</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;shutdown.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;windows.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QDebug&gt;</cpp:file></cpp:include>
+
+<comment type="line">// If we don't want a message to be processed by Qt, return true and set result to</comment>
+<comment type="line">// the value that the window procedure should return. Otherwise return false.</comment>
+<function><type><name>bool</name></type> <name><name>WinShutdownMonitor</name><operator>::</operator><name>nativeEventFilter</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QByteArray</name> <modifier>&amp;</modifier></type><name>eventType</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>pMessage</name></decl></parameter>, <parameter><decl><type><name>long</name> <modifier>*</modifier></type><name>pnResult</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+       <expr_stmt><expr><call><name>Q_UNUSED</name><argument_list>(<argument><expr><name>eventType</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+       <decl_stmt><decl><type><name>MSG</name> <modifier>*</modifier></type><name>pMsg</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>MSG</name> <operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>pMessage</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+
+       <switch>switch<condition>(<expr><name><name>pMsg</name><operator>-&gt;</operator><name>message</name></name></expr>)</condition>
+       <block>{<block_content>
+           <case>case <expr><name>WM_QUERYENDSESSION</name></expr>:</case>
+           <block>{<block_content>
+               <comment type="line">// Initiate a client shutdown after receiving a WM_QUERYENDSESSION and block</comment>
+               <comment type="line">// Windows session end until we have finished client shutdown.</comment>
+               <expr_stmt><expr><call><name>StartShutdown</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+               <expr_stmt><expr><operator>*</operator><name>pnResult</name> <operator>=</operator> <name>FALSE</name></expr>;</expr_stmt>
+               <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+           </block_content>}</block>
+
+           <case>case <expr><name>WM_ENDSESSION</name></expr>:</case>
+           <block>{<block_content>
+               <expr_stmt><expr><operator>*</operator><name>pnResult</name> <operator>=</operator> <name>FALSE</name></expr>;</expr_stmt>
+               <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+           </block_content>}</block>
+       </block_content>}</block></switch>
+
+       <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>WinShutdownMonitor</name><operator>::</operator><name>registerShutdownBlockReason</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name><modifier>&amp;</modifier></type> <name>strReason</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>HWND</name><modifier>&amp;</modifier></type> <name>mainWinId</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <typedef>typedef <function_decl><type><name>BOOL</name></type> (<name>WINAPI</name> <modifier>*</modifier><name>PSHUTDOWNBRCREATE</name>)<parameter_list>(<parameter><decl><type><name>HWND</name></type></decl></parameter>, <parameter><decl><type><name>LPCWSTR</name></type></decl></parameter>)</parameter_list>;</function_decl></typedef>
+    <decl_stmt><decl><type><name>PSHUTDOWNBRCREATE</name></type> <name>shutdownBRCreate</name> <init>= <expr><operator>(</operator><name>PSHUTDOWNBRCREATE</name><operator>)</operator><call><name>GetProcAddress</name><argument_list>(<argument><expr><call><name>GetModuleHandleA</name><argument_list>(<argument><expr><literal type="string">"User32.dll"</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><literal type="string">"ShutdownBlockReasonCreate"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>shutdownBRCreate</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>qWarning</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"registerShutdownBlockReason: GetProcAddress for ShutdownBlockReasonCreate failed"</literal></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name>shutdownBRCreate</name><argument_list>(<argument><expr><name>mainWinId</name></expr></argument>, <argument><expr><call><name><name>strReason</name><operator>.</operator><name>toStdWString</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>c_str</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>qInfo</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"registerShutdownBlockReason: Successfully registered: "</literal> <operator>+</operator> <name>strReason</name></expr>;</expr_stmt></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>qWarning</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"registerShutdownBlockReason: Failed to register: "</literal> <operator>+</operator> <name>strReason</name></expr>;</expr_stmt></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</unit>

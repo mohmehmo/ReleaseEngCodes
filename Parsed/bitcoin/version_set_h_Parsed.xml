@@ -1,0 +1,400 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/leveldb/db/version_set.h"><comment type="line">// Copyright (c) 2011 The LevelDB Authors. All rights reserved.</comment>
+<comment type="line">// Use of this source code is governed by a BSD-style license that can be</comment>
+<comment type="line">// found in the LICENSE file. See the AUTHORS file for names of contributors.</comment>
+<comment type="line">//</comment>
+<comment type="line">// The representation of a DBImpl consists of a set of Versions.  The</comment>
+<comment type="line">// newest version is called "current".  Older versions may be kept</comment>
+<comment type="line">// around to provide a consistent view to live iterators.</comment>
+<comment type="line">//</comment>
+<comment type="line">// Each Version keeps track of a set of Table files per level.  The</comment>
+<comment type="line">// entire set of versions is maintained in a VersionSet.</comment>
+<comment type="line">//</comment>
+<comment type="line">// Version,VersionSet are thread-compatible, but require external</comment>
+<comment type="line">// synchronization on all accesses.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>STORAGE_LEVELDB_DB_VERSION_SET_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORAGE_LEVELDB_DB_VERSION_SET_H_</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;set&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"db/dbformat.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"db/version_edit.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"port/port.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"port/thread_annotations.h"</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>leveldb</name> <block>{<block_content>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>log</name> <block>{<block_content> <decl_stmt><decl><type><name>class</name></type> <name>Writer</name></decl>;</decl_stmt> </block_content>}</block></decl></decl_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>Compaction</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>Iterator</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>MemTable</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>TableBuilder</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>TableCache</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>Version</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>VersionSet</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>class</name></type> <name>WritableFile</name></decl>;</decl_stmt>
+
+<comment type="line">// Return the smallest index i such that files[i]-&gt;largest &gt;= key.</comment>
+<comment type="line">// Return files.size() if there is no such file.</comment>
+<comment type="line">// REQUIRES: "files" contains a sorted list of non-overlapping files.</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>int</name></type> <name>FindFile</name><argument_list>(<argument><expr><specifier>const</specifier> <name>InternalKeyComparator</name><operator>&amp;</operator> <name>icmp</name></expr></argument>,
+                    <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>files</name></expr></argument>,
+                    <argument><expr><specifier>const</specifier> <name>Slice</name><operator>&amp;</operator> <name>key</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<comment type="line">// Returns true iff some file in "files" overlaps the user key range</comment>
+<comment type="line">// [*smallest,*largest].</comment>
+<comment type="line">// smallest==NULL represents a key smaller than all keys in the DB.</comment>
+<comment type="line">// largest==NULL represents a key largest than all keys in the DB.</comment>
+<comment type="line">// REQUIRES: If disjoint_sorted_files, files[] contains disjoint ranges</comment>
+<comment type="line">//           in sorted order.</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>bool</name></type> <name>SomeFileOverlapsRange</name><argument_list>(
+    <argument><expr><specifier>const</specifier> <name>InternalKeyComparator</name><operator>&amp;</operator> <name>icmp</name></expr></argument>,
+    <argument><expr><name>bool</name> <name>disjoint_sorted_files</name></expr></argument>,
+    <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>files</name></expr></argument>,
+    <argument><expr><specifier>const</specifier> <name>Slice</name><operator>*</operator> <name>smallest_user_key</name></expr></argument>,
+    <argument><expr><specifier>const</specifier> <name>Slice</name><operator>*</operator> <name>largest_user_key</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>Version</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <comment type="line">// Append to *iters a sequence of iterators that will</comment>
+  <comment type="line">// yield the contents of this Version when merged together.</comment>
+  <comment type="line">// REQUIRES: This version has been saved (see VersionSet::SaveTo)</comment>
+  <decl_stmt><decl><type><name>void</name></type> <name>AddIterators</name><argument_list>(<argument><expr><specifier>const</specifier> <name>ReadOptions</name><operator>&amp;</operator></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>Iterator</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>iters</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <comment type="line">// Lookup the value for key.  If found, store it in *val and</comment>
+  <comment type="line">// return OK.  Else return a non-OK status.  Fills *stats.</comment>
+  <comment type="line">// REQUIRES: lock is not held</comment>
+  <struct>struct <name>GetStats</name> <block>{
+    <decl_stmt><decl><type><name>FileMetaData</name><modifier>*</modifier></type> <name>seek_file</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>seek_file_level</name></decl>;</decl_stmt>
+  }</block>;</struct>
+  <decl_stmt><decl><type><name>Status</name></type> <name>Get</name><argument_list>(<argument><expr><specifier>const</specifier> <name>ReadOptions</name><operator>&amp;</operator></expr></argument>, <argument><expr><specifier>const</specifier> <name>LookupKey</name><operator>&amp;</operator> <name>key</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>string</name><operator>*</operator> <name>val</name></expr></argument>,
+             <argument><expr><name>GetStats</name><operator>*</operator> <name>stats</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <comment type="line">// Adds "stats" into the current state.  Returns true if a new</comment>
+  <comment type="line">// compaction may need to be triggered, false otherwise.</comment>
+  <comment type="line">// REQUIRES: lock is held</comment>
+  <function_decl><type><name>bool</name></type> <name>UpdateStats</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>GetStats</name><modifier>&amp;</modifier></type> <name>stats</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Record a sample of bytes read at the specified internal key.</comment>
+  <comment type="line">// Samples are taken approximately once every config::kReadBytesPeriod</comment>
+  <comment type="line">// bytes.  Returns true if a new compaction may need to be triggered.</comment>
+  <comment type="line">// REQUIRES: lock is held</comment>
+  <function_decl><type><name>bool</name></type> <name>RecordReadSample</name><parameter_list>(<parameter><decl><type><name>Slice</name></type> <name>key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Reference count management (so Versions do not disappear out from</comment>
+  <comment type="line">// under live iterators)</comment>
+  <function_decl><type><name>void</name></type> <name>Ref</name><parameter_list>()</parameter_list>;</function_decl>
+  <function_decl><type><name>void</name></type> <name>Unref</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <decl_stmt><decl><type><name>void</name></type> <name>GetOverlappingInputs</name><argument_list>(
+      <argument><expr><name>int</name> <name>level</name></expr></argument>,
+      <argument><expr><specifier>const</specifier> <name>InternalKey</name><operator>*</operator> <name>begin</name></expr></argument>,         <comment type="line">// NULL means before all keys</comment>
+      <argument><expr><specifier>const</specifier> <name>InternalKey</name><operator>*</operator> <name>end</name></expr></argument>,           <comment type="line">// NULL means after all keys</comment>
+      <argument><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>inputs</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <comment type="line">// Returns true iff some file in the specified level overlaps</comment>
+  <comment type="line">// some part of [*smallest_user_key,*largest_user_key].</comment>
+  <comment type="line">// smallest_user_key==NULL represents a key smaller than all keys in the DB.</comment>
+  <comment type="line">// largest_user_key==NULL represents a key largest than all keys in the DB.</comment>
+  <function_decl><type><name>bool</name></type> <name>OverlapInLevel</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>level</name></decl></parameter>,
+                      <parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>*</modifier></type> <name>smallest_user_key</name></decl></parameter>,
+                      <parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>*</modifier></type> <name>largest_user_key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Return the level at which we should place a new memtable compaction</comment>
+  <comment type="line">// result that covers the range [smallest_user_key,largest_user_key].</comment>
+  <function_decl><type><name>int</name></type> <name>PickLevelForMemTableOutput</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>&amp;</modifier></type> <name>smallest_user_key</name></decl></parameter>,
+                                 <parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>&amp;</modifier></type> <name>largest_user_key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <decl_stmt><decl><type><name>int</name></type> <name>NumFiles</name><argument_list>(<argument><expr><name>int</name> <name>level</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name><name>files_</name><index>[<expr><name>level</name></expr>]</index></name><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+  <comment type="line">// Return a human readable string that describes this version's contents.</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <macro><name>DebugString</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+ <label><name>private</name>:</label>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>Compaction</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>VersionSet</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><name>class</name></type> <name>LevelFileNumIterator</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>Iterator</name><modifier>*</modifier></type> <name>NewConcatenatingIterator</name><argument_list>(<argument><expr><specifier>const</specifier> <name>ReadOptions</name><operator>&amp;</operator></expr></argument>, <argument><expr><name>int</name> <name>level</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+  <comment type="line">// Call func(arg, level, f) for every file that overlaps user_key in</comment>
+  <comment type="line">// order from newest to oldest.  If an invocation of func returns</comment>
+  <comment type="line">// false, makes no more calls.</comment>
+  <comment type="line">//</comment>
+  <comment type="line">// REQUIRES: user portion of internal_key == user_key.</comment>
+  <function_decl><type><name>void</name></type> <name>ForEachOverlapping</name><parameter_list>(<parameter><decl><type><name>Slice</name></type> <name>user_key</name></decl></parameter>, <parameter><decl><type><name>Slice</name></type> <name>internal_key</name></decl></parameter>,
+                          <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>arg</name></decl></parameter>,
+                          <parameter><function_decl><type><name>bool</name></type> (<modifier>*</modifier><name>func</name>)<parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type></decl></parameter>, <parameter><decl><type><name>int</name></type></decl></parameter>, <parameter><decl><type><name>FileMetaData</name><modifier>*</modifier></type></decl></parameter>)</parameter_list></function_decl></parameter>)</parameter_list>;</function_decl>
+
+  <decl_stmt><decl><type><name>VersionSet</name><modifier>*</modifier></type> <name>vset_</name></decl>;</decl_stmt>            <comment type="line">// VersionSet to which this Version belongs</comment>
+  <decl_stmt><decl><type><name>Version</name><modifier>*</modifier></type> <name>next_</name></decl>;</decl_stmt>               <comment type="line">// Next version in linked list</comment>
+  <decl_stmt><decl><type><name>Version</name><modifier>*</modifier></type> <name>prev_</name></decl>;</decl_stmt>               <comment type="line">// Previous version in linked list</comment>
+  <decl_stmt><decl><type><name>int</name></type> <name>refs_</name></decl>;</decl_stmt>                    <comment type="line">// Number of live refs to this version</comment>
+
+  <comment type="line">// List of files per level</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name> <name><name>files_</name><index>[<expr><name>config</name><operator>::</operator><name>kNumLevels</name></expr>]</index></name></expr>;</expr_stmt>
+
+  <comment type="line">// Next file to compact based on seek stats.</comment>
+  <decl_stmt><decl><type><name>FileMetaData</name><modifier>*</modifier></type> <name>file_to_compact_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>int</name></type> <name>file_to_compact_level_</name></decl>;</decl_stmt>
+
+  <comment type="line">// Level that should be compacted next and its compaction score.</comment>
+  <comment type="line">// Score &lt; 1 means compaction is not strictly needed.  These fields</comment>
+  <comment type="line">// are initialized by Finalize().</comment>
+  <decl_stmt><decl><type><name>double</name></type> <name>compaction_score_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>int</name></type> <name>compaction_level_</name></decl>;</decl_stmt>
+
+  <macro><name>explicit</name></macro> <expr_stmt><expr><call><name>Version</name><argument_list>(<argument><expr><name>VersionSet</name><operator>*</operator> <name>vset</name></expr></argument>)</argument_list></call>
+      <operator>:</operator> <call><name>vset_</name><argument_list>(<argument><expr><name>vset</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>next_</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>prev_</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <expr><call><name>refs_</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr><operator>,</operator>
+        <expr><call><name>file_to_compact_</name><argument_list>(<argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr><operator>,</operator>
+        <expr><call><name>file_to_compact_level_</name><argument_list>(<argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr><operator>,</operator>
+        <expr><call><name>compaction_score_</name><argument_list>(<argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr><operator>,</operator>
+        <macro><name>compaction_level_</name><argument_list>(<argument>-<literal type="number">1</literal></argument>)</argument_list></macro> <expr><block>{
+  }</block>
+
+  <operator>~</operator><call><name>Version</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// No copying allowed</comment>
+  <expr_stmt><expr><call><name>Version</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Version</name><operator>&amp;</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>void</name></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>Version</name><operator>&amp;</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<decl_stmt><decl><type><name>class</name></type> <name>VersionSet</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <expr_stmt><expr><call><name>VersionSet</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>dbname</name></expr></argument>,
+             <argument><expr><specifier>const</specifier> <name>Options</name><operator>*</operator> <name>options</name></expr></argument>,
+             <argument><expr><name>TableCache</name><operator>*</operator> <name>table_cache</name></expr></argument>,
+             <argument><expr><specifier>const</specifier> <name>InternalKeyComparator</name><operator>*</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt><expr><operator>~</operator><call><name>VersionSet</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// Apply *edit to the current version to form a new descriptor that</comment>
+  <comment type="line">// is both saved to persistent state and installed as the new</comment>
+  <comment type="line">// current version.  Will release *mu while actually writing to the file.</comment>
+  <comment type="line">// REQUIRES: *mu is held on entry.</comment>
+  <comment type="line">// REQUIRES: no other thread concurrently calls LogAndApply()</comment>
+  <decl_stmt><decl><type><name>Status</name></type> <name>LogAndApply</name><argument_list>(<argument><expr><name>VersionEdit</name><operator>*</operator> <name>edit</name></expr></argument>, <argument><expr><name>port</name><operator>::</operator><name>Mutex</name><operator>*</operator> <name>mu</name></expr></argument>)</argument_list>
+      <name>EXCLUSIVE_LOCKS_REQUIRED</name><argument_list>(<argument><expr><name>mu</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <comment type="line">// Recover the last saved descriptor from persistent storage.</comment>
+  <function_decl><type><name>Status</name></type> <name>Recover</name><parameter_list>(<parameter><decl><type><name>bool</name> <modifier>*</modifier></type><name>save_manifest</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Return the current version.</comment>
+  <expr_stmt><expr><name>Version</name><operator>*</operator> <macro><name>current</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>current_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Return the current manifest file number</comment>
+  <expr_stmt><expr><name>uint64_t</name> <macro><name>ManifestFileNumber</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>manifest_file_number_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Allocate and return a new file number</comment>
+  <function><type><name>uint64_t</name></type> <name>NewFileNumber</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><name>next_file_number_</name><operator>++</operator></expr>;</return> </block_content>}</block></function>
+
+  <comment type="line">// Arrange to reuse "file_number" unless a newer file number has</comment>
+  <comment type="line">// already been allocated.</comment>
+  <comment type="line">// REQUIRES: "file_number" was returned by a call to NewFileNumber().</comment>
+  <function><type><name>void</name></type> <name>ReuseFileNumber</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>file_number</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>next_file_number_</name> <operator>==</operator> <name>file_number</name> <operator>+</operator> <literal type="number">1</literal></expr>)</condition> <block>{<block_content>
+      <expr_stmt><expr><name>next_file_number_</name> <operator>=</operator> <name>file_number</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+  </block_content>}</block></function>
+
+  <comment type="line">// Return the number of Table files at the specified level.</comment>
+  <decl_stmt><decl><type><name>int</name></type> <name>NumLevelFiles</name><argument_list>(<argument><expr><name>int</name> <name>level</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+  <comment type="line">// Return the combined file size of all files at the specified level.</comment>
+  <decl_stmt><decl><type><name>int64_t</name></type> <name>NumLevelBytes</name><argument_list>(<argument><expr><name>int</name> <name>level</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+  <comment type="line">// Return the last sequence number.</comment>
+  <expr_stmt><expr><name>uint64_t</name> <macro><name>LastSequence</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>last_sequence_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Set the last sequence number to s.</comment>
+  <function><type><name>void</name></type> <name>SetLastSequence</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>s</name> <operator>&gt;=</operator> <name>last_sequence_</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>last_sequence_</name> <operator>=</operator> <name>s</name></expr>;</expr_stmt>
+  </block_content>}</block></function>
+
+  <comment type="line">// Mark the specified file number as used.</comment>
+  <function_decl><type><name>void</name></type> <name>MarkFileNumberUsed</name><parameter_list>(<parameter><decl><type><name>uint64_t</name></type> <name>number</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Return the current log file number.</comment>
+  <expr_stmt><expr><name>uint64_t</name> <macro><name>LogNumber</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>log_number_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Return the log file number for the log file that is currently</comment>
+  <comment type="line">// being compacted, or zero if there is no such log file.</comment>
+  <expr_stmt><expr><name>uint64_t</name> <macro><name>PrevLogNumber</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>prev_log_number_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Pick level and inputs for a new compaction.</comment>
+  <comment type="line">// Returns NULL if there is no compaction to be done.</comment>
+  <comment type="line">// Otherwise returns a pointer to a heap-allocated object that</comment>
+  <comment type="line">// describes the compaction.  Caller should delete the result.</comment>
+  <function_decl><type><name>Compaction</name><modifier>*</modifier></type> <name>PickCompaction</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Return a compaction object for compacting the range [begin,end] in</comment>
+  <comment type="line">// the specified level.  Returns NULL if there is nothing in that</comment>
+  <comment type="line">// level that overlaps the specified range.  Caller should delete</comment>
+  <comment type="line">// the result.</comment>
+  <function_decl><type><name>Compaction</name><modifier>*</modifier></type> <name>CompactRange</name><parameter_list>(
+      <parameter><decl><type><name>int</name></type> <name>level</name></decl></parameter>,
+      <parameter><decl><type><specifier>const</specifier> <name>InternalKey</name><modifier>*</modifier></type> <name>begin</name></decl></parameter>,
+      <parameter><decl><type><specifier>const</specifier> <name>InternalKey</name><modifier>*</modifier></type> <name>end</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Return the maximum overlapping data (in bytes) at next level for any</comment>
+  <comment type="line">// file at a level &gt;= 1.</comment>
+  <function_decl><type><name>int64_t</name></type> <name>MaxNextLevelOverlappingBytes</name><parameter_list>()</parameter_list>;</function_decl>
+
+  <comment type="line">// Create an iterator that reads over the compaction inputs for "*c".</comment>
+  <comment type="line">// The caller should delete the iterator when no longer needed.</comment>
+  <function_decl><type><name>Iterator</name><modifier>*</modifier></type> <name>MakeInputIterator</name><parameter_list>(<parameter><decl><type><name>Compaction</name><modifier>*</modifier></type> <name>c</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Returns true iff some level needs a compaction.</comment>
+  <expr_stmt><expr><name>bool</name> <macro><name>NeedsCompaction</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+    <expr><name>Version</name><operator>*</operator> <name>v</name> <operator>=</operator> <name>current_</name></expr>;
+    <return>return <expr><operator>(</operator><name><name>v</name><operator>-&gt;</operator><name>compaction_score_</name></name> <operator>&gt;=</operator> <literal type="number">1</literal><operator>)</operator> <operator>||</operator> <operator>(</operator><name><name>v</name><operator>-&gt;</operator><name>file_to_compact_</name></name> <operator>!=</operator> <name>NULL</name><operator>)</operator></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Add all files listed in any live version to *live.</comment>
+  <comment type="line">// May also mutate some internal state.</comment>
+  <decl_stmt><decl><type><name>void</name></type> <name>AddLiveFiles</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name><name>set</name><argument_list type="generic">&lt;<argument><expr><name>uint64_t</name></expr></argument>&gt;</argument_list></name><operator>*</operator> <name>live</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <comment type="line">// Return the approximate offset in the database of the data for</comment>
+  <comment type="line">// "key" as of version "v".</comment>
+  <function_decl><type><name>uint64_t</name></type> <name>ApproximateOffsetOf</name><parameter_list>(<parameter><decl><type><name>Version</name><modifier>*</modifier></type> <name>v</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>InternalKey</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Return a human-readable short (single-line) summary of the number</comment>
+  <comment type="line">// of files per level.  Uses *scratch as backing store.</comment>
+  <struct>struct <name>LevelSummaryStorage</name> <block>{
+    <decl_stmt><decl><type><name>char</name></type> <name><name>buffer</name><index>[<expr><literal type="number">100</literal></expr>]</index></name></decl>;</decl_stmt>
+  }</block>;</struct>
+  <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>LevelSummary</name><argument_list>(<argument><expr><name>LevelSummaryStorage</name><operator>*</operator> <name>scratch</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+ <label><name>private</name>:</label>
+  <decl_stmt><decl><type><name>class</name></type> <name>Builder</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>Compaction</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>Version</name></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><name>bool</name></type> <name>ReuseManifest</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>dscname</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name><operator>&amp;</operator> <name>dscbase</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <function_decl><type><name>void</name></type> <name>Finalize</name><parameter_list>(<parameter><decl><type><name>Version</name><modifier>*</modifier></type> <name>v</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <decl_stmt><decl><type><name>void</name></type> <name>GetRange</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>inputs</name></expr></argument>,
+                <argument><expr><name>InternalKey</name><operator>*</operator> <name>smallest</name></expr></argument>,
+                <argument><expr><name>InternalKey</name><operator>*</operator> <name>largest</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <decl_stmt><decl><type><name>void</name></type> <name>GetRange2</name><argument_list>(<argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>inputs1</name></expr></argument>,
+                 <argument><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name><operator>&amp;</operator> <name>inputs2</name></expr></argument>,
+                 <argument><expr><name>InternalKey</name><operator>*</operator> <name>smallest</name></expr></argument>,
+                 <argument><expr><name>InternalKey</name><operator>*</operator> <name>largest</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <function_decl><type><name>void</name></type> <name>SetupOtherInputs</name><parameter_list>(<parameter><decl><type><name>Compaction</name><modifier>*</modifier></type> <name>c</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Save current contents to *log</comment>
+  <decl_stmt><decl><type><name>Status</name></type> <name>WriteSnapshot</name><argument_list>(<argument><expr><name>log</name><operator>::</operator><name>Writer</name><operator>*</operator> <name>log</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+  <function_decl><type><name>void</name></type> <name>AppendVersion</name><parameter_list>(<parameter><decl><type><name>Version</name><modifier>*</modifier></type> <name>v</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <decl_stmt><decl><type><name>Env</name><modifier>*</modifier> <specifier>const</specifier></type> <name>env_</name></decl>;</decl_stmt>
+  <expr_stmt><expr><specifier>const</specifier> <name>std</name><operator>::</operator><name>string</name> <name>dbname_</name></expr>;</expr_stmt>
+  <decl_stmt><decl><type><specifier>const</specifier> <name>Options</name><modifier>*</modifier> <specifier>const</specifier></type> <name>options_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>TableCache</name><modifier>*</modifier> <specifier>const</specifier></type> <name>table_cache_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><specifier>const</specifier> <name>InternalKeyComparator</name></type> <name>icmp_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>next_file_number_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>manifest_file_number_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>last_sequence_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>log_number_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>prev_log_number_</name></decl>;</decl_stmt>  <comment type="line">// 0 or backing store for memtable being compacted</comment>
+
+  <comment type="line">// Opened lazily</comment>
+  <decl_stmt><decl><type><name>WritableFile</name><modifier>*</modifier></type> <name>descriptor_file_</name></decl>;</decl_stmt>
+  <expr_stmt><expr><name>log</name><operator>::</operator><name>Writer</name><operator>*</operator> <name>descriptor_log_</name></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>Version</name></type> <name>dummy_versions_</name></decl>;</decl_stmt>  <comment type="line">// Head of circular doubly-linked list of versions.</comment>
+  <decl_stmt><decl><type><name>Version</name><modifier>*</modifier></type> <name>current_</name></decl>;</decl_stmt>        <comment type="line">// == dummy_versions_.prev_</comment>
+
+  <comment type="line">// Per-level key at which the next compaction at that level should start.</comment>
+  <comment type="line">// Either an empty string, or a valid InternalKey.</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <name><name>compact_pointer_</name><index>[<expr><name>config</name><operator>::</operator><name>kNumLevels</name></expr>]</index></name></expr>;</expr_stmt>
+
+  <comment type="line">// No copying allowed</comment>
+  <expr_stmt><expr><call><name>VersionSet</name><argument_list>(<argument><expr><specifier>const</specifier> <name>VersionSet</name><operator>&amp;</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>void</name></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>VersionSet</name><operator>&amp;</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// A Compaction encapsulates information about a compaction.</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>Compaction</name> <block>{<block_content>
+ <label><name>public</name>:</label>
+  <expr_stmt><expr><operator>~</operator><call><name>Compaction</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+  <comment type="line">// Return the level that is being compacted.  Inputs from "level"</comment>
+  <comment type="line">// and "level+1" will be merged to produce a set of "level+1" files.</comment>
+  <expr_stmt><expr><name>int</name> <macro><name>level</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>level_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Return the object that holds the edits to the descriptor done</comment>
+  <comment type="line">// by this compaction.</comment>
+  <function><type><name>VersionEdit</name><modifier>*</modifier></type> <name>edit</name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><operator>&amp;</operator><name>edit_</name></expr>;</return> </block_content>}</block></function>
+
+  <comment type="line">// "which" must be either 0 or 1</comment>
+  <decl_stmt><decl><type><name>int</name></type> <name>num_input_files</name><argument_list>(<argument><expr><name>int</name> <name>which</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name><name>inputs_</name><index>[<expr><name>which</name></expr>]</index></name><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+  <comment type="line">// Return the ith input file at "level()+which" ("which" must be 0 or 1).</comment>
+  <decl_stmt><decl><type><name>FileMetaData</name><modifier>*</modifier></type> <name>input</name><argument_list>(<argument><expr><name>int</name> <name>which</name></expr></argument>, <argument><expr><name>int</name> <name>i</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><name><name>inputs_</name><index>[<expr><name>which</name></expr>]</index><index>[<expr><name>i</name></expr>]</index></name></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+  <comment type="line">// Maximum size of files to build during this compaction.</comment>
+  <expr_stmt><expr><name>uint64_t</name> <macro><name>MaxOutputFileSize</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{ <return>return <expr><name>max_output_file_size_</name></expr>;</return> }</block></expr></expr_stmt>
+
+  <comment type="line">// Is this a trivial compaction that can be implemented by just</comment>
+  <comment type="line">// moving a single input file to the next level (no merging or splitting)</comment>
+  <expr_stmt><expr><name>bool</name> <macro><name>IsTrivialMove</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+  <comment type="line">// Add all inputs to this compaction as delete operations to *edit.</comment>
+  <function_decl><type><name>void</name></type> <name>AddInputDeletions</name><parameter_list>(<parameter><decl><type><name>VersionEdit</name><modifier>*</modifier></type> <name>edit</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Returns true if the information we have available guarantees that</comment>
+  <comment type="line">// the compaction is producing data in "level+1" for which no data exists</comment>
+  <comment type="line">// in levels greater than "level+1".</comment>
+  <function_decl><type><name>bool</name></type> <name>IsBaseLevelForKey</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>&amp;</modifier></type> <name>user_key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Returns true iff we should stop building the current output</comment>
+  <comment type="line">// before processing "internal_key".</comment>
+  <function_decl><type><name>bool</name></type> <name>ShouldStopBefore</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Slice</name><modifier>&amp;</modifier></type> <name>internal_key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Release the input version for the compaction, once the compaction</comment>
+  <comment type="line">// is successful.</comment>
+  <function_decl><type><name>void</name></type> <name>ReleaseInputs</name><parameter_list>()</parameter_list>;</function_decl>
+
+ <label><name>private</name>:</label>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>Version</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>friend</name> <name>class</name></type> <name>VersionSet</name></decl>;</decl_stmt>
+
+  <macro><name>Compaction</name><argument_list>(<argument>const Options* options</argument>, <argument>int level</argument>)</argument_list></macro><empty_stmt>;</empty_stmt>
+
+  <decl_stmt><decl><type><name>int</name></type> <name>level_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>uint64_t</name></type> <name>max_output_file_size_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>Version</name><modifier>*</modifier></type> <name>input_version_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>VersionEdit</name></type> <name>edit_</name></decl>;</decl_stmt>
+
+  <comment type="line">// Each compaction reads inputs from "level_" and "level_+1"</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name> <name><name>inputs_</name><index>[<expr><literal type="number">2</literal></expr>]</index></name></expr>;</expr_stmt>      <comment type="line">// The two sets of inputs</comment>
+
+  <comment type="line">// State used to check for number of overlapping grandparent files</comment>
+  <comment type="line">// (parent == level_ + 1, grandparent == level_ + 2)</comment>
+  <expr_stmt><expr><name>std</name><operator>::</operator><name><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>FileMetaData</name><operator>*</operator></expr></argument>&gt;</argument_list></name> <name>grandparents_</name></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>size_t</name></type> <name>grandparent_index_</name></decl>;</decl_stmt>  <comment type="line">// Index in grandparent_starts_</comment>
+  <decl_stmt><decl><type><name>bool</name></type> <name>seen_key_</name></decl>;</decl_stmt>             <comment type="line">// Some output key has been seen</comment>
+  <decl_stmt><decl><type><name>int64_t</name></type> <name>overlapped_bytes_</name></decl>;</decl_stmt>  <comment type="line">// Bytes of overlap between current output</comment>
+                              <comment type="line">// and grandparent files</comment>
+
+  <comment type="line">// State for implementing IsBaseLevelForKey</comment>
+
+  <comment type="line">// level_ptrs_ holds indices into input_version_-&gt;levels_: our state</comment>
+  <comment type="line">// is that we are positioned at one of the file ranges for each</comment>
+  <comment type="line">// higher level than the ones involved in this compaction (i.e. for</comment>
+  <comment type="line">// all L &gt;= level_ + 2).</comment>
+  <decl_stmt><decl><type><name>size_t</name></type> <name><name>level_ptrs_</name><index>[<expr><name>config</name><operator>::</operator><name>kNumLevels</name></expr>]</index></name></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+</block_content>}</block></decl></decl_stmt>  <comment type="line">// namespace leveldb</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// STORAGE_LEVELDB_DB_VERSION_SET_H_</comment>
+</unit>

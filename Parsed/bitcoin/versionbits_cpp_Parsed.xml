@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/versionbits.cpp"><comment type="line">// Copyright (c) 2016-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;versionbits.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/params.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>ThresholdState</name></type> <name><name>AbstractThresholdConditionChecker</name><operator>::</operator><name>GetStateFor</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name>ThresholdConditionCache</name><modifier>&amp;</modifier></type> <name>cache</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>nPeriod</name> <init>= <expr><call><name>Period</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nThreshold</name> <init>= <expr><call><name>Threshold</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTimeStart</name> <init>= <expr><call><name>BeginTime</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nTimeTimeout</name> <init>= <expr><call><name>EndTime</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Check if this deployment is always active.</comment>
+    <if_stmt><if>if <condition>(<expr><name>nTimeStart</name> <operator>==</operator> <name><name>Consensus</name><operator>::</operator><name>BIP9Deployment</name><operator>::</operator><name>ALWAYS_ACTIVE</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name><name>ThresholdState</name><operator>::</operator><name>ACTIVE</name></name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// A block's state is always the same as that of the first of its period, so it is computed based on a pindexPrev whose height equals a multiple of nPeriod - 1.</comment>
+    <if_stmt><if>if <condition>(<expr><name>pindexPrev</name> <operator>!=</operator> <literal type="null">nullptr</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>pindexPrev</name> <operator>=</operator> <call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <operator>(</operator><operator>(</operator><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>%</operator> <name>nPeriod</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Walk backwards in steps of nPeriod to find a pindexPrev whose information is known</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>vToCompute</name></decl>;</decl_stmt>
+    <while>while <condition>(<expr><call><name><name>cache</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>pindexPrev</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition> <block>{<block_content>
+            <comment type="line">// The genesis block is by definition defined.</comment>
+            <expr_stmt><expr><name><name>cache</name><index>[<expr><name>pindexPrev</name></expr>]</index></name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>DEFINED</name></name></expr>;</expr_stmt>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <name>nTimeStart</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Optimization: don't recompute down further, as we know every earlier block will be before the start time</comment>
+            <expr_stmt><expr><name><name>cache</name><index>[<expr><name>pindexPrev</name></expr>]</index></name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>DEFINED</name></name></expr>;</expr_stmt>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>vToCompute</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>pindexPrev</name> <operator>=</operator> <call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <name>nPeriod</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <comment type="line">// At this point, cache[pindexPrev] is known</comment>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>cache</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>ThresholdState</name></type> <name>state</name> <init>= <expr><name><name>cache</name><index>[<expr><name>pindexPrev</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Now walk forward and compute the state of descendants of pindexPrev</comment>
+    <while>while <condition>(<expr><operator>!</operator><call><name><name>vToCompute</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>ThresholdState</name></type> <name>stateNext</name> <init>= <expr><name>state</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>pindexPrev</name> <operator>=</operator> <call><name><name>vToCompute</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>vToCompute</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <switch>switch <condition>(<expr><name>state</name></expr>)</condition> <block>{<block_content>
+            <case>case <expr><name><name>ThresholdState</name><operator>::</operator><name>DEFINED</name></name></expr>:</case> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <name>nTimeTimeout</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>stateNext</name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>FAILED</name></name></expr>;</expr_stmt>
+                </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <name>nTimeStart</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>stateNext</name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>STARTED</name></name></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+                <break>break;</break>
+            </block_content>}</block>
+            <case>case <expr><name><name>ThresholdState</name><operator>::</operator><name>STARTED</name></name></expr>:</case> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <name>nTimeTimeout</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>stateNext</name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>FAILED</name></name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block></if></if_stmt>
+                <comment type="line">// We need to count</comment>
+                <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexCount</name> <init>= <expr><name>pindexPrev</name></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>int</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+                <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nPeriod</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                    <if_stmt><if>if <condition>(<expr><call><name>Condition</name><argument_list>(<argument><expr><name>pindexCount</name></expr></argument>, <argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><name>count</name><operator>++</operator></expr>;</expr_stmt>
+                    </block_content>}</block></if></if_stmt>
+                    <expr_stmt><expr><name>pindexCount</name> <operator>=</operator> <name><name>pindexCount</name><operator>-&gt;</operator><name>pprev</name></name></expr>;</expr_stmt>
+                </block_content>}</block></for>
+                <if_stmt><if>if <condition>(<expr><name>count</name> <operator>&gt;=</operator> <name>nThreshold</name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><name>stateNext</name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>LOCKED_IN</name></name></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+                <break>break;</break>
+            </block_content>}</block>
+            <case>case <expr><name><name>ThresholdState</name><operator>::</operator><name>LOCKED_IN</name></name></expr>:</case> <block>{<block_content>
+                <comment type="line">// Always progresses into ACTIVE.</comment>
+                <expr_stmt><expr><name>stateNext</name> <operator>=</operator> <name><name>ThresholdState</name><operator>::</operator><name>ACTIVE</name></name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block>
+            <case>case <expr><name><name>ThresholdState</name><operator>::</operator><name>FAILED</name></name></expr>:</case>
+            <case>case <expr><name><name>ThresholdState</name><operator>::</operator><name>ACTIVE</name></name></expr>:</case> <block>{<block_content>
+                <comment type="line">// Nothing happens, these are terminal states.</comment>
+                <break>break;</break>
+            </block_content>}</block>
+        </block_content>}</block></switch>
+        <expr_stmt><expr><name><name>cache</name><index>[<expr><name>pindexPrev</name></expr>]</index></name> <operator>=</operator> <name>state</name> <operator>=</operator> <name>stateNext</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <return>return <expr><name>state</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>BIP9Stats</name></type> <name><name>AbstractThresholdConditionChecker</name><operator>::</operator><name>GetStateStatisticsFor</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindex</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>BIP9Stats</name></type> <name>stats</name> <init>= <expr><block>{}</block></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name><name>stats</name><operator>.</operator><name>period</name></name> <operator>=</operator> <call><name>Period</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>stats</name><operator>.</operator><name>threshold</name></name> <operator>=</operator> <call><name>Threshold</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>pindex</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>stats</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Find beginning of period</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexEndOfPrevPeriod</name> <init>= <expr><call><name><name>pindex</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name><name>pindex</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <operator>(</operator><operator>(</operator><name><name>pindex</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>%</operator> <name><name>stats</name><operator>.</operator><name>period</name></name><operator>)</operator></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>stats</name><operator>.</operator><name>elapsed</name></name> <operator>=</operator> <name><name>pindex</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <name><name>pindexEndOfPrevPeriod</name><operator>-&gt;</operator><name>nHeight</name></name></expr>;</expr_stmt>
+
+    <comment type="line">// Count from current block to beginning of period</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>currentIndex</name> <init>= <expr><name>pindex</name></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name><name>pindexEndOfPrevPeriod</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>!=</operator> <name><name>currentIndex</name><operator>-&gt;</operator><name>nHeight</name></name></expr>)</condition><block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><call><name>Condition</name><argument_list>(<argument><expr><name>currentIndex</name></expr></argument>, <argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>count</name><operator>++</operator></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>currentIndex</name> <operator>=</operator> <name><name>currentIndex</name><operator>-&gt;</operator><name>pprev</name></name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <expr_stmt><expr><name><name>stats</name><operator>.</operator><name>count</name></name> <operator>=</operator> <name>count</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>stats</name><operator>.</operator><name>possible</name></name> <operator>=</operator> <operator>(</operator><name><name>stats</name><operator>.</operator><name>period</name></name> <operator>-</operator> <name><name>stats</name><operator>.</operator><name>threshold</name></name> <operator>)</operator> <operator>&gt;=</operator> <operator>(</operator><name><name>stats</name><operator>.</operator><name>elapsed</name></name> <operator>-</operator> <name>count</name><operator>)</operator></expr>;</expr_stmt>
+
+    <return>return <expr><name>stats</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>AbstractThresholdConditionChecker</name><operator>::</operator><name>GetStateSinceHeightFor</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name>ThresholdConditionCache</name><modifier>&amp;</modifier></type> <name>cache</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>start_time</name> <init>= <expr><call><name>BeginTime</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>start_time</name> <operator>==</operator> <name><name>Consensus</name><operator>::</operator><name>BIP9Deployment</name><operator>::</operator><name>ALWAYS_ACTIVE</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>ThresholdState</name></type> <name>initialState</name> <init>= <expr><call><name>GetStateFor</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><name>params</name></expr></argument>, <argument><expr><name>cache</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// BIP 9 about state DEFINED: "The genesis block is by definition in this state for each deployment."</comment>
+    <if_stmt><if>if <condition>(<expr><name>initialState</name> <operator>==</operator> <name><name>ThresholdState</name><operator>::</operator><name>DEFINED</name></name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>int</name></type> <name>nPeriod</name> <init>= <expr><call><name>Period</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// A block's state is always the same as that of the first of its period, so it is computed based on a pindexPrev whose height equals a multiple of nPeriod - 1.</comment>
+    <comment type="line">// To ease understanding of the following height calculation, it helps to remember that</comment>
+    <comment type="line">// right now pindexPrev points to the block prior to the block that we are computing for, thus:</comment>
+    <comment type="line">// if we are computing for the last block of a period, then pindexPrev points to the second to last block of the period, and</comment>
+    <comment type="line">// if we are computing for the first block of a period, then pindexPrev points to the last block of the previous period.</comment>
+    <comment type="line">// The parent of the genesis block is represented by nullptr.</comment>
+    <expr_stmt><expr><name>pindexPrev</name> <operator>=</operator> <call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <operator>(</operator><operator>(</operator><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>+</operator> <literal type="number">1</literal><operator>)</operator> <operator>%</operator> <name>nPeriod</name><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>previousPeriodParent</name> <init>= <expr><call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <name>nPeriod</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <while>while <condition>(<expr><name>previousPeriodParent</name> <operator>!=</operator> <literal type="null">nullptr</literal> <operator>&amp;&amp;</operator> <call><name>GetStateFor</name><argument_list>(<argument><expr><name>previousPeriodParent</name></expr></argument>, <argument><expr><name>params</name></expr></argument>, <argument><expr><name>cache</name></expr></argument>)</argument_list></call> <operator>==</operator> <name>initialState</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>pindexPrev</name> <operator>=</operator> <name>previousPeriodParent</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>previousPeriodParent</name> <operator>=</operator> <call><name><name>pindexPrev</name><operator>-&gt;</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>-</operator> <name>nPeriod</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <comment type="line">// Adjust the result because right now we point to the parent block.</comment>
+    <return>return <expr><name><name>pindexPrev</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>+</operator> <literal type="number">1</literal></expr>;</return>
+</block_content>}</block></function>
+
+<namespace>namespace
+<block>{
+<comment type="block" format="doxygen">/**
+ * Class to implement versionbits logic.
+ */</comment>
+<class>class <name>VersionBitsConditionChecker</name> <super_list>: <super><specifier>public</specifier> <name>AbstractThresholdConditionChecker</name></super></super_list> <block>{<private type="default">
+</private><private>private:
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>DeploymentPos</name></name></type> <name>id</name></decl>;</decl_stmt>
+
+</private><protected>protected:
+    <function><type><name>int64_t</name></type> <name>BeginTime</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier> <block>{<block_content> <return>return <expr><name><name>params</name><operator>.</operator><name>vDeployments</name><index>[<expr><name>id</name></expr>]</index></name><operator>.</operator><name>nStartTime</name></expr>;</return> </block_content>}</block></function>
+    <function><type><name>int64_t</name></type> <name>EndTime</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier> <block>{<block_content> <return>return <expr><name><name>params</name><operator>.</operator><name>vDeployments</name><index>[<expr><name>id</name></expr>]</index></name><operator>.</operator><name>nTimeout</name></expr>;</return> </block_content>}</block></function>
+    <function><type><name>int</name></type> <name>Period</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier> <block>{<block_content> <return>return <expr><name><name>params</name><operator>.</operator><name>nMinerConfirmationWindow</name></name></expr>;</return> </block_content>}</block></function>
+    <function><type><name>int</name></type> <name>Threshold</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier> <block>{<block_content> <return>return <expr><name><name>params</name><operator>.</operator><name>nRuleChangeActivationThreshold</name></name></expr>;</return> </block_content>}</block></function>
+
+    <function><type><name>bool</name></type> <name>Condition</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindex</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <specifier>override</specifier>
+    <block>{<block_content>
+        <return>return <expr><operator>(</operator><operator>(</operator><operator>(</operator><name><name>pindex</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>&amp;</operator> <name>VERSIONBITS_TOP_MASK</name><operator>)</operator> <operator>==</operator> <name>VERSIONBITS_TOP_BITS</name><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><name><name>pindex</name><operator>-&gt;</operator><name>nVersion</name></name> <operator>&amp;</operator> <call><name>Mask</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return>
+    </block_content>}</block></function>
+
+</protected><public>public:
+    <constructor><specifier>explicit</specifier> <name>VersionBitsConditionChecker</name><parameter_list>(<parameter><decl><type><name><name>Consensus</name><operator>::</operator><name>DeploymentPos</name></name></type> <name>id_</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>id</name><argument_list>(<argument><expr><name>id_</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+    <function><type><name>uint32_t</name></type> <name>Mask</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content> <return>return <expr><operator>(</operator><operator>(</operator><name>uint32_t</name><operator>)</operator><literal type="number">1</literal><operator>)</operator> <operator>&lt;&lt;</operator> <name><name>params</name><operator>.</operator><name>vDeployments</name><index>[<expr><name>id</name></expr>]</index></name><operator>.</operator><name>bit</name></expr>;</return> </block_content>}</block></function>
+</public>}</block>;</class>
+
+}</block></namespace> <comment type="line">// namespace</comment>
+
+<function><type><name>ThresholdState</name></type> <name>VersionBitsState</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name><name>Consensus</name><operator>::</operator><name>DeploymentPos</name></name></type> <name>pos</name></decl></parameter>, <parameter><decl><type><name>VersionBitsCache</name><modifier>&amp;</modifier></type> <name>cache</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>VersionBitsConditionChecker</name><argument_list>(<argument><expr><name>pos</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>GetStateFor</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><name>params</name></expr></argument>, <argument><expr><name><name>cache</name><operator>.</operator><name>caches</name><index>[<expr><name>pos</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>BIP9Stats</name></type> <name>VersionBitsStatistics</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name><name>Consensus</name><operator>::</operator><name>DeploymentPos</name></name></type> <name>pos</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>VersionBitsConditionChecker</name><argument_list>(<argument><expr><name>pos</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>GetStateStatisticsFor</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name>VersionBitsStateSinceHeight</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexPrev</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name><name>Consensus</name><operator>::</operator><name>DeploymentPos</name></name></type> <name>pos</name></decl></parameter>, <parameter><decl><type><name>VersionBitsCache</name><modifier>&amp;</modifier></type> <name>cache</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>VersionBitsConditionChecker</name><argument_list>(<argument><expr><name>pos</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>GetStateSinceHeightFor</name><argument_list>(<argument><expr><name>pindexPrev</name></expr></argument>, <argument><expr><name>params</name></expr></argument>, <argument><expr><name><name>cache</name><operator>.</operator><name>caches</name><index>[<expr><name>pos</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>uint32_t</name></type> <name>VersionBitsMask</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>params</name></decl></parameter>, <parameter><decl><type><name><name>Consensus</name><operator>::</operator><name>DeploymentPos</name></name></type> <name>pos</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>VersionBitsConditionChecker</name><argument_list>(<argument><expr><name>pos</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>Mask</name><argument_list>(<argument><expr><name>params</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>VersionBitsCache</name><operator>::</operator><name>Clear</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>d</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>d</name> <operator>&lt;</operator> <name><name>Consensus</name><operator>::</operator><name>MAX_VERSION_BITS_DEPLOYMENTS</name></name></expr>;</condition> <incr><expr><name>d</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><name><name>caches</name><index>[<expr><name>d</name></expr>]</index></name><operator>.</operator><call><name>clear</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+</unit>

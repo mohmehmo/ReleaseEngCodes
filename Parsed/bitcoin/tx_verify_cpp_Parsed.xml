@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/consensus/tx_verify.cpp"><comment type="line">// Copyright (c) 2017-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/tx_verify.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/consensus.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/interpreter.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+
+<comment type="line">// TODO remove the following dependencies</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;coins.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/moneystr.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>bool</name></type> <name>IsFinalTx</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name> <modifier>&amp;</modifier></type><name>tx</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nBlockHeight</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nBlockTime</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>tx</name><operator>.</operator><name>nLockTime</name></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>int64_t</name><operator>)</operator><name><name>tx</name><operator>.</operator><name>nLockTime</name></name> <operator>&lt;</operator> <operator>(</operator><ternary><condition><expr><operator>(</operator><name>int64_t</name><operator>)</operator><name><name>tx</name><operator>.</operator><name>nLockTime</name></name> <operator>&lt;</operator> <name>LOCKTIME_THRESHOLD</name></expr> ?</condition><then> <expr><operator>(</operator><name>int64_t</name><operator>)</operator><name>nBlockHeight</name></expr> </then><else>: <expr><name>nBlockTime</name></expr></else></ternary><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><operator>(</operator><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>==</operator> <name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_FINAL</name></name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>, <argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name>CalculateSequenceLocks</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name> <modifier>&amp;</modifier></type><name>tx</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>flags</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><modifier>*</modifier></type> <name>prevHeights</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><call><name><name>prevHeights</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Will be set to the equivalent height- and time-based nLockTime</comment>
+    <comment type="line">// values that would be necessary to satisfy all relative lock-</comment>
+    <comment type="line">// time constraints given our view of block chain history.</comment>
+    <comment type="line">// The semantics of nLockTime are the last invalid height/time, so</comment>
+    <comment type="line">// use -1 to have the effect of any height or time being valid.</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>nMinHeight</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nMinTime</name> <init>= <expr><operator>-</operator><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// tx.nVersion is signed integer so requires cast to unsigned otherwise</comment>
+    <comment type="line">// we would be doing a signed comparison and half the range of nVersion</comment>
+    <comment type="line">// wouldn't support BIP 68.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fEnforceBIP68</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>nVersion</name></name></expr></argument>)</argument_list></cast> <operator>&gt;=</operator> <literal type="number">2</literal>
+                      <operator>&amp;&amp;</operator> <name>flags</name> <operator>&amp;</operator> <name>LOCKTIME_VERIFY_SEQUENCE</name></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// Do not enforce sequence numbers as a relative lock time</comment>
+    <comment type="line">// unless we have been instructed to</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fEnforceBIP68</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>nMinHeight</name></expr></argument>, <argument><expr><name>nMinTime</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><name>size_t</name></type> <name>txinIndex</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>txinIndex</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>txinIndex</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxIn</name><modifier>&amp;</modifier></type> <name>txin</name> <init>= <expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>txinIndex</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <comment type="line">// Sequence numbers with the most significant bit set are not</comment>
+        <comment type="line">// treated as relative lock-times, nor are they given any</comment>
+        <comment type="line">// consensus-enforced meaning at this point.</comment>
+        <if_stmt><if>if <condition>(<expr><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>&amp;</operator> <name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_LOCKTIME_DISABLE_FLAG</name></name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// The height of this input is not relevant for sequence locks</comment>
+            <expr_stmt><expr><operator>(</operator><operator>*</operator><name>prevHeights</name><operator>)</operator><index>[<expr><name>txinIndex</name></expr>]</index> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>nCoinHeight</name> <init>= <expr><operator>(</operator><operator>*</operator><name>prevHeights</name><operator>)</operator><index>[<expr><name>txinIndex</name></expr>]</index></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>&amp;</operator> <name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_LOCKTIME_TYPE_FLAG</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>int64_t</name></type> <name>nCoinTime</name> <init>= <expr><call><name><name>block</name><operator>.</operator><name>GetAncestor</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>nCoinHeight</name><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call><operator>-&gt;</operator><call><name>GetMedianTimePast</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <comment type="line">// NOTE: Subtract 1 to maintain nLockTime semantics</comment>
+            <comment type="line">// BIP 68 relative lock times have the semantics of calculating</comment>
+            <comment type="line">// the first block or time at which the transaction would be</comment>
+            <comment type="line">// valid. When calculating the effective block time or height</comment>
+            <comment type="line">// for the entire transaction, we switch to using the</comment>
+            <comment type="line">// semantics of nLockTime which is the last invalid block</comment>
+            <comment type="line">// time or height.  Thus we subtract 1 from the calculated</comment>
+            <comment type="line">// time or height.</comment>
+
+            <comment type="line">// Time-based relative lock-times are measured from the</comment>
+            <comment type="line">// smallest allowed timestamp of the block containing the</comment>
+            <comment type="line">// txout being spent, which is the median time past of the</comment>
+            <comment type="line">// block prior.</comment>
+            <expr_stmt><expr><name>nMinTime</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>nMinTime</name></expr></argument>, <argument><expr><name>nCoinTime</name> <operator>+</operator> <operator>(</operator><name>int64_t</name><operator>)</operator><operator>(</operator><operator>(</operator><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>&amp;</operator> <name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_LOCKTIME_MASK</name></name><operator>)</operator> <operator>&lt;&lt;</operator> <name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_LOCKTIME_GRANULARITY</name></name><operator>)</operator> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><name>nMinHeight</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>max</name></name><argument_list>(<argument><expr><name>nMinHeight</name></expr></argument>, <argument><expr><name>nCoinHeight</name> <operator>+</operator> <operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>&amp;</operator> <name><name>CTxIn</name><operator>::</operator><name>SEQUENCE_LOCKTIME_MASK</name></name><operator>)</operator> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>nMinHeight</name></expr></argument>, <argument><expr><name>nMinTime</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>EvaluateSequenceLocks</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>, <argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name>lockPair</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name><name>block</name><operator>.</operator><name>pprev</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nBlockTime</name> <init>= <expr><call><name><name>block</name><operator>.</operator><name>pprev</name><operator>-&gt;</operator><name>GetMedianTimePast</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>lockPair</name><operator>.</operator><name>first</name></name> <operator>&gt;=</operator> <name><name>block</name><operator>.</operator><name>nHeight</name></name> <operator>||</operator> <name><name>lockPair</name><operator>.</operator><name>second</name></name> <operator>&gt;=</operator> <name>nBlockTime</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>SequenceLocks</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name> <modifier>&amp;</modifier></type><name>tx</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>flags</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><modifier>*</modifier></type> <name>prevHeights</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>EvaluateSequenceLocks</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><call><name>CalculateSequenceLocks</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>flags</name></expr></argument>, <argument><expr><name>prevHeights</name></expr></argument>, <argument><expr><name>block</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name>GetLegacySigOpCount</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSigOps</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nSigOps</name> <operator>+=</operator> <call><name><name>txin</name><operator>.</operator><name>scriptSig</name><operator>.</operator><name>GetSigOpCount</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txout</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vout</name></name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <expr_stmt><expr><name>nSigOps</name> <operator>+=</operator> <call><name><name>txout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>GetSigOpCount</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><name>nSigOps</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name>GetP2SHSigOpCount</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>inputs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>IsCoinBase</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nSigOps</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>coin</name> <init>= <expr><call><name><name>inputs</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prevout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>coin</name><operator>.</operator><name>IsSpent</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name> <modifier>&amp;</modifier></type><name>prevout</name> <init>= <expr><name><name>coin</name><operator>.</operator><name>out</name></name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>prevout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>IsPayToScriptHash</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>nSigOps</name> <operator>+=</operator> <call><name><name>prevout</name><operator>.</operator><name>scriptPubKey</name><operator>.</operator><name>GetSigOpCount</name></name><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptSig</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><name>nSigOps</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetTransactionSigOpCost</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>inputs</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>flags</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>nSigOps</name> <init>= <expr><call><name>GetLegacySigOpCount</name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call> <operator>*</operator> <name>WITNESS_SCALE_FACTOR</name></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>IsCoinBase</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>nSigOps</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>flags</name> <operator>&amp;</operator> <name>SCRIPT_VERIFY_P2SH</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>nSigOps</name> <operator>+=</operator> <call><name>GetP2SHSigOpCount</name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>inputs</name></expr></argument>)</argument_list></call> <operator>*</operator> <name>WITNESS_SCALE_FACTOR</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>coin</name> <init>= <expr><call><name><name>inputs</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prevout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>coin</name><operator>.</operator><name>IsSpent</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTxOut</name> <modifier>&amp;</modifier></type><name>prevout</name> <init>= <expr><name><name>coin</name><operator>.</operator><name>out</name></name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name>nSigOps</name> <operator>+=</operator> <call><name>CountWitnessSigOps</name><argument_list>(<argument><expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptSig</name></expr></argument>, <argument><expr><name><name>prevout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptWitness</name></expr></argument>, <argument><expr><name>flags</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><name>nSigOps</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>Consensus</name><operator>::</operator><name>CheckTxInputs</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>TxValidationState</name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CCoinsViewCache</name><modifier>&amp;</modifier></type> <name>inputs</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nSpendHeight</name></decl></parameter>, <parameter><decl><type><name>CAmount</name><modifier>&amp;</modifier></type> <name>txfee</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// are the actual inputs available?</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>inputs</name><operator>.</operator><name>HaveInputs</name></name><argument_list>(<argument><expr><name>tx</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_MISSING_INPUTS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-inputs-missingorspent"</literal></expr></argument>,
+                         <argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%s: inputs missing/spent"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>nValueIn</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>COutPoint</name> <modifier>&amp;</modifier></type><name>prevout</name> <init>= <expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>prevout</name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>Coin</name><modifier>&amp;</modifier></type> <name>coin</name> <init>= <expr><call><name><name>inputs</name><operator>.</operator><name>AccessCoin</name></name><argument_list>(<argument><expr><name>prevout</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>coin</name><operator>.</operator><name>IsSpent</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// If prev is coinbase, check that it's matured</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>coin</name><operator>.</operator><name>IsCoinBase</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name>nSpendHeight</name> <operator>-</operator> <name><name>coin</name><operator>.</operator><name>nHeight</name></name> <operator>&lt;</operator> <name>COINBASE_MATURITY</name></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_PREMATURE_SPEND</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-premature-spend-of-coinbase"</literal></expr></argument>,
+                <argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"tried to spend coinbase at depth %d"</literal></expr></argument>, <argument><expr><name>nSpendHeight</name> <operator>-</operator> <name><name>coin</name><operator>.</operator><name>nHeight</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Check for negative or overflow input values</comment>
+        <expr_stmt><expr><name>nValueIn</name> <operator>+=</operator> <name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>nValue</name></name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>MoneyRange</name><argument_list>(<argument><expr><name><name>coin</name><operator>.</operator><name>out</name><operator>.</operator><name>nValue</name></name></expr></argument>)</argument_list></call> <operator>||</operator> <operator>!</operator><call><name>MoneyRange</name><argument_list>(<argument><expr><name>nValueIn</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-inputvalues-outofrange"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CAmount</name></type> <name>value_out</name> <init>= <expr><call><name><name>tx</name><operator>.</operator><name>GetValueOut</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nValueIn</name> <operator>&lt;</operator> <name>value_out</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-in-belowout"</literal></expr></argument>,
+            <argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"value in (%s) &lt; value out (%s)"</literal></expr></argument>, <argument><expr><call><name>FormatMoney</name><argument_list>(<argument><expr><name>nValueIn</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>FormatMoney</name><argument_list>(<argument><expr><name>value_out</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Tally transaction fees</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CAmount</name></type> <name>txfee_aux</name> <init>= <expr><name>nValueIn</name> <operator>-</operator> <name>value_out</name></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>MoneyRange</name><argument_list>(<argument><expr><name>txfee_aux</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-fee-outofrange"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>txfee</name> <operator>=</operator> <name>txfee_aux</name></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

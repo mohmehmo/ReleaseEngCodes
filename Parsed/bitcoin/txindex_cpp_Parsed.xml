@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/index/txindex.cpp"><comment type="line">// Copyright (c) 2017-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;index/txindex.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;shutdown.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ui_interface.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>constexpr</specifier> <name>char</name></type> <name>DB_BEST_BLOCK</name> <init>= <expr><literal type="char">'B'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>constexpr</specifier> <name>char</name></type> <name>DB_TXINDEX</name> <init>= <expr><literal type="char">'t'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>constexpr</specifier> <name>char</name></type> <name>DB_TXINDEX_BLOCK</name> <init>= <expr><literal type="char">'T'</literal></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>TxIndex</name></expr></argument>&gt;</argument_list></name></type> <name>g_txindex</name></decl>;</decl_stmt>
+
+<struct>struct <name>CDiskTxPos</name> <super_list>: <super><specifier>public</specifier> <name>FlatFilePos</name></super></super_list>
+<block>{<public type="default">
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nTxOffset</name></decl>;</decl_stmt> <comment type="line">// after header</comment>
+
+    <macro><name>ADD_SERIALIZE_METHODS</name></macro><empty_stmt>;</empty_stmt>
+
+    <function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>, <parameter><type><name>typename</name></type> <name>Operation</name></parameter>&gt;</parameter_list></template>
+    <type><specifier>inline</specifier> <name>void</name></type> <name>SerializationOp</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>, <parameter><decl><type><name>Operation</name></type> <name>ser_action</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>READWRITEAS</name><argument_list>(<argument><expr><name>FlatFilePos</name></expr></argument>, <argument><expr><operator>*</operator><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>READWRITE</name><argument_list>(<argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>nTxOffset</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <constructor><name>CDiskTxPos</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>FlatFilePos</name> <modifier>&amp;</modifier></type><name>blockIn</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nTxOffsetIn</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>FlatFilePos</name><argument_list>(<argument><expr><name><name>blockIn</name><operator>.</operator><name>nFile</name></name></expr></argument>, <argument><expr><name><name>blockIn</name><operator>.</operator><name>nPos</name></name></expr></argument>)</argument_list></call>, <call><name>nTxOffset</name><argument_list>(<argument><expr><name>nTxOffsetIn</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content>
+    </block_content>}</block></constructor>
+
+    <constructor><name>CDiskTxPos</name><parameter_list>()</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name>SetNull</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></constructor>
+
+    <function><type><name>void</name></type> <name>SetNull</name><parameter_list>()</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>FlatFilePos</name><operator>::</operator><name>SetNull</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nTxOffset</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</struct>
+
+<comment type="block" format="doxygen">/**
+ * Access to the txindex database (indexes/txindex/)
+ *
+ * The database stores a block locator of the chain the database is synced to
+ * so that the TxIndex can efficiently determine the point it last stopped at.
+ * A locator is used instead of a simple hash of the chain tip because blocks
+ * and block index entries may not be flushed to disk until after this database
+ * is updated.
+ */</comment>
+<class>class <name><name>TxIndex</name><operator>::</operator><name>DB</name></name> <super_list>: <super><specifier>public</specifier> <name><name>BaseIndex</name><operator>::</operator><name>DB</name></name></super></super_list>
+<block>{<private type="default">
+</private><public>public:
+    <expr_stmt><expr><specifier>explicit</specifier> <macro><name>DB</name><argument_list>(<argument>size_t n_cache_size</argument>, <argument>bool f_memory = <literal type="boolean">false</literal></argument>, <argument>bool f_wipe = <literal type="boolean">false</literal></argument>)</argument_list></macro></expr>;</expr_stmt>
+
+    <comment type="line" format="doxygen">/// Read the disk location of the transaction data with the given hash. Returns false if the</comment>
+    <comment type="line" format="doxygen">/// transaction hash is not indexed.</comment>
+    <function_decl><type><name>bool</name></type> <name>ReadTxPos</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txid</name></decl></parameter>, <parameter><decl><type><name>CDiskTxPos</name><modifier>&amp;</modifier></type> <name>pos</name></decl></parameter>)</parameter_list> <specifier>const</specifier>;</function_decl>
+
+    <comment type="line" format="doxygen">/// Write a batch of transaction positions to the DB.</comment>
+    <function_decl><type><name>bool</name></type> <name>WriteTxs</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>CDiskTxPos</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v_pos</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line" format="doxygen">/// Migrate txindex data from the block tree DB, where it may be for older nodes that have not</comment>
+    <comment type="line" format="doxygen">/// been upgraded yet to the new database.</comment>
+    <function_decl><type><name>bool</name></type> <name>MigrateData</name><parameter_list>(<parameter><decl><type><name>CBlockTreeDB</name><modifier>&amp;</modifier></type> <name>block_tree_db</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockLocator</name><modifier>&amp;</modifier></type> <name>best_locator</name></decl></parameter>)</parameter_list>;</function_decl>
+</public>}</block>;</class>
+
+<constructor><name><name>TxIndex</name><operator>::</operator><name>DB</name><operator>::</operator><name>DB</name></name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>n_cache_size</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>f_memory</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>f_wipe</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name><name>BaseIndex</name><operator>::</operator><name>DB</name></name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"indexes"</literal> <operator>/</operator> <literal type="string">"txindex"</literal></expr></argument>, <argument><expr><name>n_cache_size</name></expr></argument>, <argument><expr><name>f_memory</name></expr></argument>, <argument><expr><name>f_wipe</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content/>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>TxIndex</name><operator>::</operator><name>DB</name><operator>::</operator><name>ReadTxPos</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>txid</name></decl></parameter>, <parameter><decl><type><name>CDiskTxPos</name><modifier>&amp;</modifier></type> <name>pos</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name>Read</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_TXINDEX</name></expr></argument>, <argument><expr><name>txid</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>TxIndex</name><operator>::</operator><name>DB</name><operator>::</operator><name>WriteTxs</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>CDiskTxPos</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>v_pos</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDBBatch</name></type> <name>batch</name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>tuple</name> <range>: <expr><name>v_pos</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_TXINDEX</name></expr></argument>, <argument><expr><name><name>tuple</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>tuple</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><call><name>WriteBatch</name><argument_list>(<argument><expr><name>batch</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block">/*
+ * Safely persist a transfer of data from the old txindex database to the new one, and compact the
+ * range of keys updated. This is used internally by MigrateData.
+ */</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>WriteTxIndexMigrationBatches</name><parameter_list>(<parameter><decl><type><name>CDBWrapper</name><modifier>&amp;</modifier></type> <name>newdb</name></decl></parameter>, <parameter><decl><type><name>CDBWrapper</name><modifier>&amp;</modifier></type> <name>olddb</name></decl></parameter>,
+                                         <parameter><decl><type><name>CDBBatch</name><modifier>&amp;</modifier></type> <name>batch_newdb</name></decl></parameter>, <parameter><decl><type><name>CDBBatch</name><modifier>&amp;</modifier></type> <name>batch_olddb</name></decl></parameter>,
+                                         <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>begin_key</name></decl></parameter>,
+                                         <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>end_key</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Sync new DB changes to disk before deleting from old DB.</comment>
+    <expr_stmt><expr><call><name><name>newdb</name><operator>.</operator><name>WriteBatch</name></name><argument_list>(<argument><expr><name>batch_newdb</name></expr></argument>, <comment type="block">/*fSync=*/</comment> <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>olddb</name><operator>.</operator><name>WriteBatch</name></name><argument_list>(<argument><expr><name>batch_olddb</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>olddb</name><operator>.</operator><name>CompactRange</name></name><argument_list>(<argument><expr><name>begin_key</name></expr></argument>, <argument><expr><name>end_key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>batch_newdb</name><operator>.</operator><name>Clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>batch_olddb</name><operator>.</operator><name>Clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>TxIndex</name><operator>::</operator><name>DB</name><operator>::</operator><name>MigrateData</name></name><parameter_list>(<parameter><decl><type><name>CBlockTreeDB</name><modifier>&amp;</modifier></type> <name>block_tree_db</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockLocator</name><modifier>&amp;</modifier></type> <name>best_locator</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// The prior implementation of txindex was always in sync with block index</comment>
+    <comment type="line">// and presence was indicated with a boolean DB flag. If the flag is set,</comment>
+    <comment type="line">// this means the txindex from a previous version is valid and in sync with</comment>
+    <comment type="line">// the chain tip. The first step of the migration is to unset the flag and</comment>
+    <comment type="line">// write the chain hash to a separate key, DB_TXINDEX_BLOCK. After that, the</comment>
+    <comment type="line">// index entries are copied over in batches to the new database. Finally,</comment>
+    <comment type="line">// DB_TXINDEX_BLOCK is erased from the old database and the block hash is</comment>
+    <comment type="line">// written to the new database.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// Unsetting the boolean flag ensures that if the node is downgraded to a</comment>
+    <comment type="line">// previous version, it will not see a corrupted, partially migrated index</comment>
+    <comment type="line">// -- it will see that the txindex is disabled. When the node is upgraded</comment>
+    <comment type="line">// again, the migration will pick up where it left off and sync to the block</comment>
+    <comment type="line">// with hash DB_TXINDEX_BLOCK.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>f_legacy_flag</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>block_tree_db</name><operator>.</operator><name>ReadFlag</name></name><argument_list>(<argument><expr><literal type="string">"txindex"</literal></expr></argument>, <argument><expr><name>f_legacy_flag</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>f_legacy_flag</name></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>block_tree_db</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>DB_TXINDEX_BLOCK</name></expr></argument>, <argument><expr><name>best_locator</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: cannot write block indicator"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>block_tree_db</name><operator>.</operator><name>WriteFlag</name></name><argument_list>(<argument><expr><literal type="string">"txindex"</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: cannot write block index db flag"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CBlockLocator</name></type> <name>locator</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>block_tree_db</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name>DB_TXINDEX_BLOCK</name></expr></argument>, <argument><expr><name>locator</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Upgrading txindex database... [0%%]\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ShowProgress</name></name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Upgrading txindex database"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>report_done</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>batch_size</name> <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">24</literal></expr></init></decl>;</decl_stmt> <comment type="line">// 16 MiB</comment>
+
+    <decl_stmt><decl><type><name>CDBBatch</name></type> <name>batch_newdb</name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CDBBatch</name></type> <name>batch_olddb</name><argument_list>(<argument><expr><name>block_tree_db</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>key</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>begin_key</name><argument_list>{<argument><expr><name>DB_TXINDEX</name></expr></argument>, <argument><expr><macro><name>uint256</name><argument_list>()</argument_list></macro></expr></argument>}</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>prev_key</name> <init>= <expr><name>begin_key</name></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>bool</name></type> <name>interrupted</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CDBIterator</name></expr></argument>&gt;</argument_list></name></type> <name>cursor</name><argument_list>(<argument><expr><call><name><name>block_tree_db</name><operator>.</operator><name>NewIterator</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <for>for <control>(<init><expr><call><name><name>cursor</name><operator>-&gt;</operator><name>Seek</name></name><argument_list>(<argument><expr><name>begin_key</name></expr></argument>)</argument_list></call></expr>;</init> <condition><expr><call><name><name>cursor</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><call><name><name>cursor</name><operator>-&gt;</operator><name>Next</name></name><argument_list>()</argument_list></call></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>interruption_point</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>ShutdownRequested</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>interrupted</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>cursor</name><operator>-&gt;</operator><name>GetKey</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: cannot get key from valid cursor"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>key</name><operator>.</operator><name>first</name></name> <operator>!=</operator> <name>DB_TXINDEX</name></expr>)</condition> <block>{<block_content>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Log progress every 10%.</comment>
+        <if_stmt><if>if <condition>(<expr><operator>++</operator><name>count</name> <operator>%</operator> <literal type="number">256</literal> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Since txids are uniformly random and traversed in increasing order, the high 16 bits</comment>
+            <comment type="line">// of the hash can be used to estimate the current progress.</comment>
+            <decl_stmt><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>txid</name> <init>= <expr><name><name>key</name><operator>.</operator><name>second</name></name></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>uint32_t</name></type> <name>high_nibble</name> <init>=
+                <expr><operator>(</operator><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><operator>*</operator><operator>(</operator><call><name><name>txid</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">0</literal><operator>)</operator></expr></argument>)</argument_list></cast> <operator>&lt;&lt;</operator> <literal type="number">8</literal><operator>)</operator> <operator>+</operator>
+                <operator>(</operator><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><operator>*</operator><operator>(</operator><call><name><name>txid</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></cast> <operator>&lt;&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>percentage_done</name> <init>= <expr><operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name>high_nibble</name> <operator>*</operator> <literal type="number">100.0</literal> <operator>/</operator> <literal type="number">65536.0</literal> <operator>+</operator> <literal type="number">0.5</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+            <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ShowProgress</name></name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Upgrading txindex database"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><name>percentage_done</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>report_done</name> <operator>&lt;</operator> <name>percentage_done</name><operator>/</operator><literal type="number">10</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Upgrading txindex database... [%d%%]\n"</literal></expr></argument>, <argument><expr><name>percentage_done</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>report_done</name> <operator>=</operator> <name>percentage_done</name><operator>/</operator><literal type="number">10</literal></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name>CDiskTxPos</name></type> <name>value</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>cursor</name><operator>-&gt;</operator><name>GetValue</name></name><argument_list>(<argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: cannot parse txindex record"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>batch_newdb</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>value</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>batch_olddb</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>batch_newdb</name><operator>.</operator><name>SizeEstimate</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>batch_size</name> <operator>||</operator> <call><name><name>batch_olddb</name><operator>.</operator><name>SizeEstimate</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>batch_size</name></expr>)</condition> <block>{<block_content>
+            <comment type="line">// NOTE: it's OK to delete the key pointed at by the current DB cursor while iterating</comment>
+            <comment type="line">// because LevelDB iterators are guaranteed to provide a consistent view of the</comment>
+            <comment type="line">// underlying data, like a lightweight snapshot.</comment>
+            <expr_stmt><expr><call><name>WriteTxIndexMigrationBatches</name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>, <argument><expr><name>block_tree_db</name></expr></argument>,
+                                         <argument><expr><name>batch_newdb</name></expr></argument>, <argument><expr><name>batch_olddb</name></expr></argument>,
+                                         <argument><expr><name>prev_key</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>prev_key</name> <operator>=</operator> <name>key</name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// If these final DB batches complete the migration, write the best block</comment>
+    <comment type="line">// hash marker to the new database and delete from the old one. This signals</comment>
+    <comment type="line">// that the former is fully caught up to that point in the blockchain and</comment>
+    <comment type="line">// that all txindex entries have been removed from the latter.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>interrupted</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>batch_olddb</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>DB_TXINDEX_BLOCK</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>batch_newdb</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>DB_BEST_BLOCK</name></expr></argument>, <argument><expr><name>locator</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>WriteTxIndexMigrationBatches</name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>, <argument><expr><name>block_tree_db</name></expr></argument>,
+                                 <argument><expr><name>batch_newdb</name></expr></argument>, <argument><expr><name>batch_olddb</name></expr></argument>,
+                                 <argument><expr><name>begin_key</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>interrupted</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"[CANCELLED].\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ShowProgress</name></name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"[DONE].\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>TxIndex</name><operator>::</operator><name>TxIndex</name></name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>n_cache_size</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>f_memory</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>f_wipe</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_db</name><argument_list>(<argument><expr><call><name><name>MakeUnique</name><argument_list type="generic">&lt;<argument><expr><name><name>TxIndex</name><operator>::</operator><name>DB</name></name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>n_cache_size</name></expr></argument>, <argument><expr><name>f_memory</name></expr></argument>, <argument><expr><name>f_wipe</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content/>}</block></constructor>
+
+<destructor><name><name>TxIndex</name><operator>::</operator><name>~TxIndex</name></name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></destructor>
+
+<function><type><name>bool</name></type> <name><name>TxIndex</name><operator>::</operator><name>Init</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Attempt to migrate txindex from the old database to the new one. Even if</comment>
+    <comment type="line">// chain_tip is null, the node could be reindexing and we still want to</comment>
+    <comment type="line">// delete txindex records in the old database.</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_db</name><operator>-&gt;</operator><name>MigrateData</name></name><argument_list>(<argument><expr><operator>*</operator><name>pblocktree</name></expr></argument>, <argument><expr><call><name><operator>::</operator><name>ChainActive</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetLocator</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <return>return <expr><call><name><name>BaseIndex</name><operator>::</operator><name>Init</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>TxIndex</name><operator>::</operator><name>WriteBlock</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type> <name>block</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></type> <name>pindex</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Exclude genesis block transaction because outputs are not spendable.</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>pindex</name><operator>-&gt;</operator><name>nHeight</name></name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">true</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CDiskTxPos</name></type> <name>pos</name><argument_list>(<argument><expr><call><name><name>pindex</name><operator>-&gt;</operator><name>GetBlockPos</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>GetSizeOfCompactSize</name><argument_list>(<argument><expr><call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>, <argument><expr><name>CDiskTxPos</name></expr></argument>&gt;</argument_list></name></expr></argument>&gt;</argument_list></name></type> <name>vPos</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vPos</name><operator>.</operator><name>reserve</name></name><argument_list>(<argument><expr><call><name><name>block</name><operator>.</operator><name>vtx</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>tx</name> <range>: <expr><name><name>block</name><operator>.</operator><name>vtx</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vPos</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><call><name><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>pos</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>pos</name><operator>.</operator><name>nTxOffset</name></name> <operator>+=</operator> <call><name><operator>::</operator><name>GetSerializeSize</name></name><argument_list>(<argument><expr><operator>*</operator><name>tx</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><call><name><name>m_db</name><operator>-&gt;</operator><name>WriteTxs</name></name><argument_list>(<argument><expr><name>vPos</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>BaseIndex</name><operator>::</operator><name>DB</name></name><modifier>&amp;</modifier></type> <name><name>TxIndex</name><operator>::</operator><name>GetDB</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content> <return>return <expr><operator>*</operator><name>m_db</name></expr>;</return> </block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>TxIndex</name><operator>::</operator><name>FindTx</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier></type> <name>tx_hash</name></decl></parameter>, <parameter><decl><type><name>uint256</name><modifier>&amp;</modifier></type> <name>block_hash</name></decl></parameter>, <parameter><decl><type><name>CTransactionRef</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CDiskTxPos</name></type> <name>postx</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>m_db</name><operator>-&gt;</operator><name>ReadTxPos</name></name><argument_list>(<argument><expr><name>tx_hash</name></expr></argument>, <argument><expr><name>postx</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>CAutoFile</name></type> <name>file</name><argument_list>(<argument><expr><call><name>OpenBlockFile</name><argument_list>(<argument><expr><name>postx</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>SER_DISK</name></expr></argument>, <argument><expr><name>CLIENT_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>file</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: OpenBlockFile failed"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>CBlockHeader</name></type> <name>header</name></decl>;</decl_stmt>
+    <try>try <block>{<block_content>
+        <expr_stmt><expr><name>file</name> <operator>&gt;&gt;</operator> <name>header</name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>fseek</name><argument_list>(<argument><expr><call><name><name>file</name><operator>.</operator><name>Get</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>postx</name><operator>.</operator><name>nTxOffset</name></name></expr></argument>, <argument><expr><name>SEEK_CUR</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: fseek(...) failed"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>file</name> <operator>&gt;&gt;</operator> <name>tx</name></expr>;</expr_stmt>
+    </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>exception</name></name><modifier>&amp;</modifier></type> <name>e</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: Deserialize or I/O error - %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>e</name><operator>.</operator><name>what</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></catch></try>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>tx_hash</name></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: txid mismatch"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><name>block_hash</name> <operator>=</operator> <call><name><name>header</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/txindex_tests.cpp"><comment type="line">// Copyright (c) 2017-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;index/txindex.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/standard.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/time.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+
+<macro><name>BOOST_AUTO_TEST_SUITE</name><argument_list>(<argument>txindex_tests</argument>)</argument_list></macro>
+
+<macro><name>BOOST_FIXTURE_TEST_CASE</name><argument_list>(<argument>txindex_initial_sync</argument>, <argument>TestChain100Setup</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TxIndex</name></type> <name>txindex</name><argument_list>(<argument><expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">20</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>tx_disk</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>block_hash</name></decl>;</decl_stmt>
+
+    <comment type="line">// Transaction should not be found in the index before it is started.</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txn</name> <range>: <expr><name>m_coinbase_txns</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>txindex</name><operator>.</operator><name>FindTx</name></name><argument_list>(<argument><expr><call><name><name>txn</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>block_hash</name></expr></argument>, <argument><expr><name>tx_disk</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// BlockUntilSyncedToCurrentChain should return false before txindex is started.</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>txindex</name><operator>.</operator><name>BlockUntilSyncedToCurrentChain</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>txindex</name><operator>.</operator><name>Start</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Allow tx index to catch up with the block index.</comment>
+    <decl_stmt><decl><type><specifier>constexpr</specifier> <name>int64_t</name></type> <name>timeout_ms</name> <init>= <expr><literal type="number">10</literal> <operator>*</operator> <literal type="number">1000</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>time_start</name> <init>= <expr><call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><operator>!</operator><call><name><name>txindex</name><operator>.</operator><name>BlockUntilSyncedToCurrentChain</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_REQUIRE</name><argument_list>(<argument><expr><name>time_start</name> <operator>+</operator> <name>timeout_ms</name> <operator>&gt;</operator> <call><name>GetTimeMillis</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>MilliSleep</name><argument_list>(<argument><expr><literal type="number">100</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <comment type="line">// Check that txindex excludes genesis block transactions.</comment>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type> <name>genesis_block</name> <init>= <expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GenesisBlock</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txn</name> <range>: <expr><name><name>genesis_block</name><operator>.</operator><name>vtx</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>txindex</name><operator>.</operator><name>FindTx</name></name><argument_list>(<argument><expr><call><name><name>txn</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>block_hash</name></expr></argument>, <argument><expr><name>tx_disk</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Check that txindex has all txs that were in the chain before it started.</comment>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txn</name> <range>: <expr><name>m_coinbase_txns</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>txindex</name><operator>.</operator><name>FindTx</name></name><argument_list>(<argument><expr><call><name><name>txn</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>block_hash</name></expr></argument>, <argument><expr><name>tx_disk</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_ERROR</name><argument_list>(<argument><expr><literal type="string">"FindTx failed"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>tx_disk</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <call><name><name>txn</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_ERROR</name><argument_list>(<argument><expr><literal type="string">"Read incorrect tx"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Check that new transactions in new blocks make it into the index.</comment>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">10</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>CScript</name></type> <name>coinbase_script_pub_key</name> <init>= <expr><call><name>GetScriptForDestination</name><argument_list>(<argument><expr><call><name>PKHash</name><argument_list>(<argument><expr><call><name><name>coinbaseKey</name><operator>.</operator><name>GetPubKey</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CMutableTransaction</name></expr></argument>&gt;</argument_list></name></type> <name>no_txns</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CBlock</name><modifier>&amp;</modifier></type> <name>block</name> <init>= <expr><call><name>CreateAndProcessBlock</name><argument_list>(<argument><expr><name>no_txns</name></expr></argument>, <argument><expr><name>coinbase_script_pub_key</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>txn</name> <init>= <expr><operator>*</operator><name><name>block</name><operator>.</operator><name>vtx</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>txindex</name><operator>.</operator><name>BlockUntilSyncedToCurrentChain</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>txindex</name><operator>.</operator><name>FindTx</name></name><argument_list>(<argument><expr><call><name><name>txn</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>block_hash</name></expr></argument>, <argument><expr><name>tx_disk</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_ERROR</name><argument_list>(<argument><expr><literal type="string">"FindTx failed"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>tx_disk</name><operator>-&gt;</operator><name>GetHash</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <call><name><name>txn</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_ERROR</name><argument_list>(<argument><expr><literal type="string">"Read incorrect tx"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// shutdown sequence (c.f. Shutdown() in init.cpp)</comment>
+    <expr_stmt><expr><call><name><name>txindex</name><operator>.</operator><name>Stop</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>threadGroup</name><operator>.</operator><name>interrupt_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>threadGroup</name><operator>.</operator><name>join_all</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Rest of shutdown sequence and destructors happen in ~TestingSetup()</comment>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+</unit>

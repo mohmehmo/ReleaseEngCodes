@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/univalue/lib/univalue_read.cpp"><comment type="line">// Copyright 2014 BitPay Inc.</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdio.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"univalue.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"univalue_utffilter.h"</cpp:file></cpp:include>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>json_isdigit</name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>ch</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>(</operator><operator>(</operator><name>ch</name> <operator>&gt;=</operator> <literal type="char">'0'</literal><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><name>ch</name> <operator>&lt;=</operator> <literal type="char">'9'</literal><operator>)</operator><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="line">// convert hexadecimal string to unsigned integer</comment>
+<function><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>hatoui</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>first</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>last</name></decl></parameter>,
+                          <parameter><decl><type><name>unsigned</name> <name>int</name><modifier>&amp;</modifier></type> <name>out</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>result</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init>;</init> <condition><expr><name>first</name> <operator>!=</operator> <name>last</name></expr>;</condition> <incr><expr><operator>++</operator><name>first</name></expr></incr>)</control>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>digit</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>first</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>digit</name> <operator>=</operator> <operator>*</operator><name>first</name> <operator>-</operator> <literal type="char">'0'</literal></expr>;</expr_stmt></block_content></block></if>
+
+        <if type="elseif">else if <condition>(<expr><operator>*</operator><name>first</name> <operator>&gt;=</operator> <literal type="char">'a'</literal> <operator>&amp;&amp;</operator> <operator>*</operator><name>first</name> <operator>&lt;=</operator> <literal type="char">'f'</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>digit</name> <operator>=</operator> <operator>*</operator><name>first</name> <operator>-</operator> <literal type="char">'a'</literal> <operator>+</operator> <literal type="number">10</literal></expr>;</expr_stmt></block_content></block></if>
+
+        <if type="elseif">else if <condition>(<expr><operator>*</operator><name>first</name> <operator>&gt;=</operator> <literal type="char">'A'</literal> <operator>&amp;&amp;</operator> <operator>*</operator><name>first</name> <operator>&lt;=</operator> <literal type="char">'F'</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>digit</name> <operator>=</operator> <operator>*</operator><name>first</name> <operator>-</operator> <literal type="char">'A'</literal> <operator>+</operator> <literal type="number">10</literal></expr>;</expr_stmt></block_content></block></if>
+
+        <else>else<block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></else></if_stmt>
+
+        <expr_stmt><expr><name>result</name> <operator>=</operator> <literal type="number">16</literal> <operator>*</operator> <name>result</name> <operator>+</operator> <name>digit</name></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><name>out</name> <operator>=</operator> <name>result</name></expr>;</expr_stmt>
+
+    <return>return <expr><name>first</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>enum</name> <name>jtokentype</name></name></type> <name>getJsonToken</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>tokenVal</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name><modifier>&amp;</modifier></type> <name>consumed</name></decl></parameter>,
+                            <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>raw</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>end</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>tokenVal</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>consumed</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>rawStart</name> <init>= <expr><name>raw</name></expr></init></decl>;</decl_stmt>
+
+    <while>while <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <operator>(</operator><call><name>json_isspace</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>          <comment type="line">// skip whitespace</comment>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt></block_content></block></while>
+
+    <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&gt;=</operator> <name>end</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><name>JTOK_NONE</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <switch>switch <condition>(<expr><operator>*</operator><name>raw</name></expr>)</condition> <block>{<block_content>
+
+    <case>case <expr><literal type="char">'{'</literal></expr>:</case>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_OBJ_OPEN</name></expr>;</return>
+    <case>case <expr><literal type="char">'}'</literal></expr>:</case>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_OBJ_CLOSE</name></expr>;</return>
+    <case>case <expr><literal type="char">'['</literal></expr>:</case>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_ARR_OPEN</name></expr>;</return>
+    <case>case <expr><literal type="char">']'</literal></expr>:</case>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_ARR_CLOSE</name></expr>;</return>
+
+    <case>case <expr><literal type="char">':'</literal></expr>:</case>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_COLON</name></expr>;</return>
+    <case>case <expr><literal type="char">','</literal></expr>:</case>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_COMMA</name></expr>;</return>
+
+    <case>case <expr><literal type="char">'n'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'t'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'f'</literal></expr>:</case>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>strncmp</name><argument_list>(<argument><expr><name>raw</name></expr></argument>, <argument><expr><literal type="string">"null"</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>raw</name> <operator>+=</operator> <literal type="number">4</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+            <return>return <expr><name>JTOK_KW_NULL</name></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name>strncmp</name><argument_list>(<argument><expr><name>raw</name></expr></argument>, <argument><expr><literal type="string">"true"</literal></expr></argument>, <argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>raw</name> <operator>+=</operator> <literal type="number">4</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+            <return>return <expr><name>JTOK_KW_TRUE</name></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name>strncmp</name><argument_list>(<argument><expr><name>raw</name></expr></argument>, <argument><expr><literal type="string">"false"</literal></expr></argument>, <argument><expr><literal type="number">5</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>raw</name> <operator>+=</operator> <literal type="number">5</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+            <return>return <expr><name>JTOK_KW_FALSE</name></expr>;</return>
+        </block_content>}</block></if> <else>else<block type="pseudo"><block_content>
+            <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></else></if_stmt>
+
+    <case>case <expr><literal type="char">'-'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'0'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'1'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'2'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'3'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'4'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'5'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'6'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'7'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'8'</literal></expr>:</case>
+    <case>case <expr><literal type="char">'9'</literal></expr>:</case> <block>{<block_content>
+        <comment type="line">// part 1: int</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>numStr</name></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>first</name> <init>= <expr><name>raw</name></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>firstDigit</name> <init>= <expr><name>first</name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>firstDigit</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>firstDigit</name><operator>++</operator></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>*</operator><name>firstDigit</name> <operator>==</operator> <literal type="char">'0'</literal><operator>)</operator> <operator>&amp;&amp;</operator> <call><name>json_isdigit</name><argument_list>(<argument><expr><name><name>firstDigit</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>                       <comment type="line">// copy first char</comment>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>(</operator><operator>*</operator><name>first</name> <operator>==</operator> <literal type="char">'-'</literal><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><name>raw</name> <operator>&lt;</operator> <name>end</name><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><operator>!</operator><call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+
+        <while>while <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>  <comment type="line">// copy digits</comment>
+            <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>
+            <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></while>
+
+        <comment type="line">// part 2: frac</comment>
+        <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'.'</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>                   <comment type="line">// copy .</comment>
+            <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&gt;=</operator> <name>end</name> <operator>||</operator> <operator>!</operator><call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+            <while>while <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content> <comment type="line">// copy digits</comment>
+                <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+            </block_content>}</block></while>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// part 3: exp</comment>
+        <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <operator>(</operator><operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'e'</literal> <operator>||</operator> <operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'E'</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>                   <comment type="line">// copy E</comment>
+            <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <operator>(</operator><operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'-'</literal> <operator>||</operator> <operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'+'</literal><operator>)</operator></expr>)</condition> <block>{<block_content> <comment type="line">// copy +/-</comment>
+                <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&gt;=</operator> <name>end</name> <operator>||</operator> <operator>!</operator><call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+            <while>while <condition>(<expr><name>raw</name> <operator>&lt;</operator> <name>end</name> <operator>&amp;&amp;</operator> <call><name>json_isdigit</name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content> <comment type="line">// copy digits</comment>
+                <expr_stmt><expr><name>numStr</name> <operator>+=</operator> <operator>*</operator><name>raw</name></expr>;</expr_stmt>
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+            </block_content>}</block></while>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><name>tokenVal</name> <operator>=</operator> <name>numStr</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_NUMBER</name></expr>;</return>
+        </block_content>}</block>
+
+    <case>case <expr><literal type="char">'"'</literal></expr>:</case> <block>{<block_content>
+        <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>                                <comment type="line">// skip "</comment>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>valStr</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>JSONUTF8StringFilter</name></type> <name>writer</name><argument_list>(<argument><expr><name>valStr</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+        <while>while <condition>(<expr><literal type="boolean">true</literal></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&gt;=</operator> <name>end</name> <operator>||</operator> <operator>(</operator><name>unsigned</name> <name>char</name><operator>)</operator><operator>*</operator><name>raw</name> <operator>&lt;</operator> <literal type="number">0x20</literal></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if>
+
+            <if type="elseif">else if <condition>(<expr><operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'\\'</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>                        <comment type="line">// skip backslash</comment>
+
+                <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>&gt;=</operator> <name>end</name></expr>)</condition><block type="pseudo"><block_content>
+                    <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+
+                <switch>switch <condition>(<expr><operator>*</operator><name>raw</name></expr>)</condition> <block>{<block_content>
+                <case>case <expr><literal type="char">'"'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\"'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'\\'</literal></expr>:</case> <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\\'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'/'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'/'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'b'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\b'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'f'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\f'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'n'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\n'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'r'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\r'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+                <case>case <expr><literal type="char">'t'</literal></expr>:</case>  <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\t'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <break>break;</break>
+
+                <case>case <expr><literal type="char">'u'</literal></expr>:</case> <block>{<block_content>
+                    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>codepoint</name></decl>;</decl_stmt>
+                    <if_stmt><if>if <condition>(<expr><name>raw</name> <operator>+</operator> <literal type="number">1</literal> <operator>+</operator> <literal type="number">4</literal> <operator>&gt;=</operator> <name>end</name> <operator>||</operator>
+                        <call><name>hatoui</name><argument_list>(<argument><expr><name>raw</name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name>raw</name> <operator>+</operator> <literal type="number">1</literal> <operator>+</operator> <literal type="number">4</literal></expr></argument>, <argument><expr><name>codepoint</name></expr></argument>)</argument_list></call> <operator>!=</operator>
+                               <name>raw</name> <operator>+</operator> <literal type="number">1</literal> <operator>+</operator> <literal type="number">4</literal></expr>)</condition><block type="pseudo"><block_content>
+                        <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+                    <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back_u</name></name><argument_list>(<argument><expr><name>codepoint</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><name>raw</name> <operator>+=</operator> <literal type="number">4</literal></expr>;</expr_stmt>
+                    <break>break;</break>
+                    </block_content>}</block>
+                <default>default:</default>
+                    <return>return <expr><name>JTOK_ERR</name></expr>;</return>
+
+                </block_content>}</block></switch>
+
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>                        <comment type="line">// skip esc'd char</comment>
+            </block_content>}</block></if>
+
+            <if type="elseif">else if <condition>(<expr><operator>*</operator><name>raw</name> <operator>==</operator> <literal type="char">'"'</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>                        <comment type="line">// skip "</comment>
+                <break>break;</break>                        <comment type="line">// stop scanning</comment>
+            </block_content>}</block></if>
+
+            <else>else <block>{<block_content>
+                <expr_stmt><expr><call><name><name>writer</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>*</operator><name>raw</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>raw</name><operator>++</operator></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></while>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>writer</name><operator>.</operator><name>finalize</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>JTOK_ERR</name></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>tokenVal</name> <operator>=</operator> <name>valStr</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>consumed</name> <operator>=</operator> <operator>(</operator><name>raw</name> <operator>-</operator> <name>rawStart</name><operator>)</operator></expr>;</expr_stmt>
+        <return>return <expr><name>JTOK_STRING</name></expr>;</return>
+        </block_content>}</block>
+
+    <default>default:</default>
+        <return>return <expr><name>JTOK_ERR</name></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<enum>enum <name>expect_bits</name> <block>{
+    <decl><name>EXP_OBJ_NAME</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr></init></decl>,
+    <decl><name>EXP_COLON</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>,
+    <decl><name>EXP_ARR_VALUE</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">2</literal><operator>)</operator></expr></init></decl>,
+    <decl><name>EXP_VALUE</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">3</literal><operator>)</operator></expr></init></decl>,
+    <decl><name>EXP_NOT_VALUE</name> <init>= <expr><operator>(</operator><literal type="number">1U</literal> <operator>&lt;&lt;</operator> <literal type="number">4</literal><operator>)</operator></expr></init></decl>,
+}</block>;</enum>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>expect</name><parameter_list>(<parameter><type><name>bit</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(expectMask &amp; (EXP_##bit))</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>setExpect</name><parameter_list>(<parameter><type><name>bit</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(expectMask |= EXP_##bit)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>clearExpect</name><parameter_list>(<parameter><type><name>bit</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>(expectMask &amp;= ~EXP_##bit)</cpp:value></cpp:define>
+
+<function><type><name>bool</name></type> <name><name>UniValue</name><operator>::</operator><name>read</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>raw</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>clear</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>expectMask</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>UniValue</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>stack</name></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>tokenVal</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>consumed</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>enum</name> <name>jtokentype</name></name></type> <name>tok</name> <init>= <expr><name>JTOK_NONE</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>enum</name> <name>jtokentype</name></name></type> <name>last_tok</name> <init>= <expr><name>JTOK_NONE</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>end</name> <init>= <expr><name>raw</name> <operator>+</operator> <name>size</name></expr></init></decl>;</decl_stmt>
+    <do>do <block>{<block_content>
+        <expr_stmt><expr><name>last_tok</name> <operator>=</operator> <name>tok</name></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name>tok</name> <operator>=</operator> <call><name>getJsonToken</name><argument_list>(<argument><expr><name>tokenVal</name></expr></argument>, <argument><expr><name>consumed</name></expr></argument>, <argument><expr><name>raw</name></expr></argument>, <argument><expr><name>end</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>tok</name> <operator>==</operator> <name>JTOK_NONE</name> <operator>||</operator> <name>tok</name> <operator>==</operator> <name>JTOK_ERR</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>raw</name> <operator>+=</operator> <name>consumed</name></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>bool</name></type> <name>isValueOpen</name> <init>= <expr><call><name>jsonTokenIsValue</name><argument_list>(<argument><expr><name>tok</name></expr></argument>)</argument_list></call> <operator>||</operator>
+            <name>tok</name> <operator>==</operator> <name>JTOK_OBJ_OPEN</name> <operator>||</operator> <name>tok</name> <operator>==</operator> <name>JTOK_ARR_OPEN</name></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>expect</name><argument_list>(<argument><expr><name>VALUE</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name>isValueOpen</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name>clearExpect</name><argument_list>(<argument><expr><name>VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name>expect</name><argument_list>(<argument><expr><name>ARR_VALUE</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>bool</name></type> <name>isArrValue</name> <init>= <expr><name>isValueOpen</name> <operator>||</operator> <operator>(</operator><name>tok</name> <operator>==</operator> <name>JTOK_ARR_CLOSE</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name>isArrValue</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+            <expr_stmt><expr><call><name>clearExpect</name><argument_list>(<argument><expr><name>ARR_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name>expect</name><argument_list>(<argument><expr><name>OBJ_NAME</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>bool</name></type> <name>isObjName</name> <init>= <expr><operator>(</operator><name>tok</name> <operator>==</operator> <name>JTOK_OBJ_CLOSE</name> <operator>||</operator> <name>tok</name> <operator>==</operator> <name>JTOK_STRING</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name>isObjName</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name>expect</name><argument_list>(<argument><expr><name>COLON</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>tok</name> <operator>!=</operator> <name>JTOK_COLON</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name>clearExpect</name><argument_list>(<argument><expr><name>COLON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><operator>!</operator><call><name>expect</name><argument_list>(<argument><expr><name>COLON</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <operator>(</operator><name>tok</name> <operator>==</operator> <name>JTOK_COLON</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>expect</name><argument_list>(<argument><expr><name>NOT_VALUE</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>isValueOpen</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><call><name>clearExpect</name><argument_list>(<argument><expr><name>NOT_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <switch>switch <condition>(<expr><name>tok</name></expr>)</condition> <block>{<block_content>
+
+        <case>case <expr><name>JTOK_OBJ_OPEN</name></expr>:</case>
+        <case>case <expr><name>JTOK_ARR_OPEN</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>VType</name></type> <name>utyp</name> <init>= <expr><operator>(</operator><ternary><condition><expr><name>tok</name> <operator>==</operator> <name>JTOK_OBJ_OPEN</name></expr> ?</condition><then> <expr><name>VOBJ</name></expr> </then><else>: <expr><name>VARR</name></expr></else></ternary><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name>utyp</name> <operator>==</operator> <name>VOBJ</name></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name>setObject</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+                <else>else<block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name>setArray</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+                <expr_stmt><expr><call><name><name>stack</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <decl_stmt><decl><type><name>UniValue</name></type> <name>tmpVal</name><argument_list>(<argument><expr><name>utyp</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>top</name><operator>-&gt;</operator><name>values</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>tmpVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+                <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>newTop</name> <init>= <expr><operator>&amp;</operator><operator>(</operator><call><name><name>top</name><operator>-&gt;</operator><name>values</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call><operator>)</operator></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>stack</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>newTop</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+
+            <if_stmt><if>if <condition>(<expr><name>utyp</name> <operator>==</operator> <name>VOBJ</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>OBJ_NAME</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+            <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>ARR_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <case>case <expr><name>JTOK_OBJ_CLOSE</name></expr>:</case>
+        <case>case <expr><name>JTOK_ARR_CLOSE</name></expr>:</case> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>(</operator><name>last_tok</name> <operator>==</operator> <name>JTOK_COMMA</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>VType</name></type> <name>utyp</name> <init>= <expr><operator>(</operator><ternary><condition><expr><name>tok</name> <operator>==</operator> <name>JTOK_OBJ_CLOSE</name></expr> ?</condition><then> <expr><name>VOBJ</name></expr> </then><else>: <expr><name>VARR</name></expr></else></ternary><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>utyp</name> <operator>!=</operator> <call><name><name>top</name><operator>-&gt;</operator><name>getType</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+            <expr_stmt><expr><call><name><name>stack</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>clearExpect</name><argument_list>(<argument><expr><name>OBJ_NAME</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>NOT_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <case>case <expr><name>JTOK_COLON</name></expr>:</case> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>top</name><operator>-&gt;</operator><name>getType</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <name>VOBJ</name></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+            <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <case>case <expr><name>JTOK_COMMA</name></expr>:</case> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>||</operator>
+                <operator>(</operator><name>last_tok</name> <operator>==</operator> <name>JTOK_COMMA</name><operator>)</operator> <operator>||</operator> <operator>(</operator><name>last_tok</name> <operator>==</operator> <name>JTOK_ARR_OPEN</name><operator>)</operator></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>top</name><operator>-&gt;</operator><name>getType</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>VOBJ</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>OBJ_NAME</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+            <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>ARR_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <case>case <expr><name>JTOK_KW_NULL</name></expr>:</case>
+        <case>case <expr><name>JTOK_KW_TRUE</name></expr>:</case>
+        <case>case <expr><name>JTOK_KW_FALSE</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>tmpVal</name></decl>;</decl_stmt>
+            <switch>switch <condition>(<expr><name>tok</name></expr>)</condition> <block>{<block_content>
+            <case>case <expr><name>JTOK_KW_NULL</name></expr>:</case>
+                <comment type="line">// do nothing more</comment>
+                <break>break;</break>
+            <case>case <expr><name>JTOK_KW_TRUE</name></expr>:</case>
+                <expr_stmt><expr><call><name><name>tmpVal</name><operator>.</operator><name>setBool</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <break>break;</break>
+            <case>case <expr><name>JTOK_KW_FALSE</name></expr>:</case>
+                <expr_stmt><expr><call><name><name>tmpVal</name><operator>.</operator><name>setBool</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <break>break;</break>
+            <default>default:</default> <comment type="block">/* impossible */</comment> <break>break;</break>
+            </block_content>}</block></switch>
+
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><operator>*</operator><name>this</name> <operator>=</operator> <name>tmpVal</name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>top</name><operator>-&gt;</operator><name>values</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>tmpVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>NOT_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <case>case <expr><name>JTOK_NUMBER</name></expr>:</case> <block>{<block_content>
+            <decl_stmt><decl><type><name>UniValue</name></type> <name>tmpVal</name><argument_list>(<argument><expr><name>VNUM</name></expr></argument>, <argument><expr><name>tokenVal</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><operator>*</operator><name>this</name> <operator>=</operator> <name>tmpVal</name></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+
+            <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>top</name><operator>-&gt;</operator><name>values</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>tmpVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+            <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>NOT_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <case>case <expr><name>JTOK_STRING</name></expr>:</case> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name>expect</name><argument_list>(<argument><expr><name>OBJ_NAME</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>top</name><operator>-&gt;</operator><name>keys</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>tokenVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>clearExpect</name><argument_list>(<argument><expr><name>OBJ_NAME</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>COLON</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <decl_stmt><decl><type><name>UniValue</name></type> <name>tmpVal</name><argument_list>(<argument><expr><name>VSTR</name></expr></argument>, <argument><expr><name>tokenVal</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><operator>*</operator><name>this</name> <operator>=</operator> <name>tmpVal</name></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block></if></if_stmt>
+                <decl_stmt><decl><type><name>UniValue</name> <modifier>*</modifier></type><name>top</name> <init>= <expr><call><name><name>stack</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>top</name><operator>-&gt;</operator><name>values</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>tmpVal</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+
+            <expr_stmt><expr><call><name>setExpect</name><argument_list>(<argument><expr><name>NOT_VALUE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+            </block_content>}</block>
+
+        <default>default:</default>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></switch>
+    </block_content>}</block> while <condition>(<expr><operator>!</operator><call><name><name>stack</name><operator>.</operator><name>empty</name></name> <argument_list>()</argument_list></call></expr>)</condition>;</do>
+
+    <comment type="block">/* Check that nothing follows the initial construct (parsed above).  */</comment>
+    <expr_stmt><expr><name>tok</name> <operator>=</operator> <call><name>getJsonToken</name><argument_list>(<argument><expr><name>tokenVal</name></expr></argument>, <argument><expr><name>consumed</name></expr></argument>, <argument><expr><name>raw</name></expr></argument>, <argument><expr><name>end</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><name>tok</name> <operator>!=</operator> <name>JTOK_NONE</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+</unit>

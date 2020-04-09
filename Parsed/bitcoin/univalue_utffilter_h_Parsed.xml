@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/univalue/lib/univalue_utffilter.h"><comment type="line">// Copyright 2016 Wladimir J. van der Laan</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>UNIVALUE_UTFFILTER_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>UNIVALUE_UTFFILTER_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;string&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/**
+ * Filter that generates and validates UTF-8, as well as collates UTF-16
+ * surrogate pairs as specified in RFC4627.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>JSONUTF8StringFilter</name>
+<block>{<block_content>
+<label><name>public</name>:</label>
+    <decl_stmt><decl><type><name>explicit</name></type> <name>JSONUTF8StringFilter</name><argument_list>(<argument><expr><name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>s</name></expr></argument>)</argument_list><range>:
+        <expr><call><name>str</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></range></decl>, <decl><type ref="prev"/><name>is_valid</name><argument_list>(<argument><expr><name>true</name></expr></argument>)</argument_list></decl>, <decl><type ref="prev"/><name>codepoint</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>, <decl><type ref="prev"/><name>state</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>, <decl><type ref="prev"/><name>surpair</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list>
+    <block>{<block_content>
+    </block_content>}</block></decl></decl_stmt>
+    <comment type="line">// Write single 8-bit char (may be part of UTF-8 sequence)</comment>
+    <function><type><name>void</name></type> <name>push_back</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>char</name></type> <name>ch</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>state</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>ch</name> <operator>&lt;</operator> <literal type="number">0x80</literal></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// 7-bit ASCII, fast direct pass-through</comment>
+                <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>ch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+            <if type="elseif">else if <condition>(<expr><name>ch</name> <operator>&lt;</operator> <literal type="number">0xc0</literal></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Mid-sequence character, invalid in this state</comment>
+                <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if>
+            <if type="elseif">else if <condition>(<expr><name>ch</name> <operator>&lt;</operator> <literal type="number">0xe0</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Start of 2-byte sequence</comment>
+                <expr_stmt><expr><name>codepoint</name> <operator>=</operator> <operator>(</operator><name>ch</name> <operator>&amp;</operator> <literal type="number">0x1f</literal><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">6</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>state</name> <operator>=</operator> <literal type="number">6</literal></expr>;</expr_stmt>
+            </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>ch</name> <operator>&lt;</operator> <literal type="number">0xf0</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Start of 3-byte sequence</comment>
+                <expr_stmt><expr><name>codepoint</name> <operator>=</operator> <operator>(</operator><name>ch</name> <operator>&amp;</operator> <literal type="number">0x0f</literal><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">12</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>state</name> <operator>=</operator> <literal type="number">12</literal></expr>;</expr_stmt>
+            </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>ch</name> <operator>&lt;</operator> <literal type="number">0xf8</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Start of 4-byte sequence</comment>
+                <expr_stmt><expr><name>codepoint</name> <operator>=</operator> <operator>(</operator><name>ch</name> <operator>&amp;</operator> <literal type="number">0x07</literal><operator>)</operator> <operator>&lt;&lt;</operator> <literal type="number">18</literal></expr>;</expr_stmt>
+                <expr_stmt><expr><name>state</name> <operator>=</operator> <literal type="number">18</literal></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else<block type="pseudo"><block_content> <comment type="line">// Reserved, invalid</comment>
+                <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><operator>(</operator><name>ch</name> <operator>&amp;</operator> <literal type="number">0xc0</literal><operator>)</operator> <operator>!=</operator> <literal type="number">0x80</literal></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Not a continuation, invalid</comment>
+                <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+            <expr_stmt><expr><name>state</name> <operator>-=</operator> <literal type="number">6</literal></expr>;</expr_stmt>
+            <expr_stmt><expr><name>codepoint</name> <operator>|=</operator> <operator>(</operator><name>ch</name> <operator>&amp;</operator> <literal type="number">0x3f</literal><operator>)</operator> <operator>&lt;&lt;</operator> <name>state</name></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>state</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name>push_back_u</name><argument_list>(<argument><expr><name>codepoint</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+    <comment type="line">// Write codepoint directly, possibly collating surrogate pairs</comment>
+    <function><type><name>void</name></type> <name>push_back_u</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>codepoint_</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>state</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Only accept full codepoints in open state</comment>
+            <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>codepoint_</name> <operator>&gt;=</operator> <literal type="number">0xD800</literal> <operator>&amp;&amp;</operator> <name>codepoint_</name> <operator>&lt;</operator> <literal type="number">0xDC00</literal></expr>)</condition> <block>{<block_content> <comment type="line">// First half of surrogate pair</comment>
+            <if_stmt><if>if <condition>(<expr><name>surpair</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Two subsequent surrogate pair openers - fail</comment>
+                <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if>
+            <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><name>surpair</name> <operator>=</operator> <name>codepoint_</name></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>codepoint_</name> <operator>&gt;=</operator> <literal type="number">0xDC00</literal> <operator>&amp;&amp;</operator> <name>codepoint_</name> <operator>&lt;</operator> <literal type="number">0xE000</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Second half of surrogate pair</comment>
+            <if_stmt><if>if <condition>(<expr><name>surpair</name></expr>)</condition> <block>{<block_content> <comment type="line">// Open surrogate pair, expect second half</comment>
+                <comment type="line">// Compute code point from UTF-16 surrogate pair</comment>
+                <expr_stmt><expr><call><name>append_codepoint</name><argument_list>(<argument><expr><literal type="number">0x10000</literal> <operator>|</operator> <operator>(</operator><operator>(</operator><name>surpair</name> <operator>-</operator> <literal type="number">0xD800</literal><operator>)</operator><operator>&lt;&lt;</operator><literal type="number">10</literal><operator>)</operator> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>-</operator> <literal type="number">0xDC00</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>surpair</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else<block type="pseudo"><block_content> <comment type="line">// Second half doesn't follow a first half - fail</comment>
+                <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>surpair</name></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// First half of surrogate pair not followed by second - fail</comment>
+                <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if>
+            <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name>append_codepoint</name><argument_list>(<argument><expr><name>codepoint_</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></function>
+    <comment type="line">// Check that we're in a state where the string can be ended</comment>
+    <comment type="line">// No open sequences, no open surrogate pairs, etc</comment>
+    <function><type><name>bool</name></type> <name>finalize</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>state</name> <operator>||</operator> <name>surpair</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>is_valid</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <return>return <expr><name>is_valid</name></expr>;</return>
+    </block_content>}</block></function>
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <operator>&amp;</operator><name>str</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>is_valid</name></decl>;</decl_stmt>
+    <comment type="line">// Current UTF-8 decoding state</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>codepoint</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>state</name></decl>;</decl_stmt> <comment type="line">// Top bit to be filled in for next UTF-8 byte, or 0</comment>
+
+    <comment type="line">// Keep track of the following state to handle the following section of</comment>
+    <comment type="line">// RFC4627:</comment>
+    <comment type="line">//</comment>
+    <comment type="line">//    To escape an extended character that is not in the Basic Multilingual</comment>
+    <comment type="line">//    Plane, the character is represented as a twelve-character sequence,</comment>
+    <comment type="line">//    encoding the UTF-16 surrogate pair.  So, for example, a string</comment>
+    <comment type="line">//    containing only the G clef character (U+1D11E) may be represented as</comment>
+    <comment type="line">//    "\uD834\uDD1E".</comment>
+    <comment type="line">//</comment>
+    <comment type="line">//  Two subsequent \u.... may have to be replaced with one actual codepoint.</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>surpair</name></decl>;</decl_stmt> <comment type="line">// First half of open UTF-16 surrogate pair, or 0</comment>
+
+    <function><type><name>void</name></type> <name>append_codepoint</name><parameter_list>(<parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>codepoint_</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>codepoint_</name> <operator>&lt;=</operator> <literal type="number">0x7f</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><name>codepoint_</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <if type="elseif">else if <condition>(<expr><name>codepoint_</name> <operator>&lt;=</operator> <literal type="number">0x7FF</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0xC0</literal> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>&gt;&gt;</operator> <literal type="number">6</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0x80</literal> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>&amp;</operator> <literal type="number">0x3F</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>codepoint_</name> <operator>&lt;=</operator> <literal type="number">0xFFFF</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0xE0</literal> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>&gt;&gt;</operator> <literal type="number">12</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0x80</literal> <operator>|</operator> <operator>(</operator><operator>(</operator><name>codepoint_</name> <operator>&gt;&gt;</operator> <literal type="number">6</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0x3F</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0x80</literal> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>&amp;</operator> <literal type="number">0x3F</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>codepoint_</name> <operator>&lt;=</operator> <literal type="number">0x1FFFFF</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0xF0</literal> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>&gt;&gt;</operator> <literal type="number">18</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0x80</literal> <operator>|</operator> <operator>(</operator><operator>(</operator><name>codepoint_</name> <operator>&gt;&gt;</operator> <literal type="number">12</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0x3F</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0x80</literal> <operator>|</operator> <operator>(</operator><operator>(</operator><name>codepoint_</name> <operator>&gt;&gt;</operator> <literal type="number">6</literal><operator>)</operator> <operator>&amp;</operator> <literal type="number">0x3F</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>str</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><literal type="number">0x80</literal> <operator>|</operator> <operator>(</operator><name>codepoint_</name> <operator>&amp;</operator> <literal type="number">0x3F</literal><operator>)</operator><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></function>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</unit>

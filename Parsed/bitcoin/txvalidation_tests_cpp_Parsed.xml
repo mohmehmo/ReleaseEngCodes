@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/txvalidation_tests.cpp"><comment type="line">// Copyright (c) 2017-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+
+
+<macro><name>BOOST_AUTO_TEST_SUITE</name><argument_list>(<argument>txvalidation_tests</argument>)</argument_list></macro>
+
+<comment type="block" format="doxygen">/**
+ * Ensure that the mempool won't accept coinbase transactions.
+ */</comment>
+<macro><name>BOOST_FIXTURE_TEST_CASE</name><argument_list>(<argument>tx_mempool_reject_coinbase</argument>, <argument>TestChain100Setup</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CScript</name></type> <name>scriptPubKey</name> <init>= <expr><call><name>CScript</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <call><name>ToByteVector</name><argument_list>(<argument><expr><call><name><name>coinbaseKey</name><operator>.</operator><name>GetPubKey</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <name>OP_CHECKSIG</name></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>coinbaseTx</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <call><name>CScript</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <name>OP_11</name> <operator>&lt;&lt;</operator> <name>OP_EQUAL</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>nValue</name> <operator>=</operator> <literal type="number">1</literal> <operator>*</operator> <name>CENT</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>coinbaseTx</name><operator>.</operator><name>vout</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><name>scriptPubKey</name> <operator>=</operator> <name>scriptPubKey</name></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name>CTransaction</name><argument_list>(<argument><expr><name>coinbaseTx</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>IsCoinBase</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>TxValidationState</name></type> <name>state</name></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>initialPoolSize</name> <init>= <expr><call><name><name>m_node</name><operator>.</operator><name>mempool</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(
+            <argument><expr><literal type="boolean">false</literal></expr></argument>,
+            <argument><expr><call><name>AcceptToMemoryPool</name><argument_list>(<argument><expr><operator>*</operator><name><name>m_node</name><operator>.</operator><name>mempool</name></name></expr></argument>, <argument><expr><name>state</name></expr></argument>, <argument><expr><call><name>MakeTransactionRef</name><argument_list>(<argument><expr><name>coinbaseTx</name></expr></argument>)</argument_list></call></expr></argument>,
+                <argument><expr><literal type="null">nullptr</literal></expr></argument> <comment type="block">/* plTxnReplaced */</comment>,
+                <argument><expr><literal type="boolean">true</literal></expr></argument> <comment type="block">/* bypass_limits */</comment>,
+                <argument><expr><literal type="number">0</literal></expr></argument> <comment type="block">/* nAbsurdFee */</comment>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Check that the transaction hasn't been added to mempool.</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name><name>m_node</name><operator>.</operator><name>mempool</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>initialPoolSize</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Check that the validation state reflects the unsuccessful attempt.</comment>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>state</name><operator>.</operator><name>IsInvalid</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK_EQUAL</name><argument_list>(<argument><expr><call><name><name>state</name><operator>.</operator><name>GetRejectReason</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="string">"coinbase"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>state</name><operator>.</operator><name>GetResult</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block>
+
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+</unit>

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/consensus/tx_check.cpp"><comment type="line">// Copyright (c) 2017-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/tx_check.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;primitives/transaction.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+
+<function><type><name>bool</name></type> <name>CheckTransaction</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>tx</name></decl></parameter>, <parameter><decl><type><name>TxValidationState</name><modifier>&amp;</modifier></type> <name>state</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Basic checks that don't depend on any context</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-vin-empty"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-vout-empty"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <comment type="line">// Size limits (this doesn't take the witness into account, as that hasn't been checked for malleability)</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><operator>::</operator><name>GetSerializeSize</name></name><argument_list>(<argument><expr><name>tx</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr></argument>)</argument_list></call> <operator>*</operator> <name>WITNESS_SCALE_FACTOR</name> <operator>&gt;</operator> <name>MAX_BLOCK_WEIGHT</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-oversize"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Check for negative or overflow output values (see CVE-2010-5139)</comment>
+    <decl_stmt><decl><type><name>CAmount</name></type> <name>nValueOut</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txout</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vout</name></name></expr></range></decl></init>)</control>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>txout</name><operator>.</operator><name>nValue</name></name> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-vout-negative"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>txout</name><operator>.</operator><name>nValue</name></name> <operator>&gt;</operator> <name>MAX_MONEY</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-vout-toolarge"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>nValueOut</name> <operator>+=</operator> <name><name>txout</name><operator>.</operator><name>nValue</name></name></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>MoneyRange</name><argument_list>(<argument><expr><name>nValueOut</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-txouttotal-toolarge"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// Check for duplicate inputs (see CVE-2018-17144)</comment>
+    <comment type="line">// While Consensus::CheckTxInputs does check if all inputs of a tx are available, and UpdateCoins marks all inputs</comment>
+    <comment type="line">// of a tx as spent, it does not check if the tx has duplicate inputs.</comment>
+    <comment type="line">// Failure to run this check will result in either a crash or an inflation bug, depending on the implementation of</comment>
+    <comment type="line">// the underlying coins database.</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name>COutPoint</name></expr></argument>&gt;</argument_list></name></type> <name>vInOutPoints</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>vInOutPoints</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name><name>txin</name><operator>.</operator><name>prevout</name></name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-inputs-duplicate"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>tx</name><operator>.</operator><name>IsCoinBase</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name><name>scriptSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">2</literal> <operator>||</operator> <name><name>tx</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name><name>scriptSig</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">100</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-cb-length"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    </block_content>}</block></if>
+    <else>else
+    <block>{<block_content>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>txin</name> <range>: <expr><name><name>tx</name><operator>.</operator><name>vin</name></name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>txin</name><operator>.</operator><name>prevout</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <return>return <expr><call><name><name>state</name><operator>.</operator><name>Invalid</name></name><argument_list>(<argument><expr><name><name>TxValidationResult</name><operator>::</operator><name>TX_CONSENSUS</name></name></expr></argument>, <argument><expr><literal type="string">"bad-txns-prevout-null"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt></block_content></block></for>
+    </block_content>}</block></else></if_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+</unit>

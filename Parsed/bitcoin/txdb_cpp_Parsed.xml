@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/txdb.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;txdb.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pow.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;random.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;shutdown.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ui_interface.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/vector.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdint.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_COIN</name> <init>= <expr><literal type="char">'C'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_COINS</name> <init>= <expr><literal type="char">'c'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_BLOCK_FILES</name> <init>= <expr><literal type="char">'f'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_BLOCK_INDEX</name> <init>= <expr><literal type="char">'b'</literal></expr></init></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_BEST_BLOCK</name> <init>= <expr><literal type="char">'B'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_HEAD_BLOCKS</name> <init>= <expr><literal type="char">'H'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_FLAG</name> <init>= <expr><literal type="char">'F'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_REINDEX_FLAG</name> <init>= <expr><literal type="char">'R'</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name></type> <name>DB_LAST_BLOCK</name> <init>= <expr><literal type="char">'l'</literal></expr></init></decl>;</decl_stmt>
+
+<namespace>namespace <block>{
+
+<struct>struct <name>CoinEntry</name> <block>{<public type="default">
+    <decl_stmt><decl><type><name>COutPoint</name><modifier>*</modifier></type> <name>outpoint</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name>key</name></decl>;</decl_stmt>
+    <constructor><specifier>explicit</specifier> <name>CoinEntry</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>COutPoint</name><modifier>*</modifier></type> <name>ptr</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>outpoint</name><argument_list>(<argument><expr><cast type="const">const_cast<argument_list type="generic">&lt;<argument><expr><name>COutPoint</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>ptr</name></expr></argument>)</argument_list></cast></expr></argument>)</argument_list></call>, <call><name>key</name><argument_list>(<argument><expr><name>DB_COIN</name></expr></argument>)</argument_list></call>  </member_init_list><block>{<block_content/>}</block></constructor>
+
+    <function><template>template<parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>&gt;</parameter_list></template>
+    <type><name>void</name></type> <name>Serialize</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name>key</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <name><name>outpoint</name><operator>-&gt;</operator><name>hash</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&lt;&lt;</operator> <call><name>VARINT</name><argument_list>(<argument><expr><name><name>outpoint</name><operator>-&gt;</operator><name>n</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <function><template>template<parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>&gt;</parameter_list></template>
+    <type><name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name><modifier>&amp;</modifier></type> <name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name>key</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <name><name>outpoint</name><operator>-&gt;</operator><name>hash</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>s</name> <operator>&gt;&gt;</operator> <call><name>VARINT</name><argument_list>(<argument><expr><name><name>outpoint</name><operator>-&gt;</operator><name>n</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</struct>
+
+}</block></namespace>
+
+<constructor><name><name>CCoinsViewDB</name><operator>::</operator><name>CCoinsViewDB</name></name><parameter_list>(<parameter><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>ldb_path</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>nCacheSize</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fMemory</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fWipe</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>db</name><argument_list>(<argument><expr><name>ldb_path</name></expr></argument>, <argument><expr><name>nCacheSize</name></expr></argument>, <argument><expr><name>fMemory</name></expr></argument>, <argument><expr><name>fWipe</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>GetCoin</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>COutPoint</name> <modifier>&amp;</modifier></type><name>outpoint</name></decl></parameter>, <parameter><decl><type><name>Coin</name> <modifier>&amp;</modifier></type><name>coin</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <return>return <expr><call><name><name>db</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><call><name>CoinEntry</name><argument_list>(<argument><expr><operator>&amp;</operator><name>outpoint</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>coin</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>HaveCoin</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>COutPoint</name> <modifier>&amp;</modifier></type><name>outpoint</name></decl></parameter>)</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <return>return <expr><call><name><name>db</name><operator>.</operator><name>Exists</name></name><argument_list>(<argument><expr><call><name>CoinEntry</name><argument_list>(<argument><expr><operator>&amp;</operator><name>outpoint</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>uint256</name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>GetBestBlock</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hashBestChain</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>db</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name>DB_BEST_BLOCK</name></expr></argument>, <argument><expr><name>hashBestChain</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>uint256</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><name>hashBestChain</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>GetHeadBlocks</name></name><parameter_list>()</parameter_list> <specifier>const</specifier> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>vhashHeadBlocks</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>db</name><operator>.</operator><name>Read</name></name><argument_list>(<argument><expr><name>DB_HEAD_BLOCKS</name></expr></argument>, <argument><expr><name>vhashHeadBlocks</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><call><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>vhashHeadBlocks</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>BatchWrite</name></name><parameter_list>(<parameter><decl><type><name>CCoinsMap</name> <modifier>&amp;</modifier></type><name>mapCoins</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>hashBlock</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>CDBBatch</name></type> <name>batch</name><argument_list>(<argument><expr><name>db</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>changed</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>batch_size</name> <init>= <expr><operator>(</operator><name>size_t</name><operator>)</operator><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-dbbatchsize"</literal></expr></argument>, <argument><expr><name>nDefaultDbBatchSize</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>crash_simulate</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-dbcrashratio"</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><call><name><name>hashBlock</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>uint256</name></type> <name>old_tip</name> <init>= <expr><call><name>GetBestBlock</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>old_tip</name><operator>.</operator><name>IsNull</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <comment type="line">// We may be in the middle of replaying.</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>old_heads</name> <init>= <expr><call><name>GetHeadBlocks</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>old_heads</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">2</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name><name>old_heads</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>==</operator> <name>hashBlock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>old_tip</name> <operator>=</operator> <name><name>old_heads</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// In the first batch, mark the database as being in the middle of a</comment>
+    <comment type="line">// transition from old_tip to hashBlock.</comment>
+    <comment type="line">// A vector is used for future extensibility, as we may want to support</comment>
+    <comment type="line">// interrupting after partial writes from multiple independent reorgs.</comment>
+    <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>DB_BEST_BLOCK</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>DB_HEAD_BLOCKS</name></expr></argument>, <argument><expr><call><name>Vector</name><argument_list>(<argument><expr><name>hashBlock</name></expr></argument>, <argument><expr><name>old_tip</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><name><name>CCoinsMap</name><operator>::</operator><name>iterator</name></name></type> <name>it</name> <init>= <expr><call><name><name>mapCoins</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</init> <condition><expr><name>it</name> <operator>!=</operator> <call><name><name>mapCoins</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition><incr/>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>flags</name></name> <operator>&amp;</operator> <name><name>CCoinsCacheEntry</name><operator>::</operator><name>DIRTY</name></name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CoinEntry</name></type> <name>entry</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>it</name><operator>-&gt;</operator><name>first</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>coin</name><operator>.</operator><name>IsSpent</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+            <else>else<block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>, <argument><expr><name><name>it</name><operator>-&gt;</operator><name>second</name><operator>.</operator><name>coin</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+            <expr_stmt><expr><name>changed</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>count</name><operator>++</operator></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>CCoinsMap</name><operator>::</operator><name>iterator</name></name></type> <name>itOld</name> <init>= <expr><name>it</name><operator>++</operator></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>mapCoins</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>itOld</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>batch</name><operator>.</operator><name>SizeEstimate</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>batch_size</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>COINDB</name></name></expr></argument>, <argument><expr><literal type="string">"Writing partial batch of %.2f MiB\n"</literal></expr></argument>, <argument><expr><call><name><name>batch</name><operator>.</operator><name>SizeEstimate</name></name><argument_list>()</argument_list></call> <operator>*</operator> <operator>(</operator><literal type="number">1.0</literal> <operator>/</operator> <literal type="number">1048576.0</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>db</name><operator>.</operator><name>WriteBatch</name></name><argument_list>(<argument><expr><name>batch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><name>crash_simulate</name></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><specifier>static</specifier> <name>FastRandomContext</name></type> <name>rng</name></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><call><name><name>rng</name><operator>.</operator><name>randrange</name></name><argument_list>(<argument><expr><name>crash_simulate</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Simulating a crash. Goodbye.\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name>_Exit</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <comment type="line">// In the last batch, mark the database as consistent with hashBlock again.</comment>
+    <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>DB_HEAD_BLOCKS</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>DB_BEST_BLOCK</name></expr></argument>, <argument><expr><name>hashBlock</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>COINDB</name></name></expr></argument>, <argument><expr><literal type="string">"Writing final batch of %.2f MiB\n"</literal></expr></argument>, <argument><expr><call><name><name>batch</name><operator>.</operator><name>SizeEstimate</name></name><argument_list>()</argument_list></call> <operator>*</operator> <operator>(</operator><literal type="number">1.0</literal> <operator>/</operator> <literal type="number">1048576.0</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>ret</name> <init>= <expr><call><name><name>db</name><operator>.</operator><name>WriteBatch</name></name><argument_list>(<argument><expr><name>batch</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>COINDB</name></name></expr></argument>, <argument><expr><literal type="string">"Committed %u changed transaction outputs (out of %u) to coin database...\n"</literal></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><name>changed</name></expr></argument>, <argument><expr><operator>(</operator><name>unsigned</name> <name>int</name><operator>)</operator><name>count</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>ret</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>size_t</name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>EstimateSize</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>db</name><operator>.</operator><name>EstimateSize</name></name><argument_list>(<argument><expr><name>DB_COIN</name></expr></argument>, <argument><expr><operator>(</operator><name>char</name><operator>)</operator><operator>(</operator><name>DB_COIN</name><operator>+</operator><literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>CBlockTreeDB</name><operator>::</operator><name>CBlockTreeDB</name></name><parameter_list>(<parameter><decl><type><name>size_t</name></type> <name>nCacheSize</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fMemory</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fWipe</name></decl></parameter>)</parameter_list> <member_init_list>: <call><name>CDBWrapper</name><argument_list>(<argument><expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"blocks"</literal> <operator>/</operator> <literal type="string">"index"</literal></expr></argument>, <argument><expr><name>nCacheSize</name></expr></argument>, <argument><expr><name>fMemory</name></expr></argument>, <argument><expr><name>fWipe</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>ReadBlockFileInfo</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>nFile</name></decl></parameter>, <parameter><decl><type><name>CBlockFileInfo</name> <modifier>&amp;</modifier></type><name>info</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>Read</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_BLOCK_FILES</name></expr></argument>, <argument><expr><name>nFile</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>info</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>WriteReindexing</name></name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>fReindexing</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>fReindexing</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>Write</name><argument_list>(<argument><expr><name>DB_REINDEX_FLAG</name></expr></argument>, <argument><expr><literal type="char">'1'</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+        <return>return <expr><call><name>Erase</name><argument_list>(<argument><expr><name>DB_REINDEX_FLAG</name></expr></argument>)</argument_list></call></expr>;</return></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>ReadReindexing</name></name><parameter_list>(<parameter><decl><type><name>bool</name> <modifier>&amp;</modifier></type><name>fReindexing</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name>fReindexing</name> <operator>=</operator> <call><name>Exists</name><argument_list>(<argument><expr><name>DB_REINDEX_FLAG</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>ReadLastBlockFile</name></name><parameter_list>(<parameter><decl><type><name>int</name> <modifier>&amp;</modifier></type><name>nFile</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>Read</name><argument_list>(<argument><expr><name>DB_LAST_BLOCK</name></expr></argument>, <argument><expr><name>nFile</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>CCoinsViewCursor</name> <modifier>*</modifier></type><name><name>CCoinsViewDB</name><operator>::</operator><name>Cursor</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CCoinsViewDBCursor</name> <modifier>*</modifier></type><name>i</name> <init>= <expr><operator>new</operator> <call><name>CCoinsViewDBCursor</name><argument_list>(<argument><expr><cast type="const">const_cast<argument_list type="generic">&lt;<argument><expr><name>CDBWrapper</name><operator>&amp;</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>db</name></expr></argument>)</argument_list></cast><operator>.</operator><call><name>NewIterator</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>GetBestBlock</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <comment type="block">/* It seems that there are no "const iterators" for LevelDB.  Since we
+       only need read operations on it, use a const-cast to get around
+       that restriction.  */</comment>
+    <expr_stmt><expr><call><name><name>i</name><operator>-&gt;</operator><name>pcursor</name><operator>-&gt;</operator><name>Seek</name></name><argument_list>(<argument><expr><name>DB_COIN</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Cache key of first record</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>i</name><operator>-&gt;</operator><name>pcursor</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>CoinEntry</name></type> <name>entry</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>i</name><operator>-&gt;</operator><name>keyTmp</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>i</name><operator>-&gt;</operator><name>pcursor</name><operator>-&gt;</operator><name>GetKey</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>i</name><operator>-&gt;</operator><name>keyTmp</name><operator>.</operator><name>first</name></name> <operator>=</operator> <name><name>entry</name><operator>.</operator><name>key</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name><name>i</name><operator>-&gt;</operator><name>keyTmp</name><operator>.</operator><name>first</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt> <comment type="line">// Make sure Valid() and GetKey() return false</comment>
+    </block_content>}</block></else></if_stmt>
+    <return>return <expr><name>i</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CCoinsViewDBCursor</name><operator>::</operator><name>GetKey</name></name><parameter_list>(<parameter><decl><type><name>COutPoint</name> <modifier>&amp;</modifier></type><name>key</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// Return cached key</comment>
+    <if_stmt><if>if <condition>(<expr><name><name>keyTmp</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>DB_COIN</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>key</name> <operator>=</operator> <name><name>keyTmp</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CCoinsViewDBCursor</name><operator>::</operator><name>GetValue</name></name><parameter_list>(<parameter><decl><type><name>Coin</name> <modifier>&amp;</modifier></type><name>coin</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetValue</name></name><argument_list>(<argument><expr><name>coin</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>unsigned</name> <name>int</name></type> <name><name>CCoinsViewDBCursor</name><operator>::</operator><name>GetValueSize</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetValueSize</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CCoinsViewDBCursor</name><operator>::</operator><name>Valid</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><name><name>keyTmp</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>DB_COIN</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CCoinsViewDBCursor</name><operator>::</operator><name>Next</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Next</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CoinEntry</name></type> <name>entry</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>keyTmp</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pcursor</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call> <operator>||</operator> <operator>!</operator><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetKey</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>keyTmp</name><operator>.</operator><name>first</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt> <comment type="line">// Invalidate cached key after last record so that Valid() and GetKey() return false</comment>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name><name>keyTmp</name><operator>.</operator><name>first</name></name> <operator>=</operator> <name><name>entry</name><operator>.</operator><name>key</name></name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>WriteBatchSync</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockFileInfo</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name><modifier>&amp;</modifier></type> <name>fileInfo</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLastFile</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>blockinfo</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>CDBBatch</name></type> <name>batch</name><argument_list>(<argument><expr><operator>*</operator><name>this</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>CBlockFileInfo</name><operator>*</operator></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list><operator>::</operator><name>const_iterator</name></name></type> <name>it</name><init>=<expr><call><name><name>fileInfo</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</init> <condition><expr><name>it</name> <operator>!=</operator> <call><name><name>fileInfo</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>it</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_BLOCK_FILES</name></expr></argument>, <argument><expr><name><name>it</name><operator>-&gt;</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><operator>*</operator><name><name>it</name><operator>-&gt;</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>DB_LAST_BLOCK</name></expr></argument>, <argument><expr><name>nLastFile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator></expr></argument>&gt;</argument_list><operator>::</operator><name>const_iterator</name></name></type> <name>it</name><init>=<expr><call><name><name>blockinfo</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></init></decl>;</init> <condition><expr><name>it</name> <operator>!=</operator> <call><name><name>blockinfo</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>it</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_BLOCK_INDEX</name></expr></argument>, <argument><expr><call><name><operator>(</operator><operator>*</operator><name>it</name><operator>)</operator><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>CDiskBlockIndex</name><argument_list>(<argument><expr><operator>*</operator><name>it</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <return>return <expr><call><name>WriteBatch</name><argument_list>(<argument><expr><name>batch</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>WriteFlag</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fValue</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <return>return <expr><call><name>Write</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_FLAG</name></expr></argument>, <argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><ternary><condition><expr><name>fValue</name></expr> ?</condition><then> <expr><literal type="char">'1'</literal></expr> </then><else>: <expr><literal type="char">'0'</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>ReadFlag</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>name</name></decl></parameter>, <parameter><decl><type><name>bool</name> <modifier>&amp;</modifier></type><name>fValue</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name>char</name></type> <name>ch</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>Read</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_FLAG</name></expr></argument>, <argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>ch</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>fValue</name> <operator>=</operator> <name>ch</name> <operator>==</operator> <literal type="char">'1'</literal></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CBlockTreeDB</name><operator>::</operator><name>LoadBlockIndexGuts</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>consensusParams</name></decl></parameter>, <parameter><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>CBlockIndex</name><modifier>*</modifier><operator>(</operator><specifier>const</specifier> <name>uint256</name><modifier>&amp;</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>insertBlockIndex</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CDBIterator</name></expr></argument>&gt;</argument_list></name></type> <name>pcursor</name><argument_list>(<argument><expr><call><name>NewIterator</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Seek</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_BLOCK_INDEX</name></expr></argument>, <argument><expr><call><name>uint256</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Load m_block_index</comment>
+    <while>while <condition>(<expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>interruption_point</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>ShutdownRequested</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>key</name></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetKey</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <name><name>key</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>DB_BLOCK_INDEX</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CDiskBlockIndex</name></type> <name>diskindex</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetValue</name></name><argument_list>(<argument><expr><name>diskindex</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Construct block index object</comment>
+                <decl_stmt><decl><type><name>CBlockIndex</name><modifier>*</modifier></type> <name>pindexNew</name> <init>= <expr><call><name>insertBlockIndex</name><argument_list>(<argument><expr><call><name><name>diskindex</name><operator>.</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>pprev</name></name>          <operator>=</operator> <call><name>insertBlockIndex</name><argument_list>(<argument><expr><name><name>diskindex</name><operator>.</operator><name>hashPrev</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nHeight</name></name>        <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nHeight</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nFile</name></name>          <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nFile</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nDataPos</name></name>       <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nDataPos</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nUndoPos</name></name>       <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nUndoPos</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nVersion</name></name>       <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nVersion</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>hashMerkleRoot</name></name> <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>hashMerkleRoot</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nTime</name></name>          <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nTime</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nBits</name></name>          <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nBits</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nNonce</name></name>         <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nNonce</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nStatus</name></name>        <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nStatus</name></name></expr>;</expr_stmt>
+                <expr_stmt><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nTx</name></name>            <operator>=</operator> <name><name>diskindex</name><operator>.</operator><name>nTx</name></name></expr>;</expr_stmt>
+
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>CheckProofOfWork</name><argument_list>(<argument><expr><call><name><name>pindexNew</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>pindexNew</name><operator>-&gt;</operator><name>nBits</name></name></expr></argument>, <argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: CheckProofOfWork failed: %s"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>pindexNew</name><operator>-&gt;</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+
+                <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Next</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: failed to read value"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <break>break;</break>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></while>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<namespace>namespace <block>{
+
+<comment type="line" format="doxygen">//! Legacy class to deserialize pre-pertxout database entries without reindex.</comment>
+<class>class <name>CCoins</name>
+<block>{<private type="default">
+</private><public>public:
+    <comment type="line" format="doxygen">//! whether transaction is a coinbase</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fCoinBase</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! unspent transaction outputs; spent outputs are .IsNull(); spent outputs at the end of the array are dropped</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>CTxOut</name></expr></argument>&gt;</argument_list></name></type> <name>vout</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! at which height this transaction was included in the active block chain</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>nHeight</name></decl>;</decl_stmt>
+
+    <comment type="line" format="doxygen">//! empty constructor</comment>
+    <constructor><name>CCoins</name><parameter_list>()</parameter_list> <member_init_list>: <call><name>fCoinBase</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>, <call><name>vout</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>, <call><name>nHeight</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content> </block_content>}</block></constructor>
+
+    <function><template>template<parameter_list>&lt;<parameter><type><name>typename</name></type> <name>Stream</name></parameter>&gt;</parameter_list></template>
+    <type><name>void</name></type> <name>Unserialize</name><parameter_list>(<parameter><decl><type><name>Stream</name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list> <block>{<block_content>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nCode</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <comment type="line">// version</comment>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nVersionDummy</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><operator>::</operator><name>Unserialize</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>nVersionDummy</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// header code</comment>
+        <expr_stmt><expr><call><name><operator>::</operator><name>Unserialize</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>nCode</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fCoinBase</name> <operator>=</operator> <name>nCode</name> <operator>&amp;</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>&gt;</argument_list></name></type> <name>vAvail</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>vAvail</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>nCode</name> <operator>&amp;</operator> <literal type="number">2</literal><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>vAvail</name><index>[<expr><literal type="number">1</literal></expr>]</index></name> <operator>=</operator> <operator>(</operator><name>nCode</name> <operator>&amp;</operator> <literal type="number">4</literal><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nMaskCode</name> <init>= <expr><operator>(</operator><name>nCode</name> <operator>/</operator> <literal type="number">8</literal><operator>)</operator> <operator>+</operator> <operator>(</operator><ternary><condition><expr><operator>(</operator><name>nCode</name> <operator>&amp;</operator> <literal type="number">6</literal><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><literal type="number">0</literal></expr> </then><else>: <expr><literal type="number">1</literal></expr></else></ternary><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <comment type="line">// spentness bitmask</comment>
+        <while>while <condition>(<expr><name>nMaskCode</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name>chAvail</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><operator>::</operator><name>Unserialize</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><name>chAvail</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>p</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>p</name> <operator>&lt;</operator> <literal type="number">8</literal></expr>;</condition> <incr><expr><name>p</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                <decl_stmt><decl><type><name>bool</name></type> <name>f</name> <init>= <expr><operator>(</operator><name>chAvail</name> <operator>&amp;</operator> <operator>(</operator><literal type="number">1</literal> <operator>&lt;&lt;</operator> <name>p</name><operator>)</operator><operator>)</operator> <operator>!=</operator> <literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>vAvail</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+            <if_stmt><if>if <condition>(<expr><name>chAvail</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>nMaskCode</name><operator>--</operator></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></while>
+        <comment type="line">// txouts themself</comment>
+        <expr_stmt><expr><call><name><name>vout</name><operator>.</operator><name>assign</name></name><argument_list>(<argument><expr><call><name><name>vAvail</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>CTxOut</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>vAvail</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name><name>vAvail</name><index>[<expr><name>i</name></expr>]</index></name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><call><name><operator>::</operator><name>Unserialize</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>CTxOutCompressor</name><argument_list>(<argument><expr><name><name>vout</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></for>
+        <comment type="line">// coinbase height</comment>
+        <expr_stmt><expr><call><name><operator>::</operator><name>Unserialize</name></name><argument_list>(<argument><expr><name>s</name></expr></argument>, <argument><expr><call><name>VARINT</name><argument_list>(<argument><expr><name>nHeight</name></expr></argument>, <argument><expr><name><name>VarIntMode</name><operator>::</operator><name>NONNEGATIVE_SIGNED</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+}</block></namespace>
+
+<comment type="block" format="doxygen">/** Upgrade the database from older formats.
+ *
+ * Currently implemented: from the per-tx utxo model (0.8..0.14.x) to per-txout.
+ */</comment>
+<function><type><name>bool</name></type> <name><name>CCoinsViewDB</name><operator>::</operator><name>Upgrade</name></name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>unique_ptr</name><argument_list type="generic">&lt;<argument><expr><name>CDBIterator</name></expr></argument>&gt;</argument_list></name></type> <name>pcursor</name><argument_list>(<argument><expr><call><name><name>db</name><operator>.</operator><name>NewIterator</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Seek</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>DB_COINS</name></expr></argument>, <argument><expr><call><name>uint256</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pcursor</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>count</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Upgrading utxo-set database...\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"[0%%]..."</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+    <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ShowProgress</name></name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Upgrading UTXO database"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>batch_size</name> <init>= <expr><literal type="number">1</literal> <operator>&lt;&lt;</operator> <literal type="number">24</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CDBBatch</name></type> <name>batch</name><argument_list>(<argument><expr><name>db</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>reportDone</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>key</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>, <argument><expr><name>uint256</name></expr></argument>&gt;</argument_list></name></type> <name>prev_key</name> <init>= <expr><block>{<expr><name>DB_COINS</name></expr>, <macro><name>uint256</name><argument_list>()</argument_list></macro>}</block></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Valid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>interruption_point</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>ShutdownRequested</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetKey</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <name><name>key</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>DB_COINS</name></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><name>count</name><operator>++</operator> <operator>%</operator> <literal type="number">256</literal> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>uint32_t</name></type> <name>high</name> <init>= <expr><literal type="number">0x100</literal> <operator>*</operator> <operator>*</operator><call><name><name>key</name><operator>.</operator><name>second</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <operator>*</operator><operator>(</operator><call><name><name>key</name><operator>.</operator><name>second</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">1</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name>int</name></type> <name>percentageDone</name> <init>= <expr><operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name>high</name> <operator>*</operator> <literal type="number">100.0</literal> <operator>/</operator> <literal type="number">65536.0</literal> <operator>+</operator> <literal type="number">0.5</literal><operator>)</operator></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ShowProgress</name></name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Upgrading UTXO database"</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><name>percentageDone</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <if_stmt><if>if <condition>(<expr><name>reportDone</name> <operator>&lt;</operator> <name>percentageDone</name><operator>/</operator><literal type="number">10</literal></expr>)</condition> <block>{<block_content>
+                    <comment type="line">// report max. every 10% step</comment>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"[%d%%]..."</literal></expr></argument>, <argument><expr><name>percentageDone</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+                    <expr_stmt><expr><name>reportDone</name> <operator>=</operator> <name>percentageDone</name><operator>/</operator><literal type="number">10</literal></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name>CCoins</name></type> <name>old_coins</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>pcursor</name><operator>-&gt;</operator><name>GetValue</name></name><argument_list>(<argument><expr><name>old_coins</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <return>return <expr><call><name>error</name><argument_list>(<argument><expr><literal type="string">"%s: cannot parse CCoins record"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>)</argument_list></call></expr>;</return>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name>COutPoint</name></type> <name>outpoint</name><argument_list>(<argument><expr><name><name>key</name><operator>.</operator><name>second</name></name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>old_coins</name><operator>.</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>old_coins</name><operator>.</operator><name>vout</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>IsNull</name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>!</operator><name><name>old_coins</name><operator>.</operator><name>vout</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name><name>scriptPubKey</name><operator>.</operator><name>IsUnspendable</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <decl_stmt><decl><type><name>Coin</name></type> <name>newcoin</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name><name>old_coins</name><operator>.</operator><name>vout</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name><name>old_coins</name><operator>.</operator><name>nHeight</name></name></expr></argument>, <argument><expr><name><name>old_coins</name><operator>.</operator><name>fCoinBase</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <expr_stmt><expr><name><name>outpoint</name><operator>.</operator><name>n</name></name> <operator>=</operator> <name>i</name></expr>;</expr_stmt>
+                    <decl_stmt><decl><type><name>CoinEntry</name></type> <name>entry</name><argument_list>(<argument><expr><operator>&amp;</operator><name>outpoint</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+                    <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><name>entry</name></expr></argument>, <argument><expr><name>newcoin</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></for>
+            <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Erase</name></name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>batch</name><operator>.</operator><name>SizeEstimate</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>batch_size</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>db</name><operator>.</operator><name>WriteBatch</name></name><argument_list>(<argument><expr><name>batch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>batch</name><operator>.</operator><name>Clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>db</name><operator>.</operator><name>CompactRange</name></name><argument_list>(<argument><expr><name>prev_key</name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>prev_key</name> <operator>=</operator> <name>key</name></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>pcursor</name><operator>-&gt;</operator><name>Next</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <break>break;</break>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><call><name><name>db</name><operator>.</operator><name>WriteBatch</name></name><argument_list>(<argument><expr><name>batch</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>db</name><operator>.</operator><name>CompactRange</name></name><argument_list>(<argument><expr><block>{<expr><name>DB_COINS</name></expr>, <macro><name>uint256</name><argument_list>()</argument_list></macro>}</block></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ShowProgress</name></name><argument_list>(<argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><literal type="number">100</literal></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"[%s].\n"</literal></expr></argument>, <argument><expr><ternary><condition><expr><call><name>ShutdownRequested</name><argument_list>()</argument_list></call></expr> ?</condition><then> <expr><literal type="string">"CANCELLED"</literal></expr> </then><else>: <expr><literal type="string">"DONE"</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><operator>!</operator><call><name>ShutdownRequested</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+</unit>

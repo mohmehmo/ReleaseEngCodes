@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/wallet/walletutil.cpp"><comment type="line">// Copyright (c) 2017-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;wallet/walletutil.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;logging.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+
+<function><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>GetWalletDir</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>path</name></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>IsArgSet</name></name><argument_list>(<argument><expr><literal type="string">"-walletdir"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>path</name> <operator>=</operator> <call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-walletdir"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>fs</name><operator>::</operator><name>is_directory</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// If the path specified doesn't exist, we return the deliberately</comment>
+            <comment type="line">// invalid empty string.</comment>
+            <expr_stmt><expr><name>path</name> <operator>=</operator> <literal type="string">""</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name>path</name> <operator>=</operator> <call><name>GetDataDir</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// If a wallets directory exists, use that, otherwise default to GetDataDir</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>fs</name><operator>::</operator><name>is_directory</name></name><argument_list>(<argument><expr><name>path</name> <operator>/</operator> <literal type="string">"wallets"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><name>path</name> <operator>/=</operator> <literal type="string">"wallets"</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></else></if_stmt>
+
+    <return>return <expr><name>path</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>IsBerkeleyBtree</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name><modifier>&amp;</modifier></type> <name>path</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>fs</name><operator>::</operator><name>exists</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// A Berkeley DB Btree file has at least 4K.</comment>
+    <comment type="line">// This check also prevents opening lock files.</comment>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>system</name><operator>::</operator><name>error_code</name></name></type> <name>ec</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>auto</name></type> <name>size</name> <init>= <expr><call><name><name>fs</name><operator>::</operator><name>file_size</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>, <argument><expr><name>ec</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>ec</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"%s: %s %s\n"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>ec</name><operator>.</operator><name>message</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>path</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><name>size</name> <operator>&lt;</operator> <literal type="number">4096</literal></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name><name>fsbridge</name><operator>::</operator><name>ifstream</name></name></type> <name>file</name><argument_list>(<argument><expr><name>path</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>ios</name><operator>::</operator><name>binary</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>file</name><operator>.</operator><name>is_open</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>file</name><operator>.</operator><name>seekg</name></name><argument_list>(<argument><expr><literal type="number">12</literal></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>ios</name><operator>::</operator><name>beg</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Magic bytes start at offset 12</comment>
+    <decl_stmt><decl><type><name>uint32_t</name></type> <name>data</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>file</name><operator>.</operator><name>read</name></name><argument_list>(<argument><expr><operator>(</operator><name>char</name><operator>*</operator><operator>)</operator> <operator>&amp;</operator><name>data</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>data</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// Read 4 bytes of file to compare against magic</comment>
+
+    <comment type="line">// Berkeley DB Btree magic bytes, from:</comment>
+    <comment type="line">//  https://github.com/file/file/blob/5824af38469ec1ca9ac3ffd251e7afe9dc11e227/magic/Magdir/database#L74-L75</comment>
+    <comment type="line">//  - big endian systems - 00 05 31 62</comment>
+    <comment type="line">//  - little endian systems - 62 31 05 00</comment>
+    <return>return <expr><name>data</name> <operator>==</operator> <literal type="number">0x00053162</literal> <operator>||</operator> <name>data</name> <operator>==</operator> <literal type="number">0x62310500</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>fs</name><operator>::</operator><name>path</name></name></expr></argument>&gt;</argument_list></name></type> <name>ListWalletDir</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>wallet_dir</name> <init>= <expr><call><name>GetWalletDir</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>size_t</name></type> <name>offset</name> <init>= <expr><call><name><name>wallet_dir</name><operator>.</operator><name>string</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>size</name><argument_list>()</argument_list></call> <operator>+</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>fs</name><operator>::</operator><name>path</name></name></expr></argument>&gt;</argument_list></name></type> <name>paths</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>system</name><operator>::</operator><name>error_code</name></name></type> <name>ec</name></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>auto</name></type> <name>it</name> <init>= <expr><call><name><name>fs</name><operator>::</operator><name>recursive_directory_iterator</name></name><argument_list>(<argument><expr><name>wallet_dir</name></expr></argument>, <argument><expr><name>ec</name></expr></argument>)</argument_list></call></expr></init></decl>;</init> <condition><expr><name>it</name> <operator>!=</operator> <call><name><name>fs</name><operator>::</operator><name>recursive_directory_iterator</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><call><name><name>it</name><operator>.</operator><name>increment</name></name><argument_list>(<argument><expr><name>ec</name></expr></argument>)</argument_list></call></expr></incr>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>ec</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"%s: %s %s\n"</literal></expr></argument>, <argument><expr><name>__func__</name></expr></argument>, <argument><expr><call><name><name>ec</name><operator>.</operator><name>message</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>path</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Get wallet path relative to walletdir by removing walletdir from the wallet path.</comment>
+        <comment type="line">// This can be replaced by boost::filesystem::lexically_relative once boost is bumped to 1.60.</comment>
+        <decl_stmt><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>path</name> <init>= <expr><call><name><name>it</name><operator>-&gt;</operator><name>path</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call><operator>.</operator><call><name>substr</name><argument_list>(<argument><expr><name>offset</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name><name>it</name><operator>-&gt;</operator><name>status</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>type</name><argument_list>()</argument_list></call> <operator>==</operator> <name><name>fs</name><operator>::</operator><name>directory_file</name></name> <operator>&amp;&amp;</operator> <call><name>IsBerkeleyBtree</name><argument_list>(<argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>path</name></name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"wallet.dat"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Found a directory which contains wallet.dat btree file, add it as a wallet.</comment>
+            <expr_stmt><expr><call><name><name>paths</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>it</name><operator>.</operator><name>level</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name><name>it</name><operator>-&gt;</operator><name>symlink_status</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>type</name><argument_list>()</argument_list></call> <operator>==</operator> <name><name>fs</name><operator>::</operator><name>regular_file</name></name> <operator>&amp;&amp;</operator> <call><name>IsBerkeleyBtree</name><argument_list>(<argument><expr><call><name><name>it</name><operator>-&gt;</operator><name>path</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>it</name><operator>-&gt;</operator><name>path</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>filename</name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="string">"wallet.dat"</literal></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Found top-level wallet.dat btree file, add top level directory ""</comment>
+                <comment type="line">// as a wallet.</comment>
+                <expr_stmt><expr><call><name><name>paths</name><operator>.</operator><name>emplace_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <comment type="line">// Found top-level btree file not called wallet.dat. Current bitcoin</comment>
+                <comment type="line">// software will never create these files but will allow them to be</comment>
+                <comment type="line">// opened in a shared database environment for backwards compatibility.</comment>
+                <comment type="line">// Add it to the list of available wallets.</comment>
+                <expr_stmt><expr><call><name><name>paths</name><operator>.</operator><name>emplace_back</name></name><argument_list>(<argument><expr><name>path</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <return>return <expr><name>paths</name></expr>;</return>
+</block_content>}</block></function>
+
+<constructor><name><name>WalletLocation</name><operator>::</operator><name>WalletLocation</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>name</name></decl></parameter>)</parameter_list>
+    <member_init_list>: <call><name>m_name</name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call>
+    , <call><name>m_path</name><argument_list>(<argument><expr><call><name><name>fs</name><operator>::</operator><name>absolute</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>, <argument><expr><call><name>GetWalletDir</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<function><type><name>bool</name></type> <name><name>WalletLocation</name><operator>::</operator><name>Exists</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><call><name><name>fs</name><operator>::</operator><name>symlink_status</name></name><argument_list>(<argument><expr><name>m_path</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>type</name><argument_list>()</argument_list></call> <operator>!=</operator> <name><name>fs</name><operator>::</operator><name>file_not_found</name></name></expr>;</return>
+</block_content>}</block></function>
+</unit>

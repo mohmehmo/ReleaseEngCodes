@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/zmq/zmqpublishnotifier.cpp"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;zmq/zmqpublishnotifier.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;rpc/server.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>multimap</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>CZMQAbstractPublishNotifier</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>mapPublishNotifiers</name></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>MSG_HASHBLOCK</name> <init>= <expr><literal type="string">"hashblock"</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>MSG_HASHTX</name>    <init>= <expr><literal type="string">"hashtx"</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>MSG_RAWBLOCK</name>  <init>= <expr><literal type="string">"rawblock"</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>MSG_RAWTX</name>     <init>= <expr><literal type="string">"rawtx"</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Internal function to send multipart message</comment>
+<function><type><specifier>static</specifier> <name>int</name></type> <name>zmq_send_multipart</name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>sock</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>void</name><modifier>*</modifier></type> <name>data</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>, <parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>va_list</name></type> <name>args</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>va_start</name><argument_list>(<argument><expr><name>args</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <while>while <condition>(<expr><literal type="number">1</literal></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>zmq_msg_t</name></type> <name>msg</name></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>rc</name> <init>= <expr><call><name>zmq_msg_init_size</name><argument_list>(<argument><expr><operator>&amp;</operator><name>msg</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>rc</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>zmqError</name><argument_list>(<argument><expr><literal type="string">"Unable to initialize ZMQ msg"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>va_end</name><argument_list>(<argument><expr><name>args</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <decl_stmt><decl><type><name>void</name> <modifier>*</modifier></type><name>buf</name> <init>= <expr><call><name>zmq_msg_data</name><argument_list>(<argument><expr><operator>&amp;</operator><name>msg</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>memcpy</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><name>data</name></expr></argument>, <argument><expr><name>size</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name>data</name> <operator>=</operator> <call><name>va_arg</name><argument_list>(<argument><expr><name>args</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>void</name><operator>*</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name>rc</name> <operator>=</operator> <call><name>zmq_msg_send</name><argument_list>(<argument><expr><operator>&amp;</operator><name>msg</name></expr></argument>, <argument><expr><name>sock</name></expr></argument>, <argument><expr><ternary><condition><expr><name>data</name></expr> ?</condition><then> <expr><name>ZMQ_SNDMORE</name></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>rc</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>zmqError</name><argument_list>(<argument><expr><literal type="string">"Unable to send ZMQ msg"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>zmq_msg_close</name><argument_list>(<argument><expr><operator>&amp;</operator><name>msg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>va_end</name><argument_list>(<argument><expr><name>args</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><operator>-</operator><literal type="number">1</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><call><name>zmq_msg_close</name><argument_list>(<argument><expr><operator>&amp;</operator><name>msg</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>data</name></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+
+        <expr_stmt><expr><name>size</name> <operator>=</operator> <call><name>va_arg</name><argument_list>(<argument><expr><name>args</name></expr></argument>, <argument><expr><name>size_t</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><call><name>va_end</name><argument_list>(<argument><expr><name>args</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="number">0</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CZMQAbstractPublishNotifier</name><operator>::</operator><name>Initialize</name></name><parameter_list>(<parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>pcontext</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><name>psocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// check if address is being used by other publish notifier</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>multimap</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>CZMQAbstractPublishNotifier</name><modifier>*</modifier></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>i</name> <init>= <expr><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>i</name><operator>==</operator><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>psocket</name> <operator>=</operator> <call><name>zmq_socket</name><argument_list>(<argument><expr><name>pcontext</name></expr></argument>, <argument><expr><name>ZMQ_PUB</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>psocket</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>zmqError</name><argument_list>(<argument><expr><literal type="string">"Failed to create socket"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Outbound message high water mark for %s at %s is %d\n"</literal></expr></argument>, <argument><expr><name>type</name></expr></argument>, <argument><expr><name>address</name></expr></argument>, <argument><expr><name>outbound_message_high_water_mark</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name>int</name></type> <name>rc</name> <init>= <expr><call><name>zmq_setsockopt</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>, <argument><expr><name>ZMQ_SNDHWM</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>outbound_message_high_water_mark</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>outbound_message_high_water_mark</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>rc</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>zmqError</name><argument_list>(<argument><expr><literal type="string">"Failed to set outbound message high water mark"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>zmq_close</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><name>rc</name> <operator>=</operator> <call><name>zmq_bind</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>, <argument><expr><call><name><name>address</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>rc</name> <operator>!=</operator> <literal type="number">0</literal></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>zmqError</name><argument_list>(<argument><expr><literal type="string">"Failed to bind address"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>zmq_close</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// register this notifier for the address, so it can be reused for other publish notifier</comment>
+        <expr_stmt><expr><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if>
+    <else>else
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Reusing socket for address %s\n"</literal></expr></argument>, <argument><expr><name>address</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Outbound message high water mark for %s at %s is %d\n"</literal></expr></argument>, <argument><expr><name>type</name></expr></argument>, <argument><expr><name>address</name></expr></argument>, <argument><expr><name>outbound_message_high_water_mark</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name>psocket</name> <operator>=</operator> <name><name>i</name><operator>-&gt;</operator><name>second</name><operator>-&gt;</operator><name>psocket</name></name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>CZMQAbstractPublishNotifier</name><operator>::</operator><name>Shutdown</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>count</name> <init>= <expr><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// remove this notifier from the list of publishers using this address</comment>
+    <typedef>typedef <type><name><name>std</name><operator>::</operator><name>multimap</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>, <argument><expr><name>CZMQAbstractPublishNotifier</name><modifier>*</modifier></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>iterator</name>;</typedef>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>iterator</name></expr></argument>, <argument><expr><name>iterator</name></expr></argument>&gt;</argument_list></name></type> <name>iterpair</name> <init>= <expr><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>equal_range</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>iterator</name></type> <name>it</name> <init>= <expr><name><name>iterpair</name><operator>.</operator><name>first</name></name></expr></init></decl>;</init> <condition><expr><name>it</name> <operator>!=</operator> <name><name>iterpair</name><operator>.</operator><name>second</name></name></expr>;</condition> <incr><expr><operator>++</operator><name>it</name></expr></incr>)</control>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>it</name><operator>-&gt;</operator><name>second</name></name><operator>==</operator><name>this</name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name><name>mapPublishNotifiers</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>it</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+
+    <if_stmt><if>if <condition>(<expr><name>count</name> <operator>==</operator> <literal type="number">1</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Close socket at address %s\n"</literal></expr></argument>, <argument><expr><name>address</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>linger</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>zmq_setsockopt</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>, <argument><expr><name>ZMQ_LINGER</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>linger</name></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>linger</name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>zmq_close</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>psocket</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CZMQAbstractPublishNotifier</name><operator>::</operator><name>SendMessage</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name> <modifier>*</modifier></type><name>command</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>void</name><modifier>*</modifier></type> <name>data</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>size</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="block">/* send three parts, command &amp; data &amp; a LE 4byte sequence number */</comment>
+    <decl_stmt><decl><type><name>unsigned</name> <name>char</name></type> <name><name>msgseq</name><index>[<expr><sizeof>sizeof<argument_list>(<argument><expr><name>uint32_t</name></expr></argument>)</argument_list></sizeof></expr>]</index></name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>WriteLE32</name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>msgseq</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>, <argument><expr><name>nSequence</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>rc</name> <init>= <expr><call><name>zmq_send_multipart</name><argument_list>(<argument><expr><name>psocket</name></expr></argument>, <argument><expr><name>command</name></expr></argument>, <argument><expr><call><name>strlen</name><argument_list>(<argument><expr><name>command</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>data</name></expr></argument>, <argument><expr><name>size</name></expr></argument>, <argument><expr><name>msgseq</name></expr></argument>, <argument><expr><operator>(</operator><name>size_t</name><operator>)</operator><sizeof>sizeof<argument_list>(<argument><expr><name>uint32_t</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>rc</name> <operator>==</operator> <operator>-</operator><literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+
+    <comment type="block">/* increment memory only sequence number after sending */</comment>
+    <expr_stmt><expr><name>nSequence</name><operator>++</operator></expr>;</expr_stmt>
+
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CZMQPublishHashBlockNotifier</name><operator>::</operator><name>NotifyBlock</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindex</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name> <init>= <expr><call><name><name>pindex</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Publish hashblock %s\n"</literal></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>data</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">32</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>data</name><index>[<expr><literal type="number">31</literal> <operator>-</operator> <name>i</name></expr>]</index></name> <operator>=</operator> <call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><index>[<expr><name>i</name></expr>]</index></expr>;</expr_stmt></block_content></block></for>
+    <return>return <expr><call><name>SendMessage</name><argument_list>(<argument><expr><name>MSG_HASHBLOCK</name></expr></argument>, <argument><expr><name>data</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CZMQPublishHashTransactionNotifier</name><operator>::</operator><name>NotifyTransaction</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name> <modifier>&amp;</modifier></type><name>transaction</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name> <init>= <expr><call><name><name>transaction</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Publish hashtx %s\n"</literal></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>data</name><index>[<expr><literal type="number">32</literal></expr>]</index></name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <literal type="number">32</literal></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>data</name><index>[<expr><literal type="number">31</literal> <operator>-</operator> <name>i</name></expr>]</index></name> <operator>=</operator> <call><name><name>hash</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><index>[<expr><name>i</name></expr>]</index></expr>;</expr_stmt></block_content></block></for>
+    <return>return <expr><call><name>SendMessage</name><argument_list>(<argument><expr><name>MSG_HASHTX</name></expr></argument>, <argument><expr><name>data</name></expr></argument>, <argument><expr><literal type="number">32</literal></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CZMQPublishRawBlockNotifier</name><operator>::</operator><name>NotifyBlock</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CBlockIndex</name> <modifier>*</modifier></type><name>pindex</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Publish rawblock %s\n"</literal></expr></argument>, <argument><expr><call><name><name>pindex</name><operator>-&gt;</operator><name>GetBlockHash</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetHex</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>Consensus</name><operator>::</operator><name>Params</name></name><modifier>&amp;</modifier></type> <name>consensusParams</name> <init>= <expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetConsensus</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ss</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <call><name>RPCSerializationFlags</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_main</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CBlock</name></type> <name>block</name></decl>;</decl_stmt>
+        <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name>ReadBlockFromDisk</name><argument_list>(<argument><expr><name>block</name></expr></argument>, <argument><expr><name>pindex</name></expr></argument>, <argument><expr><name>consensusParams</name></expr></argument>)</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>zmqError</name><argument_list>(<argument><expr><literal type="string">"Can't read block from disk"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><name>ss</name> <operator>&lt;&lt;</operator> <name>block</name></expr>;</expr_stmt>
+    </block_content>}</block>
+
+    <return>return <expr><call><name>SendMessage</name><argument_list>(<argument><expr><name>MSG_RAWBLOCK</name></expr></argument>, <argument><expr><operator>&amp;</operator><operator>(</operator><operator>*</operator><call><name><name>ss</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>)</operator></expr></argument>, <argument><expr><call><name><name>ss</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>CZMQPublishRawTransactionNotifier</name><operator>::</operator><name>NotifyTransaction</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CTransaction</name> <modifier>&amp;</modifier></type><name>transaction</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name> <init>= <expr><call><name><name>transaction</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>ZMQ</name></name></expr></argument>, <argument><expr><literal type="string">"zmq: Publish rawtx %s\n"</literal></expr></argument>, <argument><expr><call><name><name>hash</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>CDataStream</name></type> <name>ss</name><argument_list>(<argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name> <operator>|</operator> <call><name>RPCSerializationFlags</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>ss</name> <operator>&lt;&lt;</operator> <name>transaction</name></expr>;</expr_stmt>
+    <return>return <expr><call><name>SendMessage</name><argument_list>(<argument><expr><name>MSG_RAWTX</name></expr></argument>, <argument><expr><operator>&amp;</operator><operator>(</operator><operator>*</operator><call><name><name>ss</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>)</operator></expr></argument>, <argument><expr><call><name><name>ss</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+</unit>

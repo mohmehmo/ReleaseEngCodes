@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/versionbits.h"><comment type="line">// Copyright (c) 2016-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_VERSIONBITS_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_VERSIONBITS_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chain.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** What block version to use for new blocks (pre versionbits) */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int32_t</name></type> <name>VERSIONBITS_LAST_OLD_BLOCK_VERSION</name> <init>= <expr><literal type="number">4</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** What bits to set in version for versionbits blocks */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int32_t</name></type> <name>VERSIONBITS_TOP_BITS</name> <init>= <expr><literal type="number">0x20000000UL</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** What bitmask determines whether versionbits is in use */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int32_t</name></type> <name>VERSIONBITS_TOP_MASK</name> <init>= <expr><literal type="number">0xE0000000UL</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** Total bits available for versionbits */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int32_t</name></type> <name>VERSIONBITS_NUM_BITS</name> <init>= <expr><literal type="number">29</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/** BIP 9 defines a finite-state-machine to deploy a softfork in multiple stages.
+ *  State transitions happen during retarget period if conditions are met
+ *  In case of reorg, transitions can go backward. Without transition, state is
+ *  inherited between periods. All blocks of a period share the same state.
+ */</comment>
+<decl_stmt><decl><type><name><name>enum</name> <name>class</name></name></type> <name>ThresholdState</name> <block>{<block_content>
+    <expr_stmt><expr><name>DEFINED</name></expr><operator>,</operator>   <comment type="line">// First state that each softfork starts out as. The genesis block is by definition in this state for each deployment.</comment>
+    <expr><name>STARTED</name></expr><operator>,</operator>   <comment type="line">// For blocks past the starttime.</comment>
+    <expr><name>LOCKED_IN</name></expr><operator>,</operator> <comment type="line">// For one retarget period after the first retarget period with STARTED blocks of which at least threshold have the associated bit set in nVersion.</comment>
+    <expr><name>ACTIVE</name></expr><operator>,</operator>    <comment type="line">// For all blocks after the LOCKED_IN retarget period (final state)</comment>
+    <expr><name>FAILED</name></expr><operator>,</operator></expr_stmt>    <comment type="line">// For all blocks once the first retarget period after the timeout time is hit, if LOCKED_IN wasn't already reached (final state)</comment>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// A map that gives the state for blocks whose height is a multiple of Period().</comment>
+<comment type="line">// The map is indexed by the block's parent, however, so all keys in the map</comment>
+<comment type="line">// will either be nullptr or a block with (height + 1) % Period() == 0.</comment>
+<typedef>typedef <expr_stmt><expr><name>std</name><operator>::</operator><name><name>map</name><argument_list type="generic">&lt;<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator></expr></argument>, <argument><expr><name>ThresholdState</name></expr></argument>&gt;</argument_list></name> <name>ThresholdConditionCache</name></expr>;</expr_stmt></typedef>
+
+<comment type="block" format="doxygen">/** Display status of an in-progress BIP9 softfork */</comment>
+<struct>struct <name>BIP9Stats</name> <block>{
+    <comment type="block" format="doxygen">/** Length of blocks of the BIP9 signalling period */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>period</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Number of blocks with the version bit set required to activate the softfork */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>threshold</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Number of blocks elapsed since the beginning of the current period */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>elapsed</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Number of blocks with the version bit set since the beginning of the current period */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>count</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** False if there are not enough blocks left in this period to pass activation threshold */</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>possible</name></decl>;</decl_stmt>
+}</block>;</struct>
+
+<comment type="block" format="doxygen">/**
+ * Abstract class that implements BIP9-style threshold logic, and caches results.
+ */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>AbstractThresholdConditionChecker</name> <block>{<block_content>
+<label><name>protected</name>:</label>
+    <decl_stmt><decl><type><name>virtual</name> <name>bool</name></type> <name>Condition</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindex</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>)</argument_list> const <init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>int64_t</name></type> <name>BeginTime</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>)</argument_list> const <init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>int64_t</name></type> <name>EndTime</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>)</argument_list> const <init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>int</name></type> <name>Period</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>)</argument_list> const <init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>virtual</name> <name>int</name></type> <name>Threshold</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>)</argument_list> const <init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <comment type="block" format="doxygen">/** Returns the numerical statistics of an in-progress BIP9 softfork in the current period */</comment>
+    <decl_stmt><decl><type><name>BIP9Stats</name></type> <name>GetStateStatisticsFor</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindex</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Returns the state for pindex A based on parent pindexPrev B. Applies any state transition if conditions are present.
+     *  Caches state from first block of period. */</comment>
+    <decl_stmt><decl><type><name>ThresholdState</name></type> <name>GetStateFor</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindexPrev</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>, <argument><expr><name>ThresholdConditionCache</name><operator>&amp;</operator> <name>cache</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Returns the height since when the ThresholdState has started for pindex A based on parent pindexPrev B, all blocks of a period share the same */</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>GetStateSinceHeightFor</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindexPrev</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>, <argument><expr><name>ThresholdConditionCache</name><operator>&amp;</operator> <name>cache</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="block" format="doxygen">/** BIP 9 allows multiple softforks to be deployed in parallel. We cache per-period state for every one of them
+ *  keyed by the bit position used to signal support. */</comment>
+<struct>struct <name>VersionBitsCache</name>
+<block>{
+    <decl_stmt><decl><type><name>ThresholdConditionCache</name></type> <name><name>caches</name><index>[<expr><name>Consensus</name><operator>::</operator><name>MAX_VERSION_BITS_DEPLOYMENTS</name></expr>]</index></name></decl>;</decl_stmt>
+
+    <function_decl><type><name>void</name></type> <name>Clear</name><parameter_list>()</parameter_list>;</function_decl>
+}</block>;</struct>
+
+<decl_stmt><decl><type><name>ThresholdState</name></type> <name>VersionBitsState</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindexPrev</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>, <argument><expr><name>Consensus</name><operator>::</operator><name>DeploymentPos</name> <name>pos</name></expr></argument>, <argument><expr><name>VersionBitsCache</name><operator>&amp;</operator> <name>cache</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>BIP9Stats</name></type> <name>VersionBitsStatistics</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindexPrev</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>, <argument><expr><name>Consensus</name><operator>::</operator><name>DeploymentPos</name> <name>pos</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>int</name></type> <name>VersionBitsStateSinceHeight</name><argument_list>(<argument><expr><specifier>const</specifier> <name>CBlockIndex</name><operator>*</operator> <name>pindexPrev</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>, <argument><expr><name>Consensus</name><operator>::</operator><name>DeploymentPos</name> <name>pos</name></expr></argument>, <argument><expr><name>VersionBitsCache</name><operator>&amp;</operator> <name>cache</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+<decl_stmt><decl><type><name>uint32_t</name></type> <name>VersionBitsMask</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Consensus</name><operator>::</operator><name>Params</name><operator>&amp;</operator> <name>params</name></expr></argument>, <argument><expr><name>Consensus</name><operator>::</operator><name>DeploymentPos</name> <name>pos</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_VERSIONBITS_H</comment>
+</unit>
