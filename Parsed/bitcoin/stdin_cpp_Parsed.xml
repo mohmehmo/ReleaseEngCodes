@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/compat/stdin.cpp"><comment type="line">// Copyright (c) 2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cstdio&gt;</cpp:file></cpp:include>       <comment type="line">// for fileno(), stdin</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;windows.h&gt;</cpp:file></cpp:include>    <comment type="line">// for SetStdinEcho()</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;io.h&gt;</cpp:file></cpp:include>         <comment type="line">// for isatty()</comment>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;termios.h&gt;</cpp:file></cpp:include>    <comment type="line">// for SetStdinEcho()</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;unistd.h&gt;</cpp:file></cpp:include>     <comment type="line">// for SetStdinEcho(), isatty()</comment>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;poll.h&gt;</cpp:file></cpp:include>       <comment type="line">// for StdinReady()</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;compat/stdin.h&gt;</cpp:file></cpp:include>
+
+<comment type="line">// https://stackoverflow.com/questions/1413445/reading-a-password-from-stdcin</comment>
+<function><type><name>void</name></type> <name>SetStdinEcho</name><parameter_list>(<parameter><decl><type><name>bool</name></type> <name>enable</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+    <decl_stmt><decl><type><name>HANDLE</name></type> <name>hStdin</name> <init>= <expr><call><name>GetStdHandle</name><argument_list>(<argument><expr><name>STD_INPUT_HANDLE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>DWORD</name></type> <name>mode</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>GetConsoleMode</name><argument_list>(<argument><expr><name>hStdin</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>mode</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>enable</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>mode</name> <operator>&amp;=</operator> <operator>~</operator><name>ENABLE_ECHO_INPUT</name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name>mode</name> <operator>|=</operator> <name>ENABLE_ECHO_INPUT</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><call><name>SetConsoleMode</name><argument_list>(<argument><expr><name>hStdin</name></expr></argument>, <argument><expr><name>mode</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <decl_stmt><decl><type><name><name>struct</name> <name>termios</name></name></type> <name>tty</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>tcgetattr</name><argument_list>(<argument><expr><name>STDIN_FILENO</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tty</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>enable</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name><name>tty</name><operator>.</operator><name>c_lflag</name></name> <operator>&amp;=</operator> <operator>~</operator><name>ECHO</name></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><name><name>tty</name><operator>.</operator><name>c_lflag</name></name> <operator>|=</operator> <name>ECHO</name></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+    <expr_stmt><expr><operator>(</operator><name>void</name><operator>)</operator><call><name>tcsetattr</name><argument_list>(<argument><expr><name>STDIN_FILENO</name></expr></argument>, <argument><expr><name>TCSANOW</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>tty</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>StdinTerminal</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+    <return>return <expr><call><name>_isatty</name><argument_list>(<argument><expr><call><name>_fileno</name><argument_list>(<argument><expr><name>stdin</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <return>return <expr><call><name>isatty</name><argument_list>(<argument><expr><call><name>fileno</name><argument_list>(<argument><expr><name>stdin</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name>StdinReady</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name>StdinTerminal</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+    <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <decl_stmt><decl><type><name><name>struct</name> <name>pollfd</name></name></type> <name>fds</name></decl>;</decl_stmt>
+    <expr_stmt><expr><name><name>fds</name><operator>.</operator><name>fd</name></name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt> <comment type="block">/* this is STDIN */</comment>
+    <expr_stmt><expr><name><name>fds</name><operator>.</operator><name>events</name></name> <operator>=</operator> <name>POLLIN</name></expr>;</expr_stmt>
+    <return>return <expr><call><name>poll</name><argument_list>(<argument><expr><operator>&amp;</operator><name>fds</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>;</return>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<constructor><name><name>NoechoInst</name><operator>::</operator><name>NoechoInst</name></name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>SetStdinEcho</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></constructor>
+<destructor><name><name>NoechoInst</name><operator>::</operator><name>~NoechoInst</name></name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>SetStdinEcho</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></destructor>
+</unit>

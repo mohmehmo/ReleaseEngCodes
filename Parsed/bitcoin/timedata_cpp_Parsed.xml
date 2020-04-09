@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/timedata.cpp"><comment type="line">// Copyright (c) 2014-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;timedata.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netaddress.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ui_interface.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/translation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;warnings.h&gt;</cpp:file></cpp:include>
+
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>CCriticalSection</name></type> <name>cs_nTimeOffset</name></decl>;</decl_stmt>
+<function_decl><type><specifier>static</specifier> <name>int64_t</name> <name>nTimeOffset</name></type> <name>GUARDED_BY</name><parameter_list>(<parameter><decl><type><name>cs_nTimeOffset</name></type></decl></parameter>)</parameter_list> = <literal type="number">0</literal>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * "Never go to sea with two chronometers; take one or three."
+ * Our three time sources are:
+ *  - System clock
+ *  - Median of other nodes clocks
+ *  - The user (asking the user to fix the system clock if the first two disagree)
+ */</comment>
+<function><type><name>int64_t</name></type> <name>GetTimeOffset</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_nTimeOffset</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>nTimeOffset</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetAdjustedTime</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>GetTime</name><argument_list>()</argument_list></call> <operator>+</operator> <call><name>GetTimeOffset</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>int64_t</name></type> <name>abs64</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>n</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <return>return <expr><operator>(</operator><ternary><condition><expr><name>n</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr> ?</condition><then> <expr><name>n</name></expr> </then><else>: <expr><operator>-</operator><name>n</name></expr></else></ternary><operator>)</operator></expr>;</return>
+</block_content>}</block></function>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_TIMEDATA_MAX_SAMPLES</name></cpp:macro> <cpp:value>200</cpp:value></cpp:define>
+
+<function><type><name>void</name></type> <name>AddTimeData</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>CNetAddr</name><modifier>&amp;</modifier></type> <name>ip</name></decl></parameter>, <parameter><decl><type><name>int64_t</name></type> <name>nOffsetSample</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LOCK</name><argument_list>(<argument><expr><name>cs_nTimeOffset</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">// Ignore duplicates</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name>CNetAddr</name></expr></argument>&gt;</argument_list></name></type> <name>setKnown</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>setKnown</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>BITCOIN_TIMEDATA_MAX_SAMPLES</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>setKnown</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>ip</name></expr></argument>)</argument_list></call><operator>.</operator><name>second</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+
+    <comment type="line">// Add data</comment>
+    <decl_stmt><decl><type><specifier>static</specifier> <name><name>CMedianFilter</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name>vTimeOffsets</name><argument_list>(<argument><expr><name>BITCOIN_TIMEDATA_MAX_SAMPLES</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vTimeOffsets</name><operator>.</operator><name>input</name></name><argument_list>(<argument><expr><name>nOffsetSample</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>,<argument><expr><literal type="string">"added time data, samples %d, offset %+d (%+d minutes)\n"</literal></expr></argument>, <argument><expr><call><name><name>vTimeOffsets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>nOffsetSample</name></expr></argument>, <argument><expr><name>nOffsetSample</name><operator>/</operator><literal type="number">60</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// There is a known issue here (see issue #4521):</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// - The structure vTimeOffsets contains up to 200 elements, after which</comment>
+    <comment type="line">// any new element added to it will not increase its size, replacing the</comment>
+    <comment type="line">// oldest element.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// - The condition to update nTimeOffset includes checking whether the</comment>
+    <comment type="line">// number of elements in vTimeOffsets is odd, which will never happen after</comment>
+    <comment type="line">// there are 200 elements.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// But in this case the 'bug' is protective against some attacks, and may</comment>
+    <comment type="line">// actually explain why we've never seen attacks which manipulate the</comment>
+    <comment type="line">// clock offset.</comment>
+    <comment type="line">//</comment>
+    <comment type="line">// So we should hold off on fixing this and clean it up as part of</comment>
+    <comment type="line">// a timing cleanup that strengthens it in a number of other ways.</comment>
+    <comment type="line">//</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>vTimeOffsets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;=</operator> <literal type="number">5</literal> <operator>&amp;&amp;</operator> <call><name><name>vTimeOffsets</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>%</operator> <literal type="number">2</literal> <operator>==</operator> <literal type="number">1</literal></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>int64_t</name></type> <name>nMedian</name> <init>= <expr><call><name><name>vTimeOffsets</name><operator>.</operator><name>median</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name>vSorted</name> <init>= <expr><call><name><name>vTimeOffsets</name><operator>.</operator><name>sorted</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <comment type="line">// Only let other nodes change our time by so much</comment>
+        <if_stmt><if>if <condition>(<expr><call><name>abs64</name><argument_list>(<argument><expr><name>nMedian</name></expr></argument>)</argument_list></call> <operator>&lt;=</operator> <call><name><name>std</name><operator>::</operator><name>max</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-maxtimeadjustment"</literal></expr></argument>, <argument><expr><name>DEFAULT_MAX_TIME_ADJUSTMENT</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><name>nTimeOffset</name> <operator>=</operator> <name>nMedian</name></expr>;</expr_stmt>
+        </block_content>}</block></if>
+        <else>else
+        <block>{<block_content>
+            <expr_stmt><expr><name>nTimeOffset</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+
+            <decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>fDone</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fDone</name></expr>)</condition>
+            <block>{<block_content>
+                <comment type="line">// If nobody has a time different than ours but within 5 minutes of ours, give a warning</comment>
+                <decl_stmt><decl><type><name>bool</name></type> <name>fMatch</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+                <for>for <control>(<init><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>nOffset</name> <range>: <expr><name>vSorted</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+                    <if_stmt><if>if <condition>(<expr><name>nOffset</name> <operator>!=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <call><name>abs64</name><argument_list>(<argument><expr><name>nOffset</name></expr></argument>)</argument_list></call> <operator>&lt;</operator> <literal type="number">5</literal> <operator>*</operator> <literal type="number">60</literal></expr>)</condition><block type="pseudo"><block_content>
+                        <expr_stmt><expr><name>fMatch</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt></block_content></block></for>
+
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fMatch</name></expr>)</condition>
+                <block>{<block_content>
+                    <expr_stmt><expr><name>fDone</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+                    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strMessage</name> <init>= <expr><call><name>strprintf</name><argument_list>(<argument><expr><call><name>_</name><argument_list>(<argument><expr><literal type="string">"Please check that your computer's date and time are correct! If your clock is wrong, %s will not work properly."</literal></expr></argument>)</argument_list></call><operator>.</operator><name>translated</name></expr></argument>, <argument><expr><name>PACKAGE_NAME</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                    <expr_stmt><expr><call><name>SetMiscWarning</name><argument_list>(<argument><expr><name>strMessage</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>uiInterface</name><operator>.</operator><name>ThreadSafeMessageBox</name></name><argument_list>(<argument><expr><name>strMessage</name></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>, <argument><expr><name><name>CClientUIInterface</name><operator>::</operator><name>MSG_WARNING</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></else></if_stmt>
+
+        <if_stmt><if>if <condition>(<expr><call><name>LogAcceptCategory</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <name>int64_t</name></type> <name>n</name> <range>: <expr><name>vSorted</name></expr></range></decl></init>)</control> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"%+d  "</literal></expr></argument>, <argument><expr><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+            </block_content>}</block></for>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"|  "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>NET</name></name></expr></argument>, <argument><expr><literal type="string">"nTimeOffset = %+d  (%+d minutes)\n"</literal></expr></argument>, <argument><expr><name>nTimeOffset</name></expr></argument>, <argument><expr><name>nTimeOffset</name><operator>/</operator><literal type="number">60</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+</unit>

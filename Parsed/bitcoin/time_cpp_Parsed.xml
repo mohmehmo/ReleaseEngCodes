@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/util/time.cpp"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/time.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;atomic&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/date_time/posix_time/posix_time.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/thread.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;ctime&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;tinyformat.h&gt;</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>atomic</name><argument_list type="generic">&lt;<argument><expr><name>int64_t</name></expr></argument>&gt;</argument_list></name></type> <name>nMockTime</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt> <comment type="line" format="doxygen">//!&lt; For unit testing</comment>
+
+<function><type><name>int64_t</name></type> <name>GetTime</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>mocktime</name> <init>= <expr><call><name><name>nMockTime</name><operator>.</operator><name>load</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>mocktime</name></expr>)</condition><block type="pseudo"><block_content> <return>return <expr><name>mocktime</name></expr>;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>time_t</name></type> <name>now</name> <init>= <expr><call><name>time</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>now</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>now</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><template>template <parameter_list>&lt;<parameter><type><name>typename</name></type> <name>T</name></parameter>&gt;</parameter_list></template>
+<type><name>T</name></type> <name>GetTime</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name></name></type> <name>mocktime</name><argument_list>{<argument><expr><macro><name>nMockTime</name></macro><operator>.</operator><macro><name>load</name><argument_list>(<argument>std::memory_order_relaxed</argument>)</argument_list></macro></expr></argument>}</argument_list></decl>;</decl_stmt>
+
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>duration_cast</name><argument_list type="generic">&lt;<argument><expr><name>T</name></expr></argument>&gt;</argument_list></name><argument_list>(
+        <argument><expr><ternary><condition><expr><call><name><name>mocktime</name><operator>.</operator><name>count</name></name><argument_list>()</argument_list></call></expr> ?</condition><then>
+            <expr><name>mocktime</name></expr> </then><else>:
+            <expr><call><name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name><argument_list>{<argument><expr><macro><name>GetTimeMicros</name><argument_list>()</argument_list></macro></expr></argument>}</argument_list></call></expr></else></ternary></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+<function_decl><type><specifier>template</specifier> <name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>seconds</name></name></type> <name>GetTime</name><parameter_list>()</parameter_list>;</function_decl>
+<function_decl><type><specifier>template</specifier> <name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>milliseconds</name></name></type> <name>GetTime</name><parameter_list>()</parameter_list>;</function_decl>
+<function_decl><type><specifier>template</specifier> <name><name>std</name><operator>::</operator><name>chrono</name><operator>::</operator><name>microseconds</name></name></type> <name>GetTime</name><parameter_list>()</parameter_list>;</function_decl>
+
+<function><type><name>void</name></type> <name>SetMockTime</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nMockTimeIn</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>nMockTime</name><operator>.</operator><name>store</name></name><argument_list>(<argument><expr><name>nMockTimeIn</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetMockTime</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name><name>nMockTime</name><operator>.</operator><name>load</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>memory_order_relaxed</name></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetTimeMillis</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>now</name> <init>= <expr><operator>(</operator><call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>microsec_clock</name><operator>::</operator><name>universal_time</name></name><argument_list>()</argument_list></call> <operator>-</operator>
+                   <call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>ptime</name></name><argument_list>(<argument><expr><call><name><name>boost</name><operator>::</operator><name>gregorian</name><operator>::</operator><name>date</name></name><argument_list>(<argument><expr><literal type="number">1970</literal></expr></argument>,<argument><expr><literal type="number">1</literal></expr></argument>,<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call><operator>)</operator><operator>.</operator><call><name>total_milliseconds</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>now</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>now</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetTimeMicros</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int64_t</name></type> <name>now</name> <init>= <expr><operator>(</operator><call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>microsec_clock</name><operator>::</operator><name>universal_time</name></name><argument_list>()</argument_list></call> <operator>-</operator>
+                   <call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>ptime</name></name><argument_list>(<argument><expr><call><name><name>boost</name><operator>::</operator><name>gregorian</name><operator>::</operator><name>date</name></name><argument_list>(<argument><expr><literal type="number">1970</literal></expr></argument>,<argument><expr><literal type="number">1</literal></expr></argument>,<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call><operator>)</operator><operator>.</operator><call><name>total_microseconds</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>now</name> <operator>&gt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>now</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>GetSystemTimeInSeconds</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>GetTimeMicros</name><argument_list>()</argument_list></call><operator>/</operator><literal type="number">1000000</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>MilliSleep</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>n</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+
+<comment type="block" format="doxygen">/**
+ * Boost's sleep_for was uninterruptible when backed by nanosleep from 1.50
+ * until fixed in 1.52. Use the deprecated sleep method for the broken case.
+ * See: https://svn.boost.org/trac/boost/ticket/7238
+ */</comment>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_WORKING_BOOST_SLEEP_FOR</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>sleep_for</name></name><argument_list>(<argument><expr><call><name><name>boost</name><operator>::</operator><name>chrono</name><operator>::</operator><name>milliseconds</name></name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_WORKING_BOOST_SLEEP</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>this_thread</name><operator>::</operator><name>sleep</name></name><argument_list>(<argument><expr><call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>milliseconds</name></name><argument_list>(<argument><expr><name>n</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<comment type="line">//should never get here</comment>
+<cpp:error>#<cpp:directive>error</cpp:directive> missing boost sleep implementation</cpp:error>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>FormatISO8601DateTime</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nTime</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>struct</name> <name>tm</name></name></type> <name>ts</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>time_val</name> <init>= <expr><name>nTime</name></expr></init></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>_MSC_VER</name></cpp:ifdef>
+    <expr_stmt><expr><call><name>gmtime_s</name><argument_list>(<argument><expr><operator>&amp;</operator><name>ts</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>time_val</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <expr_stmt><expr><call><name>gmtime_r</name><argument_list>(<argument><expr><operator>&amp;</operator><name>time_val</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>ts</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <return>return <expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%04i-%02i-%02iT%02i:%02i:%02iZ"</literal></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_year</name></name> <operator>+</operator> <literal type="number">1900</literal></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_mon</name></name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_mday</name></name></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_hour</name></name></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_min</name></name></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_sec</name></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>FormatISO8601Date</name><parameter_list>(<parameter><decl><type><name>int64_t</name></type> <name>nTime</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><name><name>struct</name> <name>tm</name></name></type> <name>ts</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>time_t</name></type> <name>time_val</name> <init>= <expr><name>nTime</name></expr></init></decl>;</decl_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>_MSC_VER</name></cpp:ifdef>
+    <expr_stmt><expr><call><name>gmtime_s</name><argument_list>(<argument><expr><operator>&amp;</operator><name>ts</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>time_val</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <expr_stmt><expr><call><name>gmtime_r</name><argument_list>(<argument><expr><operator>&amp;</operator><name>time_val</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>ts</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <return>return <expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"%04i-%02i-%02i"</literal></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_year</name></name> <operator>+</operator> <literal type="number">1900</literal></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_mon</name></name> <operator>+</operator> <literal type="number">1</literal></expr></argument>, <argument><expr><name><name>ts</name><operator>.</operator><name>tm_mday</name></name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int64_t</name></type> <name>ParseISO8601DateTime</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>str</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>ptime</name></name></type> <name>epoch</name> <init>= <expr><call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>from_time_t</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>std</name><operator>::</operator><name>locale</name></name></type> <name>loc</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>locale</name><operator>::</operator><name>classic</name></name><argument_list>()</argument_list></call></expr></argument>,
+        <argument><expr><operator>new</operator> <call><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>time_input_facet</name></name><argument_list>(<argument><expr><literal type="string">"%Y-%m-%dT%H:%M:%SZ"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>istringstream</name></name></type> <name>iss</name><argument_list>(<argument><expr><name>str</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>iss</name><operator>.</operator><name>imbue</name></name><argument_list>(<argument><expr><name>loc</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>posix_time</name><operator>::</operator><name>ptime</name></name></type> <name>ptime</name><argument_list>(<argument><expr><name><name>boost</name><operator>::</operator><name>date_time</name><operator>::</operator><name>not_a_date_time</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>iss</name> <operator>&gt;&gt;</operator> <name>ptime</name></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>ptime</name><operator>.</operator><name>is_not_a_date_time</name></name><argument_list>()</argument_list></call> <operator>||</operator> <name>epoch</name> <operator>&gt;</operator> <name>ptime</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="number">0</literal></expr>;</return></block_content></block></if></if_stmt>
+    <return>return <expr><operator>(</operator><name>ptime</name> <operator>-</operator> <name>epoch</name><operator>)</operator><operator>.</operator><call><name>total_seconds</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function></unit>

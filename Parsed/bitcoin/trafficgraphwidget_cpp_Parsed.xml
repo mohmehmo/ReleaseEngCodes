@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/trafficgraphwidget.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/node.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/trafficgraphwidget.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/clientmodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QPainter&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QColor&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QTimer&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;cmath&gt;</cpp:file></cpp:include>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>DESIRED_SAMPLES</name></cpp:macro>         <cpp:value>800</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>XMARGIN</name></cpp:macro>                 <cpp:value>10</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>YMARGIN</name></cpp:macro>                 <cpp:value>10</cpp:value></cpp:define>
+
+<constructor><name><name>TrafficGraphWidget</name><operator>::</operator><name>TrafficGraphWidget</name></name><parameter_list>(<parameter><decl><type><name>QWidget</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <member_init_list>:
+    <call><name>QWidget</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>,
+    <call><name>timer</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>,
+    <call><name>fMax</name><argument_list>(<argument><expr><literal type="number">0.0f</literal></expr></argument>)</argument_list></call>,
+    <call><name>nMins</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>,
+    <call><name>vSamplesIn</name><argument_list>()</argument_list></call>,
+    <call><name>vSamplesOut</name><argument_list>()</argument_list></call>,
+    <call><name>nLastBytesIn</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>,
+    <call><name>nLastBytesOut</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>,
+    <call><name>clientModel</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>timer</name> <operator>=</operator> <operator>new</operator> <call><name>QTimer</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><name>timer</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>QTimer</name><operator>::</operator><name>timeout</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>TrafficGraphWidget</name><operator>::</operator><name>updateRates</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<function><type><name>void</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>setClientModel</name></name><parameter_list>(<parameter><decl><type><name>ClientModel</name> <modifier>*</modifier></type><name>model</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>clientModel</name> <operator>=</operator> <name>model</name></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><name>model</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>nLastBytesIn</name> <operator>=</operator> <call><name><name>model</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getTotalBytesRecv</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nLastBytesOut</name> <operator>=</operator> <call><name><name>model</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getTotalBytesSent</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>getGraphRangeMins</name></name><parameter_list>()</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <return>return <expr><name>nMins</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>paintPath</name></name><parameter_list>(<parameter><decl><type><name>QPainterPath</name> <modifier>&amp;</modifier></type><name>path</name></decl></parameter>, <parameter><decl><type><name><name>QQueue</name><argument_list type="generic">&lt;<argument><expr><name>float</name></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type><name>samples</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>int</name></type> <name>sampleCount</name> <init>= <expr><call><name><name>samples</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><name>sampleCount</name> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>h</name> <init>= <expr><call><name>height</name><argument_list>()</argument_list></call> <operator>-</operator> <name>YMARGIN</name> <operator>*</operator> <literal type="number">2</literal></expr></init></decl>, <decl><type ref="prev"/><name>w</name> <init>= <expr><call><name>width</name><argument_list>()</argument_list></call> <operator>-</operator> <name>XMARGIN</name> <operator>*</operator> <literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>x</name> <init>= <expr><name>XMARGIN</name> <operator>+</operator> <name>w</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>path</name><operator>.</operator><name>moveTo</name></name><argument_list>(<argument><expr><name>x</name></expr></argument>, <argument><expr><name>YMARGIN</name> <operator>+</operator> <name>h</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for<control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>sampleCount</name></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+            <expr_stmt><expr><name>x</name> <operator>=</operator> <name>XMARGIN</name> <operator>+</operator> <name>w</name> <operator>-</operator> <name>w</name> <operator>*</operator> <name>i</name> <operator>/</operator> <name>DESIRED_SAMPLES</name></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>y</name> <init>= <expr><name>YMARGIN</name> <operator>+</operator> <name>h</name> <operator>-</operator> <operator>(</operator><name>int</name><operator>)</operator><operator>(</operator><name>h</name> <operator>*</operator> <call><name><name>samples</name><operator>.</operator><name>at</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call> <operator>/</operator> <name>fMax</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>path</name><operator>.</operator><name>lineTo</name></name><argument_list>(<argument><expr><name>x</name></expr></argument>, <argument><expr><name>y</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><call><name><name>path</name><operator>.</operator><name>lineTo</name></name><argument_list>(<argument><expr><name>x</name></expr></argument>, <argument><expr><name>YMARGIN</name> <operator>+</operator> <name>h</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>paintEvent</name></name><parameter_list>(<parameter><decl><type><name>QPaintEvent</name> <modifier>*</modifier></type></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QPainter</name></type> <name>painter</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>fillRect</name></name><argument_list>(<argument><expr><call><name>rect</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>black</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <if_stmt><if>if<condition>(<expr><name>fMax</name> <operator>&lt;=</operator> <literal type="number">0.0f</literal></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>QColor</name></type> <name>axisCol</name><argument_list>(<argument><expr><name><name>Qt</name><operator>::</operator><name>gray</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>h</name> <init>= <expr><call><name>height</name><argument_list>()</argument_list></call> <operator>-</operator> <name>YMARGIN</name> <operator>*</operator> <literal type="number">2</literal></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>setPen</name></name><argument_list>(<argument><expr><name>axisCol</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>XMARGIN</name></expr></argument>, <argument><expr><name>YMARGIN</name> <operator>+</operator> <name>h</name></expr></argument>, <argument><expr><call><name>width</name><argument_list>()</argument_list></call> <operator>-</operator> <name>XMARGIN</name></expr></argument>, <argument><expr><name>YMARGIN</name> <operator>+</operator> <name>h</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// decide what order of magnitude we are</comment>
+    <decl_stmt><decl><type><name>int</name></type> <name>base</name> <init>= <expr><call><name>floor</name><argument_list>(<argument><expr><call><name>log10</name><argument_list>(<argument><expr><name>fMax</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>float</name></type> <name>val</name> <init>= <expr><call><name>pow</name><argument_list>(<argument><expr><literal type="number">10.0f</literal></expr></argument>, <argument><expr><name>base</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><specifier>const</specifier> <name>QString</name></type> <name>units</name>     <init>= <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"KB/s"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>float</name></type> <name>yMarginText</name> <init>= <expr><literal type="number">2.0</literal></expr></init></decl>;</decl_stmt>
+
+    <comment type="line">// draw lines</comment>
+    <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>setPen</name></name><argument_list>(<argument><expr><name>axisCol</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawText</name></name><argument_list>(<argument><expr><name>XMARGIN</name></expr></argument>, <argument><expr><name>YMARGIN</name> <operator>+</operator> <name>h</name> <operator>-</operator> <name>h</name> <operator>*</operator> <name>val</name> <operator>/</operator> <name>fMax</name><operator>-</operator><name>yMarginText</name></expr></argument>, <argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"%1 %2"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>units</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for<control>(<init><decl><type><name>float</name></type> <name>y</name> <init>= <expr><name>val</name></expr></init></decl>;</init> <condition><expr><name>y</name> <operator>&lt;</operator> <name>fMax</name></expr>;</condition> <incr><expr><name>y</name> <operator>+=</operator> <name>val</name></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>yy</name> <init>= <expr><name>YMARGIN</name> <operator>+</operator> <name>h</name> <operator>-</operator> <name>h</name> <operator>*</operator> <name>y</name> <operator>/</operator> <name>fMax</name></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>XMARGIN</name></expr></argument>, <argument><expr><name>yy</name></expr></argument>, <argument><expr><call><name>width</name><argument_list>()</argument_list></call> <operator>-</operator> <name>XMARGIN</name></expr></argument>, <argument><expr><name>yy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <comment type="line">// if we drew 3 or fewer lines, break them up at the next lower order of magnitude</comment>
+    <if_stmt><if>if<condition>(<expr><name>fMax</name> <operator>/</operator> <name>val</name> <operator>&lt;=</operator> <literal type="number">3.0f</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>axisCol</name> <operator>=</operator> <call><name><name>axisCol</name><operator>.</operator><name>darker</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>val</name> <operator>=</operator> <call><name>pow</name><argument_list>(<argument><expr><literal type="number">10.0f</literal></expr></argument>, <argument><expr><name>base</name> <operator>-</operator> <literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>setPen</name></name><argument_list>(<argument><expr><name>axisCol</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawText</name></name><argument_list>(<argument><expr><name>XMARGIN</name></expr></argument>, <argument><expr><name>YMARGIN</name> <operator>+</operator> <name>h</name> <operator>-</operator> <name>h</name> <operator>*</operator> <name>val</name> <operator>/</operator> <name>fMax</name><operator>-</operator><name>yMarginText</name></expr></argument>, <argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">"%1 %2"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>val</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>units</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>count</name> <init>= <expr><literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+        <for>for<control>(<init><decl><type><name>float</name></type> <name>y</name> <init>= <expr><name>val</name></expr></init></decl>;</init> <condition><expr><name>y</name> <operator>&lt;</operator> <name>fMax</name></expr>;</condition> <incr><expr><name>y</name> <operator>+=</operator> <name>val</name></expr><operator>,</operator> <expr><name>count</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+            <comment type="line">// don't overwrite lines drawn above</comment>
+            <if_stmt><if>if<condition>(<expr><name>count</name> <operator>%</operator> <literal type="number">10</literal> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+                <continue>continue;</continue></block_content></block></if></if_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>yy</name> <init>= <expr><name>YMARGIN</name> <operator>+</operator> <name>h</name> <operator>-</operator> <name>h</name> <operator>*</operator> <name>y</name> <operator>/</operator> <name>fMax</name></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawLine</name></name><argument_list>(<argument><expr><name>XMARGIN</name></expr></argument>, <argument><expr><name>yy</name></expr></argument>, <argument><expr><call><name>width</name><argument_list>()</argument_list></call> <operator>-</operator> <name>XMARGIN</name></expr></argument>, <argument><expr><name>yy</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>setRenderHint</name></name><argument_list>(<argument><expr><name><name>QPainter</name><operator>::</operator><name>Antialiasing</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>vSamplesIn</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>QPainterPath</name></type> <name>p</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>paintPath</name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><name>vSamplesIn</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>fillPath</name></name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><call><name>QColor</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">255</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">128</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>setPen</name></name><argument_list>(<argument><expr><name><name>Qt</name><operator>::</operator><name>green</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawPath</name></name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>vSamplesOut</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name>QPainterPath</name></type> <name>p</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>paintPath</name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><name>vSamplesOut</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>fillPath</name></name><argument_list>(<argument><expr><name>p</name></expr></argument>, <argument><expr><call><name>QColor</name><argument_list>(<argument><expr><literal type="number">255</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">128</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>setPen</name></name><argument_list>(<argument><expr><name><name>Qt</name><operator>::</operator><name>red</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>painter</name><operator>.</operator><name>drawPath</name></name><argument_list>(<argument><expr><name>p</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>updateRates</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><name>clientModel</name></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+    <decl_stmt><decl><type><name>quint64</name></type> <name>bytesIn</name> <init>= <expr><call><name><name>clientModel</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getTotalBytesRecv</name><argument_list>()</argument_list></call></expr></init></decl>,
+            <decl><type ref="prev"/><name>bytesOut</name> <init>= <expr><call><name><name>clientModel</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getTotalBytesSent</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>float</name></type> <name>inRate</name> <init>= <expr><operator>(</operator><name>bytesIn</name> <operator>-</operator> <name>nLastBytesIn</name><operator>)</operator> <operator>/</operator> <literal type="number">1024.0f</literal> <operator>*</operator> <literal type="number">1000</literal> <operator>/</operator> <call><name><name>timer</name><operator>-&gt;</operator><name>interval</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>float</name></type> <name>outRate</name> <init>= <expr><operator>(</operator><name>bytesOut</name> <operator>-</operator> <name>nLastBytesOut</name><operator>)</operator> <operator>/</operator> <literal type="number">1024.0f</literal> <operator>*</operator> <literal type="number">1000</literal> <operator>/</operator> <call><name><name>timer</name><operator>-&gt;</operator><name>interval</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>vSamplesIn</name><operator>.</operator><name>push_front</name></name><argument_list>(<argument><expr><name>inRate</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>vSamplesOut</name><operator>.</operator><name>push_front</name></name><argument_list>(<argument><expr><name>outRate</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nLastBytesIn</name> <operator>=</operator> <name>bytesIn</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>nLastBytesOut</name> <operator>=</operator> <name>bytesOut</name></expr>;</expr_stmt>
+
+    <while>while<condition>(<expr><call><name><name>vSamplesIn</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>DESIRED_SAMPLES</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vSamplesIn</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <while>while<condition>(<expr><call><name><name>vSamplesOut</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>DESIRED_SAMPLES</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vSamplesOut</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+
+    <decl_stmt><decl><type><name>float</name></type> <name>tmax</name> <init>= <expr><literal type="number">0.0f</literal></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>float</name></type> <name>f</name> <range>: <expr><name>vSamplesIn</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if<condition>(<expr><name>f</name> <operator>&gt;</operator> <name>tmax</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>tmax</name> <operator>=</operator> <name>f</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>float</name></type> <name>f</name> <range>: <expr><name>vSamplesOut</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if<condition>(<expr><name>f</name> <operator>&gt;</operator> <name>tmax</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name>tmax</name> <operator>=</operator> <name>f</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><name>fMax</name> <operator>=</operator> <name>tmax</name></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>update</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>setGraphRangeMins</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>mins</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>nMins</name> <operator>=</operator> <name>mins</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>msecsPerSample</name> <init>= <expr><name>nMins</name> <operator>*</operator> <literal type="number">60</literal> <operator>*</operator> <literal type="number">1000</literal> <operator>/</operator> <name>DESIRED_SAMPLES</name></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>stop</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>setInterval</name></name><argument_list>(<argument><expr><name>msecsPerSample</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>clear</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TrafficGraphWidget</name><operator>::</operator><name>clear</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>stop</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>vSamplesOut</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>vSamplesIn</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>fMax</name> <operator>=</operator> <literal type="number">0.0f</literal></expr>;</expr_stmt>
+
+    <if_stmt><if>if<condition>(<expr><name>clientModel</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><name>nLastBytesIn</name> <operator>=</operator> <call><name><name>clientModel</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getTotalBytesRecv</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>nLastBytesOut</name> <operator>=</operator> <call><name><name>clientModel</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>getTotalBytesSent</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>timer</name><operator>-&gt;</operator><name>start</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

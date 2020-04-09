@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/sync.h"><comment type="line">// Copyright (c) 2009-2010 Satoshi Nakamoto</comment>
+<comment type="line">// Copyright (c) 2009-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>BITCOIN_SYNC_H</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>BITCOIN_SYNC_H</name></cpp:macro></cpp:define>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;threadsafety.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/macros.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;condition_variable&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;thread&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;mutex&gt;</cpp:file></cpp:include>
+
+
+<comment type="line" format="doxygen">////////////////////////////////////////////////</comment>
+<comment type="line">//                                            //</comment>
+<comment type="line">// THE SIMPLE DEFINITION, EXCLUDING DEBUG CODE //</comment>
+<comment type="line">//                                            //</comment>
+<comment type="line" format="doxygen">////////////////////////////////////////////////</comment>
+
+<comment type="block">/*
+RecursiveMutex mutex;
+    std::recursive_mutex mutex;
+
+LOCK(mutex);
+    std::unique_lock&lt;std::recursive_mutex&gt; criticalblock(mutex);
+
+LOCK2(mutex1, mutex2);
+    std::unique_lock&lt;std::recursive_mutex&gt; criticalblock1(mutex1);
+    std::unique_lock&lt;std::recursive_mutex&gt; criticalblock2(mutex2);
+
+TRY_LOCK(mutex, name);
+    std::unique_lock&lt;std::recursive_mutex&gt; name(mutex, std::try_to_lock_t);
+
+ENTER_CRITICAL_SECTION(mutex); // no RAII
+    mutex.lock();
+
+LEAVE_CRITICAL_SECTION(mutex); // no RAII
+    mutex.unlock();
+ */</comment>
+
+<comment type="line" format="doxygen">///////////////////////////////</comment>
+<comment type="line">//                           //</comment>
+<comment type="line">// THE ACTUAL IMPLEMENTATION //</comment>
+<comment type="line">//                           //</comment>
+<comment type="line" format="doxygen">///////////////////////////////</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKORDER</name></cpp:ifdef>
+<function_decl><type><name>void</name></type> <name>EnterCritical</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fTry</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name>void</name></type> <name>LeaveCritical</name><parameter_list>()</parameter_list>;</function_decl>
+<expr_stmt><expr><name>std</name><operator>::</operator><name>string</name> <call><name>LocksHeld</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<function_decl><type><name>void</name></type> <name>AssertLockHeldInternal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list> ASSERT_EXCLUSIVE_LOCK<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name>void</name></type> <name>AssertLockNotHeldInternal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list>;</function_decl>
+<function_decl><type><name>void</name></type> <name>DeleteLock</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="block" format="doxygen">/**
+ * Call abort() if a potential lock order deadlock bug is detected, instead of
+ * just logging information and throwing a logic_error. Defaults to true, and
+ * set to false in DEBUG_LOCKORDER unit tests.
+ */</comment>
+<decl_stmt><decl><type><specifier>extern</specifier> <name>bool</name></type> <name>g_debug_lockorder_abort</name></decl>;</decl_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+<function><type><name>void</name> <specifier>static</specifier> <specifier>inline</specifier></type> <name>EnterCritical</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fTry</name> <init>= <expr><name>false</name></expr></init></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+<function><type><name>void</name> <specifier>static</specifier> <specifier>inline</specifier></type> <name>LeaveCritical</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></function>
+<function><type><name>void</name> <specifier>static</specifier> <specifier>inline</specifier></type> <name>AssertLockHeldInternal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list> ASSERT_EXCLUSIVE_LOCK<parameter_list>(<parameter><decl><type><name>cs</name></type></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+<function><type><name>void</name> <specifier>static</specifier> <specifier>inline</specifier></type> <name>AssertLockNotHeldInternal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+<function><type><name>void</name> <specifier>static</specifier> <specifier>inline</specifier></type> <name>DeleteLock</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list> <block>{<block_content/>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>AssertLockHeld</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>AssertLockHeldInternal(#cs, __FILE__, __LINE__, &amp;cs)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>AssertLockNotHeld</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>AssertLockNotHeldInternal(#cs, __FILE__, __LINE__, &amp;cs)</cpp:value></cpp:define>
+
+<comment type="block" format="doxygen">/**
+ * Template mixin that adds -Wthread-safety locking annotations and lock order
+ * checking to a subset of the mutex API.
+ */</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>PARENT</name></expr></argument>&gt;</argument_list></name>
+<name>class</name> <name>LOCKABLE</name></type> <name>AnnotatedMixin</name> <range>: <expr><name>public</name> <name>PARENT</name>
+<block>{
+<expr><name>public</name><operator>:</operator>
+    <operator>~</operator><macro><name>AnnotatedMixin</name><argument_list>()</argument_list></macro> <block>{
+        <expr><call><name>DeleteLock</name><argument_list>(<argument><expr><operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><name>this</name></expr></argument>)</argument_list></call></expr>;
+    }</block>
+
+    <name>void</name> <macro><name>lock</name><argument_list>()</argument_list></macro> <macro><name>EXCLUSIVE_LOCK_FUNCTION</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><name>PARENT</name><operator>::</operator><call><name>lock</name><argument_list>()</argument_list></call></expr>;
+    }</block>
+
+    <name>void</name> <macro><name>unlock</name><argument_list>()</argument_list></macro> <macro><name>UNLOCK_FUNCTION</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><name>PARENT</name><operator>::</operator><call><name>unlock</name><argument_list>()</argument_list></call></expr>;
+    }</block>
+
+    <name>bool</name> <macro><name>try_lock</name><argument_list>()</argument_list></macro> <macro><name>EXCLUSIVE_TRYLOCK_FUNCTION</name><argument_list>(<argument>true</argument>)</argument_list></macro>
+    <block>{
+        <return>return <expr><name>PARENT</name><operator>::</operator><call><name>try_lock</name><argument_list>()</argument_list></call></expr>;</return>
+    }</block>
+
+    <name>using</name> <name>UniqueLock</name> <operator>=</operator> <name>std</name><operator>::</operator><name><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name>PARENT</name></expr></argument>&gt;</argument_list></name></expr>;
+}</block></expr></range></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/**
+ * Wrapped mutex: supports recursive locking, but no waiting
+ * TODO: We should move away from using the recursive lock by default.
+ */</comment>
+<decl_stmt><decl><type><name>using</name></type> <name>RecursiveMutex</name> <init>= <expr><name><name>AnnotatedMixin</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>recursive_mutex</name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+<typedef>typedef <type><name><name>AnnotatedMixin</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>recursive_mutex</name></expr></argument>&gt;</argument_list></name></type> <name>CCriticalSection</name>;</typedef>
+
+<comment type="block" format="doxygen">/** Wrapped mutex: supports waiting but not recursive locking */</comment>
+<typedef>typedef <type><name><name>AnnotatedMixin</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>mutex</name></expr></argument>&gt;</argument_list></name></type> <name>Mutex</name>;</typedef>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKCONTENTION</name></cpp:ifdef>
+<function_decl><type><name>void</name></type> <name>PrintLockContention</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>)</parameter_list>;</function_decl>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="block" format="doxygen">/** Wrapper around std::unique_lock style lock for Mutex. */</comment>
+<decl_stmt><decl><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Mutex</name></expr></argument>, <argument><expr><name>typename</name> <name>Base</name> <operator>=</operator> <name>typename</name> <name>Mutex</name><operator>::</operator><name>UniqueLock</name></expr></argument>&gt;</argument_list></name>
+<name>class</name> <name>SCOPED_LOCKABLE</name></type> <name>UniqueLock</name> <range>: <expr><name>public</name> <name>Base</name>
+<block>{
+<expr><name>private</name><operator>:</operator>
+    <name>void</name> <macro><name>Enter</name><argument_list>(<argument>const char* pszName</argument>, <argument>const char* pszFile</argument>, <argument>int nLine</argument>)</argument_list></macro>
+    <block>{
+        <expr><call><name>EnterCritical</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>, <argument><expr><operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><operator>(</operator><name>Base</name><operator>::</operator><call><name>mutex</name><argument_list>()</argument_list></call><operator>)</operator></expr></argument>)</argument_list></call></expr>;
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKCONTENTION</name></cpp:ifdef>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>Base</name><operator>::</operator><call><name>try_lock</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>PrintLockContention</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+            <expr_stmt><expr><name>Base</name><operator>::</operator><call><name>lock</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKCONTENTION</name></cpp:ifdef>
+        <expr_stmt/>}</block_content>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    }
+
+    bool TryEnter(const char* pszName</block><operator>,</operator> <decl_stmt><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl>, <decl><type ref="prev"/><name>int</name> <name>nLine</name></decl>)
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>EnterCritical</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>, <argument><expr><operator>(</operator><name>void</name><operator>*</operator><operator>)</operator><operator>(</operator><name>Base</name><operator>::</operator><call><name>mutex</name><argument_list>()</argument_list></call><operator>)</operator></expr></argument>, <argument><expr><name>true</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>Base</name><operator>::</operator><call><name>try_lock</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>Base</name><operator>::</operator><call><name>owns_lock</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>LeaveCritical</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <return>return <expr><name>Base</name><operator>::</operator><call><name>owns_lock</name><argument_list>()</argument_list></call></expr>;</return>
+    <expr_stmt/>}</block_content>
+
+public:
+    UniqueLock(Mutex&amp; mutexIn</block><operator>,</operator> const char* pszName<operator>,</operator> const char* pszFile<operator>,</operator> int nLine<operator>,</operator> bool fTry = false</decl_stmt></if></if_stmt>) <call><name>EXCLUSIVE_LOCK_FUNCTION</name><argument_list>(<argument><expr><name>mutexIn</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>Base</name><argument_list>(<argument>mutexIn</argument>, <argument>std::defer_lock</argument>)</argument_list></macro>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><name>fTry</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>TryEnter</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Enter</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    }</block></block>
+
+    <macro><name>UniqueLock</name><argument_list>(<argument>Mutex* pmutexIn</argument>, <argument>const char* pszName</argument>, <argument>const char* pszFile</argument>, <argument>int nLine</argument>, <argument>bool fTry = false</argument>)</argument_list></macro> <macro><name>EXCLUSIVE_LOCK_FUNCTION</name><argument_list>(<argument>pmutexIn</argument>)</argument_list></macro>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>pmutexIn</name></expr>)</condition><block type="pseudo"><block_content> <return>return;</return></block_content></block></if></if_stmt>
+
+        <operator>*</operator><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>Base</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call> <operator>=</operator> <call><name>Base</name><argument_list>(<argument><expr><operator>*</operator><name>pmutexIn</name></expr></argument>, <argument><expr><name>std</name><operator>::</operator><name>defer_lock</name></expr></argument>)</argument_list></call></block></expr>;
+        <if_stmt><if>if <condition>(<expr><name>fTry</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>TryEnter</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Enter</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    }</block></expr></range></decl></decl_stmt>
+
+    <expr_stmt><expr><operator>~</operator><macro><name>UniqueLock</name><argument_list>()</argument_list></macro> <macro><name>UNLOCK_FUNCTION</name><argument_list>()</argument_list></macro>
+    <block>{
+        <if_stmt><if>if <condition>(<expr><name>Base</name><operator>::</operator><call><name>owns_lock</name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>LeaveCritical</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    }</block></expr></expr_stmt>
+
+    <function><type><name>operator</name></type> <name>bool</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><name>Base</name><operator>::</operator><call><name>owns_lock</name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+};
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>MutexArg</name></expr></argument>&gt;</argument_list></name>
+<name>using</name></type> <name>DebugLock</name> <init>= <expr><name><name>UniqueLock</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>remove_reference</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>std</name><operator>::</operator><name><name>remove_pointer</name><argument_list type="generic">&lt;<argument><expr><name>MutexArg</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>type</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>type</name></expr></argument>&gt;</argument_list></name></expr></init></decl>;</decl_stmt>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LOCK</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>DebugLock&lt;decltype(cs)&gt; PASTE2(criticalblock, __COUNTER__)(cs, #cs, __FILE__, __LINE__)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LOCK2</name><parameter_list>(<parameter><type><name>cs1</name></type></parameter>, <parameter><type><name>cs2</name></type></parameter>)</parameter_list></cpp:macro>                                               \
+    <cpp:value>DebugLock&lt;decltype(cs1)&gt; criticalblock1(cs1, #cs1, __FILE__, __LINE__); \
+    DebugLock&lt;decltype(cs2)&gt; criticalblock2(cs2, #cs2, __FILE__, __LINE__);</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>TRY_LOCK</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>, <parameter><type><name>name</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>DebugLock&lt;decltype(cs)&gt; name(cs, #cs, __FILE__, __LINE__, true)</cpp:value></cpp:define>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>WAIT_LOCK</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>, <parameter><type><name>name</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>DebugLock&lt;decltype(cs)&gt; name(cs, #cs, __FILE__, __LINE__)</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>ENTER_CRITICAL_SECTION</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>)</parameter_list></cpp:macro>                            \
+    <cpp:value>{                                                         \
+        EnterCritical(#cs, __FILE__, __LINE__, (void*)(&amp;cs)); \
+        (cs).lock();                                          \
+    }</cpp:value></cpp:define>
+
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>LEAVE_CRITICAL_SECTION</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>)</parameter_list></cpp:macro> \
+    <cpp:value>{                              \
+        (cs).unlock();             \
+        LeaveCritical();           \
+    }</cpp:value></cpp:define>
+
+<comment type="line" format="doxygen">//! Run code while locking a mutex.</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//! Examples:</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//!   WITH_LOCK(cs, shared_val = shared_val + 1);</comment>
+<comment type="line" format="doxygen">//!</comment>
+<comment type="line" format="doxygen">//!   int val = WITH_LOCK(cs, return shared_val);</comment>
+<comment type="line" format="doxygen">//!</comment>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>WITH_LOCK</name><parameter_list>(<parameter><type><name>cs</name></type></parameter>, <parameter><type><name>code</name></type></parameter>)</parameter_list></cpp:macro> <cpp:value>[&amp;] { LOCK(cs); code; }()</cpp:value></cpp:define>
+
+<decl_stmt><decl><type><name>class</name></type> <name>CSemaphore</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>condition_variable</name> <name>condition</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name>std</name><operator>::</operator><name>mutex</name> <name>mutex</name></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>value</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <macro><name>explicit</name></macro> <macro><name>CSemaphore</name><argument_list>(<argument>int init</argument>)</argument_list></macro> : <macro><name>value</name><argument_list>(<argument>init</argument>)</argument_list></macro> <block>{<block_content/>}</block>
+
+    <function><type><name>void</name></type> <name>wait</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>unique_lock</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>mutex</name></expr></argument>&gt;</argument_list></name> <call><name>lock</name><argument_list>(<argument><expr><name>mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>condition</name><operator>.</operator><name>wait</name></name><argument_list>(<argument><expr><name>lock</name></expr></argument>, <argument><expr><index>[<expr><operator>&amp;</operator></expr>]</index><operator>(</operator><operator>)</operator> <block>{ <return>return <expr><name>value</name> <operator>&gt;=</operator> <literal type="number">1</literal></expr>;</return> }</block></expr></argument></argument_list></call></expr></expr_stmt>)</block_content></block>;</function>
+        <expr_stmt><expr><name>value</name><operator>--</operator></expr>;</expr_stmt>
+    </block_content>}</block></decl></decl_stmt>
+
+    <function><type><name>bool</name></type> <name>try_wait</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>std</name><operator>::</operator><name><name>lock_guard</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>mutex</name></expr></argument>&gt;</argument_list></name> <call><name>lock</name><argument_list>(<argument><expr><name>mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>value</name> <operator>&lt;</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>false</name></expr>;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><name>value</name><operator>--</operator></expr>;</expr_stmt>
+        <return>return <expr><name>true</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><type><name>void</name></type> <name>post</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <block>{<block_content>
+            <expr_stmt><expr><name>std</name><operator>::</operator><name><name>lock_guard</name><argument_list type="generic">&lt;<argument><expr><name>std</name><operator>::</operator><name>mutex</name></expr></argument>&gt;</argument_list></name> <call><name>lock</name><argument_list>(<argument><expr><name>mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><name>value</name><operator>++</operator></expr>;</expr_stmt>
+        </block_content>}</block>
+        <expr_stmt><expr><call><name><name>condition</name><operator>.</operator><name>notify_one</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+};
+
+<comment type="block" format="doxygen">/** RAII-style semaphore lock */</comment>
+<decl_stmt><decl><type><name>class</name></type> <name>CSemaphoreGrant</name>
+<block>{<block_content>
+<label><name>private</name>:</label>
+    <decl_stmt><decl><type><name>CSemaphore</name><modifier>*</modifier></type> <name>sem</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>fHaveGrant</name></decl>;</decl_stmt>
+
+<label><name>public</name>:</label>
+    <function><type><name>void</name></type> <name>Acquire</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>fHaveGrant</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>sem</name><operator>-&gt;</operator><name>wait</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fHaveGrant</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name>void</name></type> <name>Release</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fHaveGrant</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return;</return></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>sem</name><operator>-&gt;</operator><name>post</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fHaveGrant</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <function><type><name>bool</name></type> <name>TryAcquire</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><name>fHaveGrant</name> <operator>&amp;&amp;</operator> <call><name><name>sem</name><operator>-&gt;</operator><name>try_wait</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><name>fHaveGrant</name> <operator>=</operator> <name>true</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        <return>return <expr><name>fHaveGrant</name></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><type><name>void</name></type> <name>MoveTo</name><parameter_list>(<parameter><decl><type><name>CSemaphoreGrant</name><modifier>&amp;</modifier></type> <name>grant</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>grant</name><operator>.</operator><name>Release</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>grant</name><operator>.</operator><name>sem</name></name> <operator>=</operator> <name>sem</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>grant</name><operator>.</operator><name>fHaveGrant</name></name> <operator>=</operator> <name>fHaveGrant</name></expr>;</expr_stmt>
+        <expr_stmt><expr><name>fHaveGrant</name> <operator>=</operator> <name>false</name></expr>;</expr_stmt>
+    </block_content>}</block></function>
+
+    <expr_stmt><expr><call><name>CSemaphoreGrant</name><argument_list>()</argument_list></call> <operator>:</operator> <call><name>sem</name><argument_list>(<argument><expr><name>nullptr</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>fHaveGrant</name><argument_list>(<argument>false</argument>)</argument_list></macro> <expr><block>{}</block>
+
+    <name>explicit</name> <macro><name>CSemaphoreGrant</name><argument_list>(<argument>CSemaphore&amp; sema</argument>, <argument>bool fTry = false</argument>)</argument_list></macro> <operator>:</operator> <call><name>sem</name><argument_list>(<argument><expr><operator>&amp;</operator><name>sema</name></expr></argument>)</argument_list></call></expr><operator>,</operator> <macro><name>fHaveGrant</name><argument_list>(<argument>false</argument>)</argument_list></macro>
+    <expr><block>{
+        <if_stmt><if>if <condition>(<expr><name>fTry</name></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>TryAcquire</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+        <else>else<block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>Acquire</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></else></if_stmt>
+    }</block></expr></expr_stmt>
+
+    <expr_stmt><expr><operator>~</operator><macro><name>CSemaphoreGrant</name><argument_list>()</argument_list></macro>
+    <block>{
+        <expr><call><name>Release</name><argument_list>()</argument_list></call></expr>;
+    }</block>
+
+    <name>operator</name> <macro><name>bool</name><argument_list>()</argument_list></macro> <specifier>const</specifier>
+    <block>{
+        <return>return <expr><name>fHaveGrant</name></expr>;</return>
+    }</block></expr></expr_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Utility class for indicating to compiler thread analysis that a mutex is</comment>
+<comment type="line">// locked (when it couldn't be determined otherwise).</comment>
+<struct>struct <macro><name>SCOPED_LOCKABLE</name></macro> <name>LockAssertion</name>
+<block>{
+    <function><type><name><name>template</name> <argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Mutex</name></expr></argument>&gt;</argument_list></name>
+    <name>explicit</name></type> <name>LockAssertion</name><parameter_list>(<parameter><decl><type><name>Mutex</name><modifier>&amp;</modifier></type> <name>mutex</name></decl></parameter>)</parameter_list> EXCLUSIVE_LOCK_FUNCTION<parameter_list>(<parameter><decl><type><name>mutex</name></type></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKORDER</name></cpp:ifdef>
+        <expr_stmt><expr><call><name>AssertLockHeld</name><argument_list>(<argument><expr><name>mutex</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    </block_content>}</block></function>
+    <expr_stmt><expr><operator>~</operator><macro><name>LockAssertion</name><argument_list>()</argument_list></macro> <macro><name>UNLOCK_FUNCTION</name><argument_list>()</argument_list></macro> <block>{}</block></expr></expr_stmt>
+}</block>;</struct>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="line">// BITCOIN_SYNC_H</comment>
+</unit>

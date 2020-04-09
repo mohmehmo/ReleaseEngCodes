@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/util/threadnames.cpp"><comment type="line">// Copyright (c) 2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;thread&gt;</cpp:file></cpp:include>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><operator>(</operator><call><name>defined</name><argument_list>(<argument><expr><name>__FreeBSD__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__OpenBSD__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__DragonFly__</name></expr></argument>)</argument_list></call><operator>)</operator></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pthread.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;pthread_np.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/threadnames.h&gt;</cpp:file></cpp:include>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>HAVE_SYS_PRCTL_H</name></cpp:ifdef>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sys/prctl.h&gt;</cpp:file></cpp:include> <comment type="line">// For prctl, PR_SET_NAME, PR_GET_NAME</comment>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<comment type="line" format="doxygen">//! Set the thread's name at the process level. Does not affect the</comment>
+<comment type="line" format="doxygen">//! internal name.</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SetThreadName</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>name</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>PR_SET_NAME</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <comment type="line">// Only the first 15 characters are used (16 - NUL terminator)</comment>
+    <expr_stmt><expr><call><name><operator>::</operator><name>prctl</name></name><argument_list>(<argument><expr><name>PR_SET_NAME</name></expr></argument>, <argument><expr><name>name</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><operator>(</operator><call><name>defined</name><argument_list>(<argument><expr><name>__FreeBSD__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__OpenBSD__</name></expr></argument>)</argument_list></call> <operator>||</operator> <call><name>defined</name><argument_list>(<argument><expr><name>__DragonFly__</name></expr></argument>)</argument_list></call><operator>)</operator></expr></cpp:elif>
+    <expr_stmt><expr><call><name>pthread_set_name_np</name><argument_list>(<argument><expr><call><name>pthread_self</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>name</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:elif>#<cpp:directive>elif</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>MAC_OSX</name></expr></argument>)</argument_list></call></expr></cpp:elif>
+    <expr_stmt><expr><call><name>pthread_setname_np</name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <comment type="line">// Prevent warnings for unused parameters...</comment>
+    <expr_stmt><expr><operator>(</operator><name>void</name><operator>)</operator><name>name</name></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block></function>
+
+<comment type="line">// If we have thread_local, just keep thread ID and name in a thread_local</comment>
+<comment type="line">// global.</comment>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_THREAD_LOCAL</name></expr></argument>)</argument_list></call></expr></cpp:if>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>thread_local</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>g_thread_name</name></decl>;</decl_stmt>
+<function><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name><name>util</name><operator>::</operator><name>ThreadGetInternalName</name></name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><name>g_thread_name</name></expr>;</return> </block_content>}</block></function>
+<comment type="line" format="doxygen">//! Set the in-memory internal name for this thread. Does not affect the process</comment>
+<comment type="line" format="doxygen">//! name.</comment>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SetInternalName</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>name</name></decl></parameter>)</parameter_list> <block>{<block_content> <expr_stmt><expr><name>g_thread_name</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> </block_content>}</block></function>
+
+<comment type="line">// Without thread_local available, don't handle internal name at all.</comment>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>empty_string</name></decl>;</decl_stmt>
+<function><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name><name>util</name><operator>::</operator><name>ThreadGetInternalName</name></name><parameter_list>()</parameter_list> <block>{<block_content> <return>return <expr><name>empty_string</name></expr>;</return> </block_content>}</block></function>
+<function><type><specifier>static</specifier> <name>void</name></type> <name>SetInternalName</name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>name</name></decl></parameter>)</parameter_list> <block>{<block_content> </block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<function><type><name>void</name></type> <name><name>util</name><operator>::</operator><name>ThreadRename</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;&amp;</modifier></type> <name>name</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>SetThreadName</name><argument_list>(<argument><expr><operator>(</operator><literal type="string">"b-"</literal> <operator>+</operator> <name>name</name><operator>)</operator><operator>.</operator><call><name>c_str</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>SetInternalName</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>util</name><operator>::</operator><name>ThreadSetInternalName</name></name><parameter_list>(<parameter><decl><type><name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;&amp;</modifier></type> <name>name</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>SetInternalName</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>move</name></name><argument_list>(<argument><expr><name>name</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C" filename="/home/mmm/Projects/bitcoin/src/leveldb/db/skiplist.h"><comment type="line">// Copyright (c) 2011 The LevelDB Authors. All rights reserved.</comment>
+<comment type="line">// Use of this source code is governed by a BSD-style license that can be</comment>
+<comment type="line">// found in the LICENSE file. See the AUTHORS file for names of contributors.</comment>
+
+<cpp:ifndef>#<cpp:directive>ifndef</cpp:directive> <name>STORAGE_LEVELDB_DB_SKIPLIST_H_</name></cpp:ifndef>
+<cpp:define>#<cpp:directive>define</cpp:directive> <cpp:macro><name>STORAGE_LEVELDB_DB_SKIPLIST_H_</name></cpp:macro></cpp:define>
+
+<comment type="line">// Thread safety</comment>
+<comment type="line">// -------------</comment>
+<comment type="line">//</comment>
+<comment type="line">// Writes require external synchronization, most likely a mutex.</comment>
+<comment type="line">// Reads require a guarantee that the SkipList will not be destroyed</comment>
+<comment type="line">// while the read is in progress.  Apart from that, reads progress</comment>
+<comment type="line">// without any internal locking or synchronization.</comment>
+<comment type="line">//</comment>
+<comment type="line">// Invariants:</comment>
+<comment type="line">//</comment>
+<comment type="line">// (1) Allocated nodes are never deleted until the SkipList is</comment>
+<comment type="line">// destroyed.  This is trivially guaranteed by the code since we</comment>
+<comment type="line">// never delete any skip list nodes.</comment>
+<comment type="line">//</comment>
+<comment type="line">// (2) The contents of a Node except for the next/prev pointers are</comment>
+<comment type="line">// immutable after the Node has been linked into the SkipList.</comment>
+<comment type="line">// Only Insert() modifies the list, and it is careful to initialize</comment>
+<comment type="line">// a node and use release-stores to publish the nodes in one or</comment>
+<comment type="line">// more lists.</comment>
+<comment type="line">//</comment>
+<comment type="line">// ... prev vs. next pointer ordering ...</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;assert.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdlib.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"port/port.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"util/arena.h"</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>"util/random.h"</cpp:file></cpp:include>
+
+<decl_stmt><decl><type><name>namespace</name></type> <name>leveldb</name> <block>{<block_content>
+
+<decl_stmt><decl><type><name>class</name></type> <name>Arena</name></decl>;</decl_stmt>
+
+<decl_stmt><decl><type><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>class</name></type> <name>SkipList</name> <block>{<block_content>
+ <label><name>private</name>:</label>
+  <struct_decl>struct <name>Node</name>;</struct_decl>
+
+ <label><name>public</name>:</label>
+  <comment type="line">// Create a new SkipList object that will use "cmp" for comparing keys,</comment>
+  <comment type="line">// and will allocate memory using "*arena".  Objects allocated in the arena</comment>
+  <comment type="line">// must remain allocated for the lifetime of the skiplist object.</comment>
+  <function_decl><type><name>explicit</name></type> <name>SkipList</name><parameter_list>(<parameter><decl><type><name>Comparator</name></type> <name>cmp</name></decl></parameter>, <parameter><decl><type><name>Arena</name><modifier>*</modifier></type> <name>arena</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Insert key into the list.</comment>
+  <comment type="line">// REQUIRES: nothing that compares equal to key is currently in the list.</comment>
+  <function_decl><type><name>void</name></type> <name>Insert</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Key</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list>;</function_decl>
+
+  <comment type="line">// Returns true iff an entry that compares equal to key is in the list.</comment>
+  <function><type><name>bool</name></type> <name>Contains</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Key</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>)</parameter_list> const;</function>
+
+  <comment type="line">// Iteration over the contents of a skip list</comment>
+  <decl_stmt><decl><type><name>class</name></type> <name>Iterator</name> <block>{<block_content>
+   <label><name>public</name>:</label>
+    <comment type="line">// Initialize an iterator over the specified list.</comment>
+    <comment type="line">// The returned iterator is not valid.</comment>
+    <function_decl><type><name>explicit</name></type> <name>Iterator</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>SkipList</name><modifier>*</modifier></type> <name>list</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// Returns true iff the iterator is positioned at a valid node.</comment>
+    <expr_stmt><expr><name>bool</name> <macro><name>Valid</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line">// Returns the key at the current position.</comment>
+    <comment type="line">// REQUIRES: Valid()</comment>
+    <expr_stmt><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <macro><name>key</name><argument_list>()</argument_list></macro> <specifier>const</specifier></expr>;</expr_stmt>
+
+    <comment type="line">// Advances to the next position.</comment>
+    <comment type="line">// REQUIRES: Valid()</comment>
+    <function_decl><type><name>void</name></type> <name>Next</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="line">// Advances to the previous position.</comment>
+    <comment type="line">// REQUIRES: Valid()</comment>
+    <function_decl><type><name>void</name></type> <name>Prev</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="line">// Advance to the first entry with a key &gt;= target</comment>
+    <function_decl><type><name>void</name></type> <name>Seek</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Key</name><modifier>&amp;</modifier></type> <name>target</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="line">// Position at the first entry in list.</comment>
+    <comment type="line">// Final state of iterator is Valid() iff list is not empty.</comment>
+    <function_decl><type><name>void</name></type> <name>SeekToFirst</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="line">// Position at the last entry in list.</comment>
+    <comment type="line">// Final state of iterator is Valid() iff list is not empty.</comment>
+    <function_decl><type><name>void</name></type> <name>SeekToLast</name><parameter_list>()</parameter_list>;</function_decl>
+
+   <label><name>private</name>:</label>
+    <decl_stmt><decl><type><specifier>const</specifier> <name>SkipList</name><modifier>*</modifier></type> <name>list_</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Node</name><modifier>*</modifier></type> <name>node_</name></decl>;</decl_stmt>
+    <comment type="line">// Intentionally copyable</comment>
+  </block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+ <label><name>private</name>:</label>
+  <enum>enum <block>{ <decl><name>kMaxHeight</name> <init>= <expr><literal type="number">12</literal></expr></init></decl> }</block>;</enum>
+
+  <comment type="line">// Immutable after construction</comment>
+  <decl_stmt><decl><type><name>Comparator</name> <specifier>const</specifier></type> <name>compare_</name></decl>;</decl_stmt>
+  <decl_stmt><decl><type><name>Arena</name><modifier>*</modifier> <specifier>const</specifier></type> <name>arena_</name></decl>;</decl_stmt>    <comment type="line">// Arena used for allocations of nodes</comment>
+
+  <decl_stmt><decl><type><name>Node</name><modifier>*</modifier> <specifier>const</specifier></type> <name>head_</name></decl>;</decl_stmt>
+
+  <comment type="line">// Modified only by Insert().  Read racily by readers, but stale</comment>
+  <comment type="line">// values are ok.</comment>
+  <expr_stmt><expr><name>port</name><operator>::</operator><name>AtomicPointer</name> <name>max_height_</name></expr>;</expr_stmt>   <comment type="line">// Height of the entire list</comment>
+
+  <expr_stmt><expr><specifier>inline</specifier> <name>int</name> <macro><name>GetMaxHeight</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+    <return>return <expr><call><name><name>static_cast</name><argument_list type="generic">&lt;<argument><expr><name>int</name></expr></argument>&gt;</argument_list></name><argument_list>(
+        <argument><expr><call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><name>intptr_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>max_height_</name><operator>.</operator><name>NoBarrier_Load</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  }</block></expr></expr_stmt>
+
+  <comment type="line">// Read/written only by Insert().</comment>
+  <decl_stmt><decl><type><name>Random</name></type> <name>rnd_</name></decl>;</decl_stmt>
+
+  <function_decl><type><name>Node</name><modifier>*</modifier></type> <name>NewNode</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>Key</name><modifier>&amp;</modifier></type> <name>key</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>height</name></decl></parameter>)</parameter_list>;</function_decl>
+  <function_decl><type><name>int</name></type> <name>RandomHeight</name><parameter_list>()</parameter_list>;</function_decl>
+  <decl_stmt><decl><type><name>bool</name></type> <name>Equal</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name>a</name></expr></argument>, <argument><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name>b</name></expr></argument>)</argument_list> const <block>{<block_content> <return>return <expr><operator>(</operator><call><name>compare_</name><argument_list>(<argument><expr><name>a</name></expr></argument>, <argument><expr><name>b</name></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return> </block_content>}</block></decl></decl_stmt>
+
+  <comment type="line">// Return true if key is greater than the data stored in "n"</comment>
+  <decl_stmt><decl><type><name>bool</name></type> <name>KeyIsAfterNode</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name>key</name></expr></argument>, <argument><expr><name>Node</name><operator>*</operator> <name>n</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+  <comment type="line">// Return the earliest node that comes at or after key.</comment>
+  <comment type="line">// Return NULL if there is no such node.</comment>
+  <comment type="line">//</comment>
+  <comment type="line">// If prev is non-NULL, fills prev[level] with pointer to previous</comment>
+  <comment type="line">// node at "level" for every level in [0..max_height_-1].</comment>
+  <decl_stmt><decl><type><name>Node</name><modifier>*</modifier></type> <name>FindGreaterOrEqual</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name>key</name></expr></argument>, <argument><expr><name>Node</name><operator>*</operator><operator>*</operator> <name>prev</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+  <comment type="line">// Return the latest node with a key &lt; key.</comment>
+  <comment type="line">// Return head_ if there is no such node.</comment>
+  <decl_stmt><decl><type><name>Node</name><modifier>*</modifier></type> <name>FindLessThan</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name>key</name></expr></argument>)</argument_list> const</decl>;</decl_stmt>
+
+  <comment type="line">// Return the last node in the list.</comment>
+  <comment type="line">// Return head_ if list is empty.</comment>
+  <function_decl><type><name>Node</name><modifier>*</modifier></type> <name>FindLast</name><parameter_list>()</parameter_list> const;</function_decl>
+
+  <comment type="line">// No copying allowed</comment>
+  <expr_stmt><expr><call><name>SkipList</name><argument_list>(<argument><expr><specifier>const</specifier> <name>SkipList</name><operator>&amp;</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <decl_stmt><decl><type><name>void</name></type> <name>operator</name><init>=<expr><operator>(</operator><specifier>const</specifier> <name>SkipList</name><operator>&amp;</operator><operator>)</operator></expr></init></decl>;</decl_stmt>
+</block_content>}</block></decl></decl_stmt><empty_stmt>;</empty_stmt>
+
+<comment type="line">// Implementation details follow</comment>
+<macro><name>template</name></macro><expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>Key</name></expr><operator>,</operator> <expr><name>class</name> <name>Comparator</name><operator>&gt;</operator>
+struct <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Node</name> <block>{
+  <expr><name>explicit</name> <call><name>Node</name><argument_list>(<argument><expr><specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name>k</name></expr></argument>)</argument_list></call> <operator>:</operator> <macro><name>key</name><argument_list>(<argument>k</argument>)</argument_list></macro> <block>{ }</block>
+
+  <name>Key</name> <specifier>const</specifier> <name>key</name></expr>;
+
+  <comment type="line">// Accessors/mutators for links.  Wrapped in methods so we can</comment>
+  <comment type="line">// add the appropriate barriers as necessary.</comment>
+  <expr><name>Node</name><operator>*</operator> <macro><name>Next</name><argument_list>(<argument>int n</argument>)</argument_list></macro> <block>{
+    <expr><call><name>assert</name><argument_list>(<argument><expr><name>n</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+    <comment type="line">// Use an 'acquire load' so that we observe a fully initialized</comment>
+    <comment type="line">// version of the returned Node.</comment>
+    <return>return <expr><call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><name>Node</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name><name>next_</name><index>[<expr><name>n</name></expr>]</index></name><operator>.</operator><call><name>Acquire_Load</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  }</block>
+  <name>void</name> <macro><name>SetNext</name><argument_list>(<argument>int n</argument>, <argument>Node* x</argument>)</argument_list></macro> <block>{
+    <expr><call><name>assert</name><argument_list>(<argument><expr><name>n</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+    <comment type="line">// Use a 'release store' so that anybody who reads through this</comment>
+    <comment type="line">// pointer observes a fully initialized version of the inserted node.</comment>
+    <expr><name><name>next_</name><index>[<expr><name>n</name></expr>]</index></name><operator>.</operator><call><name>Release_Store</name><argument_list>(<argument><expr><name>x</name></expr></argument>)</argument_list></call></expr>;
+  }</block>
+
+  <comment type="line">// No-barrier variants that can be safely used in a few locations.</comment>
+  <name>Node</name><operator>*</operator> <macro><name>NoBarrier_Next</name><argument_list>(<argument>int n</argument>)</argument_list></macro> <block>{
+    <expr><call><name>assert</name><argument_list>(<argument><expr><name>n</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+    <return>return <expr><call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><name>Node</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name><name>next_</name><index>[<expr><name>n</name></expr>]</index></name><operator>.</operator><call><name>NoBarrier_Load</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+  }</block>
+  <name>void</name> <macro><name>NoBarrier_SetNext</name><argument_list>(<argument>int n</argument>, <argument>Node* x</argument>)</argument_list></macro> <block>{
+    <expr><call><name>assert</name><argument_list>(<argument><expr><name>n</name> <operator>&gt;=</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+    <expr><name><name>next_</name><index>[<expr><name>n</name></expr>]</index></name><operator>.</operator><call><name>NoBarrier_Store</name><argument_list>(<argument><expr><name>x</name></expr></argument>)</argument_list></call></expr>;
+  }</block>
+
+ <name>private</name><operator>:</operator>
+  <comment type="line">// Array of length equal to the node height.  next_[0] is lowest level link.</comment>
+  <name>port</name><operator>::</operator><name>AtomicPointer</name> <name><name>next_</name><index>[<expr><literal type="number">1</literal></expr>]</index></name></expr>;
+}</block></expr>;</expr_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>typename</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Node</name><operator>*</operator>
+<name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>NewNode</name><argument_list>(<argument>const Key&amp; key</argument>, <argument>int height</argument>)</argument_list></macro> <block>{
+  <expr><name>char</name><operator>*</operator> <name>mem</name> <operator>=</operator> <call><name><name>arena_</name><operator>-&gt;</operator><name>AllocateAligned</name></name><argument_list>(
+      <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>Node</name></expr></argument>)</argument_list></sizeof> <operator>+</operator> <sizeof>sizeof<argument_list>(<argument><expr><name>port</name><operator>::</operator><name>AtomicPointer</name></expr></argument>)</argument_list></sizeof> <operator>*</operator> <operator>(</operator><name>height</name> <operator>-</operator> <literal type="number">1</literal><operator>)</operator></expr></argument>)</argument_list></call></expr>;
+  <return>return <macro><name>new</name> <argument_list>(<argument>mem</argument>)</argument_list></macro> <expr><call><name>Node</name><argument_list>(<argument><expr><name>key</name></expr></argument>)</argument_list></call></expr>;</return>
+}</block></expr></expr_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>Iterator</name><argument_list>(<argument>const SkipList* list</argument>)</argument_list></macro> <block>{
+  <expr><name>list_</name> <operator>=</operator> <name>list</name></expr>;
+  <expr><name>node_</name> <operator>=</operator> <name>NULL</name></expr>;
+}</block>
+
+<name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>bool</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>Valid</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+  <return>return <expr><name>node_</name> <operator>!=</operator> <name>NULL</name></expr>;</return>
+}</block></expr></expr_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <specifier>const</specifier> <name>Key</name><operator>&amp;</operator> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>key</name><argument_list>()</argument_list></macro> <specifier>const</specifier> <block>{
+  <expr><call><name>assert</name><argument_list>(<argument><expr><call><name>Valid</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+  <return>return <expr><name><name>node_</name><operator>-&gt;</operator><name>key</name></name></expr>;</return>
+}</block></expr></expr_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>Next</name><argument_list>()</argument_list></macro> <block>{
+  <expr><call><name>assert</name><argument_list>(<argument><expr><call><name>Valid</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+  <expr><name>node_</name> <operator>=</operator> <call><name><name>node_</name><operator>-&gt;</operator><name>Next</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+}</block>
+
+<name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>Prev</name><argument_list>()</argument_list></macro> <block>{
+  <comment type="line">// Instead of using explicit "prev" links, we just search for the</comment>
+  <comment type="line">// last node that falls before key.</comment>
+  <expr><call><name>assert</name><argument_list>(<argument><expr><call><name>Valid</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;
+  <expr><name>node_</name> <operator>=</operator> <call><name><name>list_</name><operator>-&gt;</operator><name>FindLessThan</name></name><argument_list>(<argument><expr><name><name>node_</name><operator>-&gt;</operator><name>key</name></name></expr></argument>)</argument_list></call></expr>;
+  <if_stmt><if>if <condition>(<expr><name>node_</name> <operator>==</operator> <name><name>list_</name><operator>-&gt;</operator><name>head_</name></name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>node_</name> <operator>=</operator> <name>NULL</name></expr>;</expr_stmt>
+  <expr_stmt/>}</block_content>
+}
+
+template&lt;typename Key</block><operator>,</operator> <expr_stmt><expr><name>class</name> <name>Comparator</name><operator>&gt;</operator>
+<specifier>inline</specifier> <name>void</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>Seek</name><argument_list>(<argument>const Key&amp; target</argument>)</argument_list></macro> <block>{
+  <expr><name>node_</name> <operator>=</operator> <call><name><name>list_</name><operator>-&gt;</operator><name>FindGreaterOrEqual</name></name><argument_list>(<argument><expr><name>target</name></expr></argument>, <argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr>;
+}</block>
+
+<name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>SeekToFirst</name><argument_list>()</argument_list></macro> <block>{
+  <expr><name>node_</name> <operator>=</operator> <call><name><name>list_</name><operator>-&gt;</operator><name>head_</name><operator>-&gt;</operator><name>Next</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;
+}</block>
+
+<name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<specifier>inline</specifier> <name>void</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Iterator</name><operator>::</operator><macro><name>SeekToLast</name><argument_list>()</argument_list></macro> <block>{
+  <expr><name>node_</name> <operator>=</operator> <call><name><name>list_</name><operator>-&gt;</operator><name>FindLast</name></name><argument_list>()</argument_list></call></expr>;</block></expr></expr_stmt></if></if_stmt>
+  <if_stmt><if>if <condition>(<expr><name>node_</name> <operator>==</operator> <name><name>list_</name><operator>-&gt;</operator><name>head_</name></name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>node_</name> <operator>=</operator> <name>NULL</name></expr>;</expr_stmt>
+  </block_content>}</block></if></if_stmt>
+}</block></expr></expr_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>int</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>RandomHeight</name><argument_list>()</argument_list></macro> <block>{
+  <comment type="line">// Increase height with probability 1 in kBranching</comment>
+  <expr><specifier>static</specifier> <specifier>const</specifier> <name>unsigned</name> <name>int</name> <name>kBranching</name> <operator>=</operator> <literal type="number">4</literal></expr>;
+  <expr><name>int</name> <name>height</name> <operator>=</operator> <literal type="number">1</literal></expr>;
+  <while>while <condition>(<expr><name>height</name> <operator>&lt;</operator> <name>kMaxHeight</name> <operator>&amp;&amp;</operator> <operator>(</operator><operator>(</operator><call><name><name>rnd_</name><operator>.</operator><name>Next</name></name><argument_list>()</argument_list></call> <operator>%</operator> <name>kBranching</name><operator>)</operator> <operator>==</operator> <literal type="number">0</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><name>height</name><operator>++</operator></expr>;</expr_stmt>
+  <expr_stmt/>}</block_content>
+  assert(height &gt; 0</block></while>)</block></expr>;</expr_stmt>
+  <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>height</name> <operator>&lt;=</operator> <name>kMaxHeight</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <return>return <expr><name>height</name></expr>;</return>
+</block_content>}</block></decl></decl_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>bool</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>KeyIsAfterNode</name><argument_list>(<argument>const Key&amp; key</argument>, <argument>Node* n</argument>)</argument_list></macro> <specifier>const</specifier> <block>{
+  <comment type="line">// NULL n is considered infinite</comment>
+  <return>return <expr><operator>(</operator><name>n</name> <operator>!=</operator> <name>NULL</name><operator>)</operator> <operator>&amp;&amp;</operator> <operator>(</operator><call><name>compare_</name><argument_list>(<argument><expr><name><name>n</name><operator>-&gt;</operator><name>key</name></name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&lt;</operator> <literal type="number">0</literal><operator>)</operator></expr>;</return>
+}</block></expr></expr_stmt>
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>typename</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Node</name><operator>*</operator> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>FindGreaterOrEqual</name><argument_list>(<argument>const Key&amp; key</argument>, <argument>Node** prev</argument>)</argument_list></macro>
+    <specifier>const</specifier> <block>{
+  <expr><name>Node</name><operator>*</operator> <name>x</name> <operator>=</operator> <name>head_</name></expr>;
+  <expr><name>int</name> <name>level</name> <operator>=</operator> <call><name>GetMaxHeight</name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr>;
+  <while>while <condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>Node</name><modifier>*</modifier></type> <name>next</name> <init>= <expr><call><name><name>x</name><operator>-&gt;</operator><name>Next</name></name><argument_list>(<argument><expr><name>level</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>KeyIsAfterNode</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>next</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+      <comment type="line">// Keep searching in this list</comment>
+      <expr_stmt><expr><name>x</name> <operator>=</operator> <name>next</name></expr>;</expr_stmt>
+    <expr_stmt/></block_content></block></if></if_stmt></block_content></block></while>}</block></expr></expr_stmt> <if_stmt><else>else <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name>prev</name> <operator>!=</operator> <name>NULL</name></expr>)</condition><block type="pseudo"><block_content> <expr_stmt><expr><name><name>prev</name><index>[<expr><name>level</name></expr>]</index></name> <operator>=</operator> <name>x</name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+      <if_stmt><if>if <condition>(<expr><name>level</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name>next</name></expr>;</return>
+      </block_content>}</block></if> <else>else <block>{<block_content>
+        <comment type="line">// Switch to next list</comment>
+        <expr_stmt><expr><name>level</name><operator>--</operator></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+    </block_content>}</block></else></if_stmt>
+  }
+}
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>typename</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Node</name><operator>*</operator>
+<name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>FindLessThan</name><argument_list>(<argument>const Key&amp; key</argument>)</argument_list></macro> <specifier>const</specifier> <block>{
+  <expr><name>Node</name><operator>*</operator> <name>x</name> <operator>=</operator> <name>head_</name></expr>;
+  <expr><name>int</name> <name>level</name> <operator>=</operator> <call><name>GetMaxHeight</name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr>;
+  <while>while <condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>x</name> <operator>==</operator> <name>head_</name> <operator>||</operator> <call><name>compare_</name><argument_list>(<argument><expr><name><name>x</name><operator>-&gt;</operator><name>key</name></name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&lt;</operator> <literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>Node</name><modifier>*</modifier></type> <name>next</name> <init>= <expr><call><name><name>x</name><operator>-&gt;</operator><name>Next</name></name><argument_list>(<argument><expr><name>level</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>next</name> <operator>==</operator> <name>NULL</name> <operator>||</operator> <call><name>compare_</name><argument_list>(<argument><expr><name><name>next</name><operator>-&gt;</operator><name>key</name></name></expr></argument>, <argument><expr><name>key</name></expr></argument>)</argument_list></call> <operator>&gt;=</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name>level</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name>x</name></expr>;</return>
+      <expr_stmt/></block_content></block></if></if_stmt></block_content></block></if></if_stmt></block_content></block></while>}</block></expr></expr_stmt> <if_stmt><else>else <block>{<block_content>
+        <comment type="line">// Switch to next list</comment>
+        <expr_stmt><expr><name>level</name><operator>--</operator></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+    } else <block>{<block_content>
+      <expr_stmt><expr><name>x</name> <operator>=</operator> <name>next</name></expr>;</expr_stmt>
+    </block_content>}</block>
+  }
+}
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name>typename</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>Node</name><operator>*</operator> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>FindLast</name><argument_list>()</argument_list></macro>
+    <specifier>const</specifier> <block>{
+  <expr><name>Node</name><operator>*</operator> <name>x</name> <operator>=</operator> <name>head_</name></expr>;
+  <expr><name>int</name> <name>level</name> <operator>=</operator> <call><name>GetMaxHeight</name><argument_list>()</argument_list></call> <operator>-</operator> <literal type="number">1</literal></expr>;
+  <while>while <condition>(<expr><name>true</name></expr>)</condition> <block>{<block_content>
+    <decl_stmt><decl><type><name>Node</name><modifier>*</modifier></type> <name>next</name> <init>= <expr><call><name><name>x</name><operator>-&gt;</operator><name>Next</name></name><argument_list>(<argument><expr><name>level</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>next</name> <operator>==</operator> <name>NULL</name></expr>)</condition> <block>{<block_content>
+      <if_stmt><if>if <condition>(<expr><name>level</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <return>return <expr><name>x</name></expr>;</return>
+      <expr_stmt/></block_content></block></if></if_stmt></block_content></block></if></if_stmt></block_content></block></while>}</block></expr></expr_stmt> <if_stmt><else>else <block>{<block_content>
+        <comment type="line">// Switch to next list</comment>
+        <expr_stmt><expr><name>level</name><operator>--</operator></expr>;</expr_stmt>
+      </block_content>}</block></else></if_stmt>
+    } else <block>{<block_content>
+      <expr_stmt><expr><name>x</name> <operator>=</operator> <name>next</name></expr>;</expr_stmt>
+    </block_content>}</block>
+  }
+}
+
+<expr_stmt><expr><name><name>template</name><argument_list type="generic">&lt;<argument><expr><name>typename</name> <name>Key</name></expr></argument>, <argument><expr><name>class</name> <name>Comparator</name></expr></argument>&gt;</argument_list></name>
+<name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>SkipList</name><argument_list>(<argument>Comparator cmp</argument>, <argument>Arena* arena</argument>)</argument_list></macro>
+    <operator>:</operator> <call><name>compare_</name><argument_list>(<argument><expr><name>cmp</name></expr></argument>)</argument_list></call></expr><operator>,</operator>
+      <expr><call><name>arena_</name><argument_list>(<argument><expr><name>arena</name></expr></argument>)</argument_list></call></expr><operator>,</operator>
+      <expr><call><name>head_</name><argument_list>(<argument><expr><call><name>NewNode</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument> <comment type="block">/* any key will do */</comment>, <argument><expr><name>kMaxHeight</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr><operator>,</operator>
+      <expr><call><name>max_height_</name><argument_list>(<argument><expr><call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr><operator>,</operator>
+      <macro><name>rnd_</name><argument_list>(<argument><literal type="number">0xdeadbeef</literal></argument>)</argument_list></macro> <expr><block>{
+  <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>kMaxHeight</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <expr_stmt><expr><call><name><name>head_</name><operator>-&gt;</operator><name>SetNext</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>, <argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <expr_stmt/></block_content></block></for>}</block></expr></expr_stmt>
+}
+
+template<expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>Key</name></expr><operator>,</operator> <expr><name>class</name> <name>Comparator</name><operator>&gt;</operator>
+<name>void</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>Insert</name><argument_list>(<argument>const Key&amp; key</argument>)</argument_list></macro> <block>{
+  <comment type="line">// TODO(opt): We can use a barrier-free variant of FindGreaterOrEqual()</comment>
+  <comment type="line">// here since Insert() is externally synchronized.</comment>
+  <expr><name>Node</name><operator>*</operator> <name><name>prev</name><index>[<expr><name>kMaxHeight</name></expr>]</index></name></expr>;
+  <expr><name>Node</name><operator>*</operator> <name>x</name> <operator>=</operator> <call><name>FindGreaterOrEqual</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>prev</name></expr></argument>)</argument_list></call></expr>;
+
+  <comment type="line">// Our data structure does not allow duplicate insertion</comment>
+  <expr><call><name>assert</name><argument_list>(<argument><expr><name>x</name> <operator>==</operator> <name>NULL</name> <operator>||</operator> <operator>!</operator><call><name>Equal</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name><name>x</name><operator>-&gt;</operator><name>key</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;
+
+  <expr><name>int</name> <name>height</name> <operator>=</operator> <call><name>RandomHeight</name><argument_list>()</argument_list></call></expr>;
+  <if_stmt><if>if <condition>(<expr><name>height</name> <operator>&gt;</operator> <call><name>GetMaxHeight</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><call><name>GetMaxHeight</name><argument_list>()</argument_list></call></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>height</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+      <expr_stmt><expr><name><name>prev</name><index>[<expr><name>i</name></expr>]</index></name> <operator>=</operator> <name>head_</name></expr>;</expr_stmt>
+    <expr_stmt/></block_content></block></for></block_content></block></if></if_stmt>}</block>
+    <comment type="line">//fprintf(stderr, "Change height from %d to %d\n", max_height_, height);</comment>
+
+    <comment type="line">// It is ok to mutate max_height_ without any synchronization</comment>
+    <comment type="line">// with concurrent readers.  A concurrent reader that observes</comment>
+    <comment type="line">// the new value of max_height_ will see either the old value of</comment>
+    <comment type="line">// new level pointers from head_ (NULL), or a new value set in</comment>
+    <comment type="line">// the loop below.  In the former case the reader will</comment>
+    <comment type="line">// immediately drop to the next level since NULL sorts after all</comment>
+    <comment type="line">// keys.  In the latter case the reader will use the new node.</comment>
+    <call><name><name>max_height_</name><operator>.</operator><name>NoBarrier_Store</name></name><argument_list>(<argument><expr><call><name><name>reinterpret_cast</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>height</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  }
+
+  x <expr_stmt><expr><operator>=</operator> <call><name>NewNode</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>height</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>height</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+    <comment type="line">// NoBarrier_SetNext() suffices since we will add a barrier when</comment>
+    <comment type="line">// we publish a pointer to "x" in prev[i].</comment>
+    <expr_stmt><expr><call><name><name>x</name><operator>-&gt;</operator><name>NoBarrier_SetNext</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>, <argument><expr><name><name>prev</name><index>[<expr><name>i</name></expr>]</index></name><operator>-&gt;</operator><call><name>NoBarrier_Next</name><argument_list>(<argument><expr><name>i</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>prev</name><index>[<expr><name>i</name></expr>]</index></name><operator>-&gt;</operator><call><name>SetNext</name><argument_list>(<argument><expr><name>i</name></expr></argument>, <argument><expr><name>x</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+  </block_content>}</block></for>
+}
+
+template<expr_stmt><expr><operator>&lt;</operator><name>typename</name> <name>Key</name></expr><operator>,</operator> <expr><name>class</name> <name>Comparator</name><operator>&gt;</operator>
+<name>bool</name> <name><name>SkipList</name><argument_list type="generic">&lt;<argument><expr><name>Key</name></expr></argument>,<argument><expr><name>Comparator</name></expr></argument>&gt;</argument_list></name><operator>::</operator><macro><name>Contains</name><argument_list>(<argument>const Key&amp; key</argument>)</argument_list></macro> <specifier>const</specifier> <block>{
+  <expr><name>Node</name><operator>*</operator> <name>x</name> <operator>=</operator> <call><name>FindGreaterOrEqual</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name>NULL</name></expr></argument>)</argument_list></call></expr>;
+  <if_stmt><if>if <condition>(<expr><name>x</name> <operator>!=</operator> <name>NULL</name> <operator>&amp;&amp;</operator> <call><name>Equal</name><argument_list>(<argument><expr><name>key</name></expr></argument>, <argument><expr><name><name>x</name><operator>-&gt;</operator><name>key</name></name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+    <return>return <expr><name>true</name></expr>;</return>
+  <expr_stmt/></block_content></block></if></if_stmt>}</block></expr></expr_stmt> <if_stmt><else>else <block>{<block_content>
+    <return>return <expr><name>false</name></expr>;</return>
+  </block_content>}</block></else></if_stmt>
+}
+
+}  <comment type="line">// namespace leveldb</comment>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>  <comment type="line">// STORAGE_LEVELDB_DB_SKIPLIST_H_</comment>
+</unit>

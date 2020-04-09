@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/test/sighash_tests.cpp"><comment type="line">// Copyright (c) 2013-2019 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/tx_check.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;consensus/validation.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/data/sighash.json.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;hash.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/interpreter.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;script/script.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;serialize.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;streams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;test/util/setup_common.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;version.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;iostream&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/test/unit_test.hpp&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;univalue.h&gt;</cpp:file></cpp:include>
+
+<function_decl><type><specifier>extern</specifier> <name>UniValue</name></type> <name>read_json</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>jsondata</name></decl></parameter>)</parameter_list>;</function_decl>
+
+<comment type="line">// Old script.cpp SignatureHash function</comment>
+<function><type><name>uint256</name> <specifier>static</specifier></type> <name>SignatureHashOld</name><parameter_list>(<parameter><decl><type><name>CScript</name></type> <name>scriptCode</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CTransaction</name><modifier>&amp;</modifier></type> <name>txTo</name></decl></parameter>, <parameter><decl><type><name>unsigned</name> <name>int</name></type> <name>nIn</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nHashType</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>uint256</name></type> <name>one</name><argument_list>(<argument><expr><call><name>uint256S</name><argument_list>(<argument><expr><literal type="string">"0000000000000000000000000000000000000000000000000000000000000001"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>nIn</name> <operator>&gt;=</operator> <call><name><name>txTo</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <return>return <expr><name>one</name></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>txTmp</name><argument_list>(<argument><expr><name>txTo</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <comment type="line">// In case concatenating two scripts ends up with two codeseparators,</comment>
+    <comment type="line">// or an extra one at the end, this prevents all those possible incompatibilities.</comment>
+    <expr_stmt><expr><call><name>FindAndDelete</name><argument_list>(<argument><expr><name>scriptCode</name></expr></argument>, <argument><expr><call><name>CScript</name><argument_list>(<argument><expr><name>OP_CODESEPARATOR</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Blank out other inputs' signatures</comment>
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>txTmp</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name><name>txTmp</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <call><name>CScript</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <expr_stmt><expr><name><name>txTmp</name><operator>.</operator><name>vin</name><index>[<expr><name>nIn</name></expr>]</index></name><operator>.</operator><name>scriptSig</name> <operator>=</operator> <name>scriptCode</name></expr>;</expr_stmt>
+
+    <comment type="line">// Blank out some of the outputs</comment>
+    <if_stmt><if>if <condition>(<expr><operator>(</operator><name>nHashType</name> <operator>&amp;</operator> <literal type="number">0x1f</literal><operator>)</operator> <operator>==</operator> <name>SIGHASH_NONE</name></expr>)</condition>
+    <block>{<block_content>
+        <comment type="line">// Wildcard payee</comment>
+        <expr_stmt><expr><call><name><name>txTmp</name><operator>.</operator><name>vout</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Let the others update at will</comment>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>txTmp</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <if_stmt><if>if <condition>(<expr><name>i</name> <operator>!=</operator> <name>nIn</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name><name>txTmp</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>nSequence</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt></block_content></block></if></if_stmt></block_content></block></for>
+    </block_content>}</block></if>
+    <if type="elseif">else if <condition>(<expr><operator>(</operator><name>nHashType</name> <operator>&amp;</operator> <literal type="number">0x1f</literal><operator>)</operator> <operator>==</operator> <name>SIGHASH_SINGLE</name></expr>)</condition>
+    <block>{<block_content>
+        <comment type="line">// Only lock-in the txout payee at same index as txin</comment>
+        <decl_stmt><decl><type><name>unsigned</name> <name>int</name></type> <name>nOut</name> <init>= <expr><name>nIn</name></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>nOut</name> <operator>&gt;=</operator> <call><name><name>txTmp</name><operator>.</operator><name>vout</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><name>one</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>txTmp</name><operator>.</operator><name>vout</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><name>nOut</name><operator>+</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>nOut</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <expr_stmt><expr><name><name>txTmp</name><operator>.</operator><name>vout</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>SetNull</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+
+        <comment type="line">// Let the others update at will</comment>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>txTmp</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+            <if_stmt><if>if <condition>(<expr><name>i</name> <operator>!=</operator> <name>nIn</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name><name>txTmp</name><operator>.</operator><name>vin</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><name>nSequence</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt></block_content></block></if></if_stmt></block_content></block></for>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Blank out other inputs completely, not recommended for open transactions</comment>
+    <if_stmt><if>if <condition>(<expr><name>nHashType</name> <operator>&amp;</operator> <name>SIGHASH_ANYONECANPAY</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name><name>txTmp</name><operator>.</operator><name>vin</name><index>[<expr><literal type="number">0</literal></expr>]</index></name> <operator>=</operator> <name><name>txTmp</name><operator>.</operator><name>vin</name><index>[<expr><name>nIn</name></expr>]</index></name></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>txTmp</name><operator>.</operator><name>vin</name><operator>.</operator><name>resize</name></name><argument_list>(<argument><expr><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Serialize and hash</comment>
+    <decl_stmt><decl><type><name>CHashWriter</name></type> <name>ss</name><argument_list>(<argument><expr><name>SER_GETHASH</name></expr></argument>, <argument><expr><name>SERIALIZE_TRANSACTION_NO_WITNESS</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><name>ss</name> <operator>&lt;&lt;</operator> <name>txTmp</name> <operator>&lt;&lt;</operator> <name>nHashType</name></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>ss</name><operator>.</operator><name>GetHash</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name> <specifier>static</specifier></type> <name>RandomScript</name><parameter_list>(<parameter><decl><type><name>CScript</name> <modifier>&amp;</modifier></type><name>script</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>opcodetype</name></type> <name><name>oplist</name><index>[]</index></name> <init>= <expr><block>{<expr><name>OP_FALSE</name></expr>, <expr><name>OP_1</name></expr>, <expr><name>OP_2</name></expr>, <expr><name>OP_3</name></expr>, <expr><name>OP_CHECKSIG</name></expr>, <expr><name>OP_IF</name></expr>, <expr><name>OP_VERIF</name></expr>, <expr><name>OP_RETURN</name></expr>, <expr><name>OP_CODESEPARATOR</name></expr>}</block></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><name>script</name> <operator>=</operator> <call><name>CScript</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>ops</name> <init>= <expr><operator>(</operator><call><name>InsecureRandRange</name><argument_list>(<argument><expr><literal type="number">10</literal></expr></argument>)</argument_list></call><operator>)</operator></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><name>ops</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>script</name> <operator>&lt;&lt;</operator> <name><name>oplist</name><index>[<expr><call><name>InsecureRandRange</name><argument_list>(<argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>oplist</name></expr></argument>)</argument_list></sizeof><operator>/</operator><sizeof>sizeof<argument_list>(<argument><expr><name><name>oplist</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr>]</index></name></expr>;</expr_stmt></block_content></block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name> <specifier>static</specifier></type> <name>RandomTransaction</name><parameter_list>(<parameter><decl><type><name>CMutableTransaction</name> <modifier>&amp;</modifier></type><name>tx</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fSingle</name></decl></parameter>)</parameter_list> <block>{<block_content>
+    <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>nVersion</name></name> <operator>=</operator> <call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>tx</name><operator>.</operator><name>nLockTime</name></name> <operator>=</operator> <ternary><condition><expr><operator>(</operator><call><name>InsecureRandBool</name><argument_list>()</argument_list></call><operator>)</operator></expr> ?</condition><then> <expr><call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>ins</name> <init>= <expr><operator>(</operator><call><name>InsecureRandBits</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>+</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>outs</name> <init>= <expr><ternary><condition><expr><name>fSingle</name></expr> ?</condition><then> <expr><name>ins</name></expr> </then><else>: <expr><operator>(</operator><call><name>InsecureRandBits</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>+</operator> <literal type="number">1</literal></expr></else></ternary></expr></init></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>in</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>in</name> <operator>&lt;</operator> <name>ins</name></expr>;</condition> <incr><expr><name>in</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>CTxIn</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CTxIn</name> <modifier>&amp;</modifier></type><name>txin</name> <init>= <expr><call><name><name>tx</name><operator>.</operator><name>vin</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>txin</name><operator>.</operator><name>prevout</name><operator>.</operator><name>hash</name></name> <operator>=</operator> <call><name>InsecureRand256</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>txin</name><operator>.</operator><name>prevout</name><operator>.</operator><name>n</name></name> <operator>=</operator> <call><name>InsecureRandBits</name><argument_list>(<argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>RandomScript</name><argument_list>(<argument><expr><name><name>txin</name><operator>.</operator><name>scriptSig</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>txin</name><operator>.</operator><name>nSequence</name></name> <operator>=</operator> <ternary><condition><expr><operator>(</operator><call><name>InsecureRandBool</name><argument_list>()</argument_list></call><operator>)</operator></expr> ?</condition><then> <expr><call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr> </then><else>: <expr><call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>uint32_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr></else></ternary></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>out</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>out</name> <operator>&lt;</operator> <name>outs</name></expr>;</condition> <incr><expr><name>out</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>CTxOut</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CTxOut</name> <modifier>&amp;</modifier></type><name>txout</name> <init>= <expr><call><name><name>tx</name><operator>.</operator><name>vout</name><operator>.</operator><name>back</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><name><name>txout</name><operator>.</operator><name>nValue</name></name> <operator>=</operator> <call><name>InsecureRandRange</name><argument_list>(<argument><expr><literal type="number">100000000</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>RandomScript</name><argument_list>(<argument><expr><name><name>txout</name><operator>.</operator><name>scriptPubKey</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<macro><name>BOOST_FIXTURE_TEST_SUITE</name><argument_list>(<argument>sighash_tests</argument>, <argument>BasicTestingSetup</argument>)</argument_list></macro>
+
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>sighash_test</argument>)</argument_list></macro>
+<block>{<block_content>
+    <cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>PRINT_SIGHASH_JSON</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <literal type="string">"[\n"</literal></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <literal type="string">"\t[\"raw_transaction, script, input_index, hashType, signature_hash (result)\"],\n"</literal></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>nRandomTests</name> <init>= <expr><literal type="number">500</literal></expr></init></decl>;</decl_stmt>
+    <cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <decl_stmt><decl><type><name>int</name></type> <name>nRandomTests</name> <init>= <expr><literal type="number">50000</literal></expr></init></decl>;</decl_stmt>
+    <cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name><operator>&lt;</operator><name>nRandomTests</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>nHashType</name> <init>= <expr><call><name>InsecureRand32</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>CMutableTransaction</name></type> <name>txTo</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>RandomTransaction</name><argument_list>(<argument><expr><name>txTo</name></expr></argument>, <argument><expr><operator>(</operator><name>nHashType</name> <operator>&amp;</operator> <literal type="number">0x1f</literal><operator>)</operator> <operator>==</operator> <name>SIGHASH_SINGLE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>CScript</name></type> <name>scriptCode</name></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>RandomScript</name><argument_list>(<argument><expr><name>scriptCode</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>nIn</name> <init>= <expr><call><name>InsecureRandRange</name><argument_list>(<argument><expr><call><name><name>txTo</name><operator>.</operator><name>vin</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <decl_stmt><decl><type><name>uint256</name></type> <name>sh</name></decl>, <decl><type ref="prev"/><name>sho</name></decl>;</decl_stmt>
+        <expr_stmt><expr><name>sho</name> <operator>=</operator> <call><name>SignatureHashOld</name><argument_list>(<argument><expr><name>scriptCode</name></expr></argument>, <argument><expr><call><name>CTransaction</name><argument_list>(<argument><expr><name>txTo</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>nIn</name></expr></argument>, <argument><expr><name>nHashType</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>sh</name> <operator>=</operator> <call><name>SignatureHash</name><argument_list>(<argument><expr><name>scriptCode</name></expr></argument>, <argument><expr><name>txTo</name></expr></argument>, <argument><expr><name>nIn</name></expr></argument>, <argument><expr><name>nHashType</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name><name>SigVersion</name><operator>::</operator><name>BASE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>PRINT_SIGHASH_JSON</name></expr></argument>)</argument_list></call></expr></cpp:if>
+        <function_decl><type><name>CDataStream</name></type> <name>ss</name><parameter_list>(<parameter><decl><type><name>SER_NETWORK</name></type></decl></parameter>, <parameter><decl><type><name>PROTOCOL_VERSION</name></type></decl></parameter>)</parameter_list>;</function_decl>
+        <expr_stmt><expr><name>ss</name> <operator>&lt;&lt;</operator> <name>txTo</name></expr>;</expr_stmt>
+
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <literal type="string">"\t[\""</literal></expr> ;</expr_stmt>
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <call><name>HexStr</name><argument_list>(<argument><expr><call><name><name>ss</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>ss</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"\", \""</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <call><name>HexStr</name><argument_list>(<argument><expr><name>scriptCode</name></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"\", "</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <name>nIn</name> <operator>&lt;&lt;</operator> <literal type="string">", "</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <name>nHashType</name> <operator>&lt;&lt;</operator> <literal type="string">", \""</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <call><name><name>sho</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"\"]"</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><name>i</name><operator>+</operator><literal type="number">1</literal> <operator>!=</operator> <name>nRandomTests</name></expr>)</condition> <block>{<block_content>
+          <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <literal type="string">","</literal></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <literal type="string">"\n"</literal></expr>;</expr_stmt>
+        <cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+        <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><name>sh</name> <operator>==</operator> <name>sho</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>PRINT_SIGHASH_JSON</name></expr></argument>)</argument_list></call></expr></cpp:if>
+    <expr_stmt><expr><name><name>std</name><operator>::</operator><name>cout</name></name> <operator>&lt;&lt;</operator> <literal type="string">"]\n"</literal></expr>;</expr_stmt>
+    <cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+</block_content>}</block>
+
+<comment type="line">// Goal: check that SignatureHash generates correct hash</comment>
+<macro><name>BOOST_AUTO_TEST_CASE</name><argument_list>(<argument>sighash_from_data</argument>)</argument_list></macro>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>UniValue</name></type> <name>tests</name> <init>= <expr><call><name>read_json</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><name><name>json_tests</name><operator>::</operator><name>sighash</name></name></expr></argument>, <argument><expr><name><name>json_tests</name><operator>::</operator><name>sighash</name></name> <operator>+</operator> <sizeof>sizeof<argument_list>(<argument><expr><name><name>json_tests</name><operator>::</operator><name>sighash</name></name></expr></argument>)</argument_list></sizeof></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>idx</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>idx</name> <operator>&lt;</operator> <call><name><name>tests</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><name>idx</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+        <decl_stmt><decl><type><name>UniValue</name></type> <name>test</name> <init>= <expr><name><name>tests</name><index>[<expr><name>idx</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strTest</name> <init>= <expr><call><name><name>test</name><operator>.</operator><name>write</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>test</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">1</literal></expr>)</condition> <comment type="line">// Allow for extra stuff (useful for comments)</comment>
+        <block>{<block_content>
+            <expr_stmt><expr><call><name>BOOST_ERROR</name><argument_list>(<argument><expr><literal type="string">"Bad test: "</literal> <operator>&lt;&lt;</operator> <name>strTest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <continue>continue;</continue>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>test</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <literal type="number">1</literal></expr>)</condition><block type="pseudo"><block_content> <continue>continue;</continue></block_content></block></if></if_stmt> <comment type="line">// comment</comment>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>raw_tx</name></decl>, <decl><type ref="prev"/><name>raw_script</name></decl>, <decl><type ref="prev"/><name>sigHashHex</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>nIn</name></decl>, <decl><type ref="prev"/><name>nHashType</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>uint256</name></type> <name>sh</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>CTransactionRef</name></type> <name>tx</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>CScript</name></type> <name>scriptCode</name> <init>= <expr><call><name>CScript</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+        <try>try <block>{<block_content>
+          <comment type="line">// deserialize test data</comment>
+          <expr_stmt><expr><name>raw_tx</name> <operator>=</operator> <name><name>test</name><index>[<expr><literal type="number">0</literal></expr>]</index></name><operator>.</operator><call><name>get_str</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>raw_script</name> <operator>=</operator> <name><name>test</name><index>[<expr><literal type="number">1</literal></expr>]</index></name><operator>.</operator><call><name>get_str</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>nIn</name> <operator>=</operator> <name><name>test</name><index>[<expr><literal type="number">2</literal></expr>]</index></name><operator>.</operator><call><name>get_int</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>nHashType</name> <operator>=</operator> <name><name>test</name><index>[<expr><literal type="number">3</literal></expr>]</index></name><operator>.</operator><call><name>get_int</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><name>sigHashHex</name> <operator>=</operator> <name><name>test</name><index>[<expr><literal type="number">4</literal></expr>]</index></name><operator>.</operator><call><name>get_str</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+
+          <decl_stmt><decl><type><name>CDataStream</name></type> <name>stream</name><argument_list>(<argument><expr><call><name>ParseHex</name><argument_list>(<argument><expr><name>raw_tx</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>SER_NETWORK</name></expr></argument>, <argument><expr><name>PROTOCOL_VERSION</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+          <expr_stmt><expr><name>stream</name> <operator>&gt;&gt;</operator> <name>tx</name></expr>;</expr_stmt>
+
+          <decl_stmt><decl><type><name>TxValidationState</name></type> <name>state</name></decl>;</decl_stmt>
+          <expr_stmt><expr><call><name>BOOST_CHECK_MESSAGE</name><argument_list>(<argument><expr><call><name>CheckTransaction</name><argument_list>(<argument><expr><operator>*</operator><name>tx</name></expr></argument>, <argument><expr><name>state</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><name>strTest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <expr_stmt><expr><call><name>BOOST_CHECK</name><argument_list>(<argument><expr><call><name><name>state</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+          <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>unsigned</name> <name>char</name></expr></argument>&gt;</argument_list></name></type> <name>raw</name> <init>= <expr><call><name>ParseHex</name><argument_list>(<argument><expr><name>raw_script</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+          <expr_stmt><expr><call><name><name>scriptCode</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><call><name><name>scriptCode</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>raw</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>raw</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block> <catch>catch <parameter_list>(<parameter><decl><type><modifier>...</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+          <expr_stmt><expr><call><name>BOOST_ERROR</name><argument_list>(<argument><expr><literal type="string">"Bad test, couldn't deserialize data: "</literal> <operator>&lt;&lt;</operator> <name>strTest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+          <continue>continue;</continue>
+        </block_content>}</block></catch></try>
+
+        <expr_stmt><expr><name>sh</name> <operator>=</operator> <call><name>SignatureHash</name><argument_list>(<argument><expr><name>scriptCode</name></expr></argument>, <argument><expr><operator>*</operator><name>tx</name></expr></argument>, <argument><expr><name>nIn</name></expr></argument>, <argument><expr><name>nHashType</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name><name>SigVersion</name><operator>::</operator><name>BASE</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>BOOST_CHECK_MESSAGE</name><argument_list>(<argument><expr><call><name><name>sh</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>sigHashHex</name></expr></argument>, <argument><expr><name>strTest</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+</block_content>}</block>
+<macro><name>BOOST_AUTO_TEST_SUITE_END</name><argument_list>()</argument_list></macro>
+</unit>

@@ -1,0 +1,777 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/torcontrol.cpp"><comment type="line">// Copyright (c) 2015-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Copyright (c) 2017 The Zcash developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;chainparams.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;torcontrol.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;netbase.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;net.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/system.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;crypto/hmac_sha256.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;vector&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;deque&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;set&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;stdlib.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/signals2/signal.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string/split.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string/classification.hpp&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;boost/algorithm/string/replace.hpp&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/bufferevent.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/buffer.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/util.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/event.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;event2/thread.h&gt;</cpp:file></cpp:include>
+
+<comment type="block" format="doxygen">/** Default control port */</comment>
+<decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>DEFAULT_TOR_CONTROL</name> <init>= <expr><literal type="string">"127.0.0.1:9051"</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** Tor cookie size (from control-spec.txt) */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>TOR_COOKIE_SIZE</name> <init>= <expr><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** Size of client/server nonce for SAFECOOKIE */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>TOR_NONCE_SIZE</name> <init>= <expr><literal type="number">32</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** For computing serverHash in SAFECOOKIE */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>TOR_SAFE_SERVERKEY</name> <init>= <expr><literal type="string">"Tor safe cookie authentication server-to-controller hash"</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** For computing clientHash in SAFECOOKIE */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name></type> <name>TOR_SAFE_CLIENTKEY</name> <init>= <expr><literal type="string">"Tor safe cookie authentication controller-to-server hash"</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** Exponential backoff configuration - initial timeout in seconds */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>float</name></type> <name>RECONNECT_TIMEOUT_START</name> <init>= <expr><literal type="number">1.0</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** Exponential backoff configuration - growth factor */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>float</name></type> <name>RECONNECT_TIMEOUT_EXP</name> <init>= <expr><literal type="number">1.5</literal></expr></init></decl>;</decl_stmt>
+<comment type="block" format="doxygen">/** Maximum length for lines received on TorControlConnection.
+ * tor-control-spec.txt mentions that there is explicitly no limit defined to line length,
+ * this is belt-and-suspenders sanity limit to prevent memory exhaustion.
+ */</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>const</specifier> <name>int</name></type> <name>MAX_LINE_LENGTH</name> <init>= <expr><literal type="number">100000</literal></expr></init></decl>;</decl_stmt>
+
+<comment type="block" format="doxygen">/****** Low-level TorControlConnection ********/</comment>
+
+<comment type="block" format="doxygen">/** Reply from Tor, can be single or multi-line */</comment>
+<class>class <name>TorControlReply</name>
+<block>{<private type="default">
+</private><public>public:
+    <constructor><name>TorControlReply</name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><call><name>Clear</name><argument_list>()</argument_list></call></expr>;</expr_stmt> </block_content>}</block></constructor>
+
+    <decl_stmt><decl><type><name>int</name></type> <name>code</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>lines</name></decl>;</decl_stmt>
+
+    <function><type><name>void</name></type> <name>Clear</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><name>code</name> <operator>=</operator> <literal type="number">0</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>lines</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<comment type="block" format="doxygen">/** Low-level handling for Tor control connection.
+ * Speaks the SMTP-like protocol as defined in torspec/control-spec.txt
+ */</comment>
+<class>class <name>TorControlConnection</name>
+<block>{<private type="default">
+</private><public>public:
+    <typedef>typedef <type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>TorControlConnection</name><modifier>&amp;</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>ConnectionCB</name>;</typedef>
+    <typedef>typedef <type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>TorControlConnection</name> <modifier>&amp;</modifier>,<specifier>const</specifier> <name>TorControlReply</name> <modifier>&amp;</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>ReplyHandlerCB</name>;</typedef>
+
+    <comment type="block" format="doxygen">/** Create a new TorControlConnection.
+     */</comment>
+    <constructor_decl><specifier>explicit</specifier> <name>TorControlConnection</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name> <modifier>*</modifier></type><name>base</name></decl></parameter>)</parameter_list>;</constructor_decl>
+    <destructor_decl><name>~TorControlConnection</name><parameter_list>()</parameter_list>;</destructor_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Connect to a Tor control port.
+     * target is address of the form host:port.
+     * connected is the handler that is called when connection is successfully established.
+     * disconnected is a handler that is called when the connection is broken.
+     * Return true on success.
+     */</comment>
+    <function_decl><type><name>bool</name></type> <name>Connect</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>target</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ConnectionCB</name><modifier>&amp;</modifier></type> <name>connected</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ConnectionCB</name><modifier>&amp;</modifier></type> <name>disconnected</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/**
+     * Disconnect from Tor control port.
+     */</comment>
+    <function_decl><type><name>void</name></type> <name>Disconnect</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Send a command, register a handler for the reply.
+     * A trailing CRLF is automatically added.
+     * Return true on success.
+     */</comment>
+    <function_decl><type><name>bool</name></type> <name>Command</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>cmd</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ReplyHandlerCB</name><modifier>&amp;</modifier></type> <name>reply_handler</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Response handlers for async replies */</comment>
+    <decl_stmt><decl><type><name><name>boost</name><operator>::</operator><name>signals2</name><operator>::</operator><name>signal</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>TorControlConnection</name> <modifier>&amp;</modifier>,<specifier>const</specifier> <name>TorControlReply</name> <modifier>&amp;</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>async_handler</name></decl>;</decl_stmt>
+</public><private>private:
+    <comment type="block" format="doxygen">/** Callback when ready for use */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>TorControlConnection</name><modifier>&amp;</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>connected</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Callback when connection lost */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>function</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>(</operator><name>TorControlConnection</name><modifier>&amp;</modifier><operator>)</operator></expr></argument>&gt;</argument_list></name></type> <name>disconnected</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Libevent event base */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>event_base</name></name> <modifier>*</modifier></type><name>base</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Connection to control socket */</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>bufferevent</name></name> <modifier>*</modifier></type><name>b_conn</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Message being received */</comment>
+    <decl_stmt><decl><type><name>TorControlReply</name></type> <name>message</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Response handlers */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>deque</name><argument_list type="generic">&lt;<argument><expr><name>ReplyHandlerCB</name></expr></argument>&gt;</argument_list></name></type> <name>reply_handlers</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Libevent handlers: internal */</comment>
+    <function_decl><type><specifier>static</specifier> <name>void</name></type> <name>readcb</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>bufferevent</name></name> <modifier>*</modifier></type><name>bev</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+    <function_decl><type><specifier>static</specifier> <name>void</name></type> <name>eventcb</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>bufferevent</name></name> <modifier>*</modifier></type><name>bev</name></decl></parameter>, <parameter><decl><type><name>short</name></type> <name>what</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>;</function_decl>
+</private>}</block>;</class>
+
+<constructor><name><name>TorControlConnection</name><operator>::</operator><name>TorControlConnection</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name> <modifier>*</modifier></type><name>_base</name></decl></parameter>)</parameter_list><member_init_list>:
+    <call><name>base</name><argument_list>(<argument><expr><name>_base</name></expr></argument>)</argument_list></call>, <call><name>b_conn</name><argument_list>(<argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+</block_content>}</block></constructor>
+
+<destructor><name><name>TorControlConnection</name><operator>::</operator><name>~TorControlConnection</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>b_conn</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>bufferevent_free</name><argument_list>(<argument><expr><name>b_conn</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></destructor>
+
+<function><type><name>void</name></type> <name><name>TorControlConnection</name><operator>::</operator><name>readcb</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>bufferevent</name></name> <modifier>*</modifier></type><name>bev</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TorControlConnection</name> <modifier>*</modifier></type><name>self</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>TorControlConnection</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>ctx</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>evbuffer</name></name> <modifier>*</modifier></type><name>input</name> <init>= <expr><call><name>bufferevent_get_input</name><argument_list>(<argument><expr><name>bev</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>n_read_out</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name> <modifier>*</modifier></type><name>line</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>input</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <comment type="line">//  If there is not a whole line to read, evbuffer_readln returns nullptr</comment>
+    <while>while<condition>(<expr><operator>(</operator><name>line</name> <operator>=</operator> <call><name>evbuffer_readln</name><argument_list>(<argument><expr><name>input</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>n_read_out</name></expr></argument>, <argument><expr><name>EVBUFFER_EOL_CRLF</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <literal type="null">nullptr</literal></expr>)</condition>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>s</name><argument_list>(<argument><expr><name>line</name></expr></argument>, <argument><expr><name>n_read_out</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>free</name><argument_list>(<argument><expr><name>line</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&lt;</operator> <literal type="number">4</literal></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// Short line</comment>
+            <continue>continue;</continue></block_content></block></if></if_stmt>
+        <comment type="line">// &lt;status&gt;(-|+| )&lt;data&gt;&lt;CRLF&gt;</comment>
+        <expr_stmt><expr><name><name>self</name><operator>-&gt;</operator><name>message</name><operator>.</operator><name>code</name></name> <operator>=</operator> <call><name>atoi</name><argument_list>(<argument><expr><call><name><name>s</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>,<argument><expr><literal type="number">3</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>message</name><operator>.</operator><name>lines</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>s</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><literal type="number">4</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>char</name></type> <name>ch</name> <init>= <expr><name><name>s</name><index>[<expr><literal type="number">3</literal></expr>]</index></name></expr></init></decl>;</decl_stmt> <comment type="line">// '-','+' or ' '</comment>
+        <if_stmt><if>if <condition>(<expr><name>ch</name> <operator>==</operator> <literal type="char">' '</literal></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Final line, dispatch reply and clean up</comment>
+            <if_stmt><if>if <condition>(<expr><name><name>self</name><operator>-&gt;</operator><name>message</name><operator>.</operator><name>code</name></name> <operator>&gt;=</operator> <literal type="number">600</literal></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Dispatch async notifications to async handler</comment>
+                <comment type="line">// Synchronous and asynchronous messages are never interleaved</comment>
+                <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>async_handler</name></name><argument_list>(<argument><expr><operator>*</operator><name>self</name></expr></argument>, <argument><expr><name><name>self</name><operator>-&gt;</operator><name>message</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>self</name><operator>-&gt;</operator><name>reply_handlers</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <comment type="line">// Invoke reply handler with message</comment>
+                    <expr_stmt><expr><call><call><name><name>self</name><operator>-&gt;</operator><name>reply_handlers</name><operator>.</operator><name>front</name></name><argument_list>()</argument_list></call><argument_list>(<argument><expr><operator>*</operator><name>self</name></expr></argument>, <argument><expr><name><name>self</name><operator>-&gt;</operator><name>message</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>reply_handlers</name><operator>.</operator><name>pop_front</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if> <else>else <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Received unexpected sync reply %i\n"</literal></expr></argument>, <argument><expr><name><name>self</name><operator>-&gt;</operator><name>message</name><operator>.</operator><name>code</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+            </block_content>}</block></else></if_stmt>
+            <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>message</name><operator>.</operator><name>Clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></while>
+    <comment type="line">//  Check for size of buffer - protect against memory exhaustion with very long lines</comment>
+    <comment type="line">//  Do this after evbuffer_readln to make sure all full lines have been</comment>
+    <comment type="line">//  removed from the buffer. Everything left is an incomplete line.</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>evbuffer_get_length</name><argument_list>(<argument><expr><name>input</name></expr></argument>)</argument_list></call> <operator>&gt;</operator> <name>MAX_LINE_LENGTH</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Disconnecting because MAX_LINE_LENGTH exceeded\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>Disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorControlConnection</name><operator>::</operator><name>eventcb</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>bufferevent</name></name> <modifier>*</modifier></type><name>bev</name></decl></parameter>, <parameter><decl><type><name>short</name></type> <name>what</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>ctx</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TorControlConnection</name> <modifier>*</modifier></type><name>self</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>TorControlConnection</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>ctx</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>what</name> <operator>&amp;</operator> <name>BEV_EVENT_CONNECTED</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Successfully connected!\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>connected</name></name><argument_list>(<argument><expr><operator>*</operator><name>self</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>what</name> <operator>&amp;</operator> <operator>(</operator><name>BEV_EVENT_EOF</name><operator>|</operator><name>BEV_EVENT_ERROR</name><operator>)</operator></expr>)</condition> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name>what</name> <operator>&amp;</operator> <name>BEV_EVENT_ERROR</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Error connecting to Tor control socket\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: End of stream\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>Disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>disconnected</name></name><argument_list>(<argument><expr><operator>*</operator><name>self</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>TorControlConnection</name><operator>::</operator><name>Connect</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>target</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ConnectionCB</name><modifier>&amp;</modifier></type> <name>_connected</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ConnectionCB</name><modifier>&amp;</modifier></type>  <name>_disconnected</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>b_conn</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>Disconnect</name><argument_list>()</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <comment type="line">// Parse target address:port</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>sockaddr_storage</name></name></type> <name>connect_to_addr</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>connect_to_addrlen</name> <init>= <expr><sizeof>sizeof<argument_list>(<argument><expr><name>connect_to_addr</name></expr></argument>)</argument_list></sizeof></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>evutil_parse_sockaddr_port</name><argument_list>(<argument><expr><call><name><name>target</name><operator>.</operator><name>c_str</name></name><argument_list>()</argument_list></call></expr></argument>,
+        <argument><expr><operator>(</operator>struct <name>sockaddr</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>connect_to_addr</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>connect_to_addrlen</name></expr></argument>)</argument_list></call><operator>&lt;</operator><literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Error parsing socket address %s\n"</literal></expr></argument>, <argument><expr><name>target</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <comment type="line">// Create a new socket, set up callbacks and enable notification bits</comment>
+    <expr_stmt><expr><name>b_conn</name> <operator>=</operator> <call><name>bufferevent_socket_new</name><argument_list>(<argument><expr><name>base</name></expr></argument>, <argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>BEV_OPT_CLOSE_ON_FREE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>b_conn</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>bufferevent_setcb</name><argument_list>(<argument><expr><name>b_conn</name></expr></argument>, <argument><expr><name><name>TorControlConnection</name><operator>::</operator><name>readcb</name></name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><name><name>TorControlConnection</name><operator>::</operator><name>eventcb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>bufferevent_enable</name><argument_list>(<argument><expr><name>b_conn</name></expr></argument>, <argument><expr><name>EV_READ</name><operator>|</operator><name>EV_WRITE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>-&gt;</operator><name>connected</name></name> <operator>=</operator> <name>_connected</name></expr>;</expr_stmt>
+    <expr_stmt><expr><name><name>this</name><operator>-&gt;</operator><name>disconnected</name></name> <operator>=</operator> <name>_disconnected</name></expr>;</expr_stmt>
+
+    <comment type="line">// Finally, connect to target</comment>
+    <if_stmt><if>if <condition>(<expr><call><name>bufferevent_socket_connect</name><argument_list>(<argument><expr><name>b_conn</name></expr></argument>, <argument><expr><operator>(</operator>struct <name>sockaddr</name><operator>*</operator><operator>)</operator><operator>&amp;</operator><name>connect_to_addr</name></expr></argument>, <argument><expr><name>connect_to_addrlen</name></expr></argument>)</argument_list></call> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Error connecting to address %s\n"</literal></expr></argument>, <argument><expr><name>target</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorControlConnection</name><operator>::</operator><name>Disconnect</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>b_conn</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>bufferevent_free</name><argument_list>(<argument><expr><name>b_conn</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>b_conn</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>bool</name></type> <name><name>TorControlConnection</name><operator>::</operator><name>Command</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>cmd</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>ReplyHandlerCB</name><modifier>&amp;</modifier></type> <name>reply_handler</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>b_conn</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>evbuffer</name></name> <modifier>*</modifier></type><name>buf</name> <init>= <expr><call><name>bufferevent_get_output</name><argument_list>(<argument><expr><name>b_conn</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>buf</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <expr_stmt><expr><call><name>evbuffer_add</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><call><name><name>cmd</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>cmd</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>evbuffer_add</name><argument_list>(<argument><expr><name>buf</name></expr></argument>, <argument><expr><literal type="string">"\r\n"</literal></expr></argument>, <argument><expr><literal type="number">2</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>reply_handlers</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>reply_handler</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/****** General parsing utilities ********/</comment>
+
+<comment type="block">/* Split reply line in the form 'AUTH METHODS=...' into a type
+ * 'AUTH' and arguments 'METHODS=...'.
+ * Grammar is implicitly defined in https://spec.torproject.org/control-spec by
+ * the server reply formats for PROTOCOLINFO (S3.21) and AUTHCHALLENGE (S3.24).
+ */</comment>
+<function><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>SplitTorReplyLine</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>ptr</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>type</name></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>!=</operator> <literal type="char">' '</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>type</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <if_stmt><if>if <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt></block_content></block></if></if_stmt> <comment type="line">// skip ' '</comment>
+    <return>return <expr><call><name>make_pair</name><argument_list>(<argument><expr><name>type</name></expr></argument>, <argument><expr><call><name><name>s</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>ptr</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Parse reply arguments in the form 'METHODS=COOKIE,SAFECOOKIE COOKIEFILE=".../control_auth_cookie"'.
+ * Returns a map of keys to values, or an empty map if there was an error.
+ * Grammar is implicitly defined in https://spec.torproject.org/control-spec by
+ * the server reply formats for PROTOCOLINFO (S3.21), AUTHCHALLENGE (S3.24),
+ * and ADD_ONION (S3.27). See also sections 2.1 and 2.3.
+ */</comment>
+<function><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>ParseTorReplyMapping</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>s</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>mapping</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>ptr</name><init>=<expr><literal type="number">0</literal></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>key</name></decl>, <decl><type ref="prev"/><name>value</name></decl>;</decl_stmt>
+        <while>while <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>!=</operator> <literal type="char">'='</literal> <operator>&amp;&amp;</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>!=</operator> <literal type="char">' '</literal></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>key</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt>
+        </block_content>}</block></while>
+        <if_stmt><if>if <condition>(<expr><name>ptr</name> <operator>==</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// unexpected end of line</comment>
+            <return>return <expr><call><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>==</operator> <literal type="char">' '</literal></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// The remaining string is an OptArguments</comment>
+            <break>break;</break></block_content></block></if></if_stmt>
+        <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt> <comment type="line">// skip '='</comment>
+        <if_stmt><if>if <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>==</operator> <literal type="char">'"'</literal></expr>)</condition> <block>{<block_content> <comment type="line">// Quoted string</comment>
+            <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt> <comment type="line">// skip opening '"'</comment>
+            <decl_stmt><decl><type><name>bool</name></type> <name>escape_next</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+            <while>while <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <operator>(</operator><name>escape_next</name> <operator>||</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>!=</operator> <literal type="char">'"'</literal><operator>)</operator></expr>)</condition> <block>{<block_content>
+                <comment type="line">// Repeated backslashes must be interpreted as pairs</comment>
+                <expr_stmt><expr><name>escape_next</name> <operator>=</operator> <operator>(</operator><name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>==</operator> <literal type="char">'\\'</literal> <operator>&amp;&amp;</operator> <operator>!</operator><name>escape_next</name><operator>)</operator></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt>
+            </block_content>}</block></while>
+            <if_stmt><if>if <condition>(<expr><name>ptr</name> <operator>==</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// unexpected end of line</comment>
+                <return>return <expr><call><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+            <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt> <comment type="line">// skip closing '"'</comment>
+            <comment type="block" format="doxygen">/**
+             * Unescape value. Per https://spec.torproject.org/control-spec section 2.1.1:
+             *
+             *   For future-proofing, controller implementors MAY use the following
+             *   rules to be compatible with buggy Tor implementations and with
+             *   future ones that implement the spec as intended:
+             *
+             *     Read \n \t \r and \0 ... \377 as C escapes.
+             *     Treat a backslash followed by any other character as that character.
+             */</comment>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>escaped_value</name></decl>;</decl_stmt>
+            <for>for <control>(<init><decl><type><name>size_t</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>value</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="char">'\\'</literal></expr>)</condition> <block>{<block_content>
+                    <comment type="line">// This will always be valid, because if the QuotedString</comment>
+                    <comment type="line">// ended in an odd number of backslashes, then the parser</comment>
+                    <comment type="line">// would already have returned above, due to a missing</comment>
+                    <comment type="line">// terminating double-quote.</comment>
+                    <expr_stmt><expr><operator>++</operator><name>i</name></expr>;</expr_stmt>
+                    <if_stmt><if>if <condition>(<expr><name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="char">'n'</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>escaped_value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\n'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="char">'t'</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>escaped_value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\t'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>==</operator> <literal type="char">'r'</literal></expr>)</condition> <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>escaped_value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><literal type="char">'\r'</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><literal type="char">'0'</literal> <operator>&lt;=</operator> <name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>&amp;&amp;</operator> <name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>&lt;=</operator> <literal type="char">'7'</literal></expr>)</condition> <block>{<block_content>
+                        <decl_stmt><decl><type><name>size_t</name></type> <name>j</name></decl>;</decl_stmt>
+                        <comment type="line">// Octal escape sequences have a limit of three octal digits,</comment>
+                        <comment type="line">// but terminate at the first character that is not a valid</comment>
+                        <comment type="line">// octal digit if encountered sooner.</comment>
+                        <for>for <control>(<init><expr><name>j</name> <operator>=</operator> <literal type="number">1</literal></expr>;</init> <condition><expr><name>j</name> <operator>&lt;</operator> <literal type="number">3</literal> <operator>&amp;&amp;</operator> <operator>(</operator><name>i</name><operator>+</operator><name>j</name><operator>)</operator> <operator>&lt;</operator> <call><name><name>value</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <literal type="char">'0'</literal> <operator>&lt;=</operator> <name><name>value</name><index>[<expr><name>i</name><operator>+</operator><name>j</name></expr>]</index></name> <operator>&amp;&amp;</operator> <name><name>value</name><index>[<expr><name>i</name><operator>+</operator><name>j</name></expr>]</index></name> <operator>&lt;=</operator> <literal type="char">'7'</literal></expr>;</condition> <incr><expr><operator>++</operator><name>j</name></expr></incr>)</control> <block>{<block_content/>}</block></for>
+                        <comment type="line">// Tor restricts first digit to 0-3 for three-digit octals.</comment>
+                        <comment type="line">// A leading digit of 4-7 would therefore be interpreted as</comment>
+                        <comment type="line">// a two-digit octal.</comment>
+                        <if_stmt><if>if <condition>(<expr><name>j</name> <operator>==</operator> <literal type="number">3</literal> <operator>&amp;&amp;</operator> <name><name>value</name><index>[<expr><name>i</name></expr>]</index></name> <operator>&gt;</operator> <literal type="char">'3'</literal></expr>)</condition> <block>{<block_content>
+                            <expr_stmt><expr><name>j</name><operator>--</operator></expr>;</expr_stmt>
+                        </block_content>}</block></if></if_stmt>
+                        <expr_stmt><expr><call><name><name>escaped_value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name>strtol</name><argument_list>(<argument><expr><call><name><name>value</name><operator>.</operator><name>substr</name></name><argument_list>(<argument><expr><name>i</name></expr></argument>, <argument><expr><name>j</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>c_str</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="number">8</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                        <comment type="line">// Account for automatic incrementing at loop end</comment>
+                        <expr_stmt><expr><name>i</name> <operator>+=</operator> <name>j</name> <operator>-</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+                    </block_content>}</block></if> <else>else <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>escaped_value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>value</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    </block_content>}</block></else></if_stmt>
+                </block_content>}</block></if> <else>else <block>{<block_content>
+                    <expr_stmt><expr><call><name><name>escaped_value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>value</name><index>[<expr><name>i</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+            </block_content>}</block></for>
+            <expr_stmt><expr><name>value</name> <operator>=</operator> <name>escaped_value</name></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content> <comment type="line">// Unquoted value. Note that values can contain '=' at will, just no spaces</comment>
+            <while>while <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>!=</operator> <literal type="char">' '</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>value</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt>
+            </block_content>}</block></while>
+        </block_content>}</block></else></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name>ptr</name> <operator>&lt;</operator> <call><name><name>s</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>s</name><index>[<expr><name>ptr</name></expr>]</index></name> <operator>==</operator> <literal type="char">' '</literal></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><operator>++</operator><name>ptr</name></expr>;</expr_stmt></block_content></block></if></if_stmt> <comment type="line">// skip ' ' after key=value</comment>
+        <expr_stmt><expr><name><name>mapping</name><index>[<expr><name>key</name></expr>]</index></name> <operator>=</operator> <name>value</name></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <return>return <expr><name>mapping</name></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Read full contents of a file and return them in a std::string.
+ * Returns a pair &lt;status, string&gt;.
+ * If an error occurred, status will be false, otherwise status will be true and the data will be returned in string.
+ *
+ * @param maxsize Puts a maximum size limit on the file that is read. If the file is larger than this, truncated data
+ *         (with len &gt; maxsize) will be returned.
+ */</comment>
+<function><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>ReadBinaryFile</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name> <modifier>&amp;</modifier></type><name>filename</name></decl></parameter>, <parameter><decl><type><name>size_t</name></type> <name>maxsize</name><init>=<expr><call><name><name>std</name><operator>::</operator><name>numeric_limits</name><argument_list type="generic">&lt;<argument><expr><name>size_t</name></expr></argument>&gt;</argument_list><operator>::</operator><name>max</name></name><argument_list>()</argument_list></call></expr></init></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>f</name> <init>= <expr><call><name><name>fsbridge</name><operator>::</operator><name>fopen</name></name><argument_list>(<argument><expr><name>filename</name></expr></argument>, <argument><expr><literal type="string">"rb"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>f</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>,<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>retval</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>char</name></type> <name><name>buffer</name><index>[<expr><literal type="number">128</literal></expr>]</index></name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>size_t</name></type> <name>n</name></decl>;</decl_stmt>
+    <while>while <condition>(<expr><operator>(</operator><name>n</name><operator>=</operator><call><name>fread</name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><sizeof>sizeof<argument_list>(<argument><expr><name>buffer</name></expr></argument>)</argument_list></sizeof></expr></argument>, <argument><expr><name>f</name></expr></argument>)</argument_list></call><operator>)</operator> <operator>&gt;</operator> <literal type="number">0</literal></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Check for reading errors so we don't return any data if we couldn't</comment>
+        <comment type="line">// read the entire file (or up to maxsize)</comment>
+        <if_stmt><if>if <condition>(<expr><call><name>ferror</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>fclose</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>,<argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>retval</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>buffer</name></expr></argument>, <argument><expr><name>buffer</name><operator>+</operator><name>n</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>retval</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <name>maxsize</name></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+    </block_content>}</block></while>
+    <expr_stmt><expr><call><name>fclose</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>,<argument><expr><name>retval</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Write contents of std::string to a file.
+ * @return true on success.
+ */</comment>
+<function><type><specifier>static</specifier> <name>bool</name></type> <name>WriteBinaryFile</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>fs</name><operator>::</operator><name>path</name></name> <modifier>&amp;</modifier></type><name>filename</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>data</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>FILE</name> <modifier>*</modifier></type><name>f</name> <init>= <expr><call><name><name>fsbridge</name><operator>::</operator><name>fopen</name></name><argument_list>(<argument><expr><name>filename</name></expr></argument>, <argument><expr><literal type="string">"wb"</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>f</name> <operator>==</operator> <literal type="null">nullptr</literal></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return></block_content></block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name>fwrite</name><argument_list>(<argument><expr><call><name><name>data</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><literal type="number">1</literal></expr></argument>, <argument><expr><call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>f</name></expr></argument>)</argument_list></call> <operator>!=</operator> <call><name><name>data</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>fclose</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return <expr><literal type="boolean">false</literal></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name>fclose</name><argument_list>(<argument><expr><name>f</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><literal type="boolean">true</literal></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/****** Bitcoin specific TorController implementation ********/</comment>
+
+<comment type="block" format="doxygen">/** Controller that connects to Tor control socket, authenticate, then create
+ * and maintain an ephemeral hidden service.
+ */</comment>
+<class>class <name>TorController</name>
+<block>{<private type="default">
+</private><public>public:
+    <constructor_decl><name>TorController</name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>base</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>target</name></decl></parameter>)</parameter_list>;</constructor_decl>
+    <destructor_decl><name>~TorController</name><parameter_list>()</parameter_list>;</destructor_decl>
+
+    <comment type="block" format="doxygen">/** Get name of file to store private key in */</comment>
+    <function_decl><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name>GetPrivateKeyFile</name><parameter_list>()</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Reconnect, after getting disconnected */</comment>
+    <function_decl><type><name>void</name></type> <name>Reconnect</name><parameter_list>()</parameter_list>;</function_decl>
+</public><private>private:
+    <decl_stmt><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>base</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>target</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>TorControlConnection</name></type> <name>conn</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>private_key</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>service_id</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>reconnect</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>struct</name> <name>event</name></name> <modifier>*</modifier></type><name>reconnect_ev</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>float</name></type> <name>reconnect_timeout</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>CService</name></type> <name>service</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** Cookie for SAFECOOKIE auth */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>cookie</name></decl>;</decl_stmt>
+    <comment type="block" format="doxygen">/** ClientNonce for SAFECOOKIE auth */</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>clientNonce</name></decl>;</decl_stmt>
+
+    <comment type="block" format="doxygen">/** Callback for ADD_ONION result */</comment>
+    <function_decl><type><name>void</name></type> <name>add_onion_cb</name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Callback for AUTHENTICATE result */</comment>
+    <function_decl><type><name>void</name></type> <name>auth_cb</name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Callback for AUTHCHALLENGE result */</comment>
+    <function_decl><type><name>void</name></type> <name>authchallenge_cb</name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Callback for PROTOCOLINFO result */</comment>
+    <function_decl><type><name>void</name></type> <name>protocolinfo_cb</name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Callback after successful connection */</comment>
+    <function_decl><type><name>void</name></type> <name>connected_cb</name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>conn</name></decl></parameter>)</parameter_list>;</function_decl>
+    <comment type="block" format="doxygen">/** Callback after connection lost or failed connection attempt */</comment>
+    <function_decl><type><name>void</name></type> <name>disconnected_cb</name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>conn</name></decl></parameter>)</parameter_list>;</function_decl>
+
+    <comment type="block" format="doxygen">/** Callback for reconnect timer */</comment>
+    <function_decl><type><specifier>static</specifier> <name>void</name></type> <name>reconnect_cb</name><parameter_list>(<parameter><decl><type><name>evutil_socket_t</name></type> <name>fd</name></decl></parameter>, <parameter><decl><type><name>short</name></type> <name>what</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>arg</name></decl></parameter>)</parameter_list>;</function_decl>
+</private>}</block>;</class>
+
+<constructor><name><name>TorController</name><operator>::</operator><name>TorController</name></name><parameter_list>(<parameter><decl><type><name><name>struct</name> <name>event_base</name></name><modifier>*</modifier></type> <name>_base</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>_target</name></decl></parameter>)</parameter_list><member_init_list>:
+    <call><name>base</name><argument_list>(<argument><expr><name>_base</name></expr></argument>)</argument_list></call>,
+    <call><name>target</name><argument_list>(<argument><expr><name>_target</name></expr></argument>)</argument_list></call>, <call><name>conn</name><argument_list>(<argument><expr><name>base</name></expr></argument>)</argument_list></call>, <call><name>reconnect</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call>, <call><name>reconnect_ev</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call>,
+    <call><name>reconnect_timeout</name><argument_list>(<argument><expr><name>RECONNECT_TIMEOUT_START</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>reconnect_ev</name> <operator>=</operator> <call><name>event_new</name><argument_list>(<argument><expr><name>base</name></expr></argument>, <argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>reconnect_cb</name></expr></argument>, <argument><expr><name>this</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>reconnect_ev</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Failed to create event for reconnection: out of memory?\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <comment type="line">// Start connection attempts immediately</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>conn</name><operator>.</operator><name>Connect</name></name><argument_list>(<argument><expr><name>_target</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>connected_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>)</argument_list></call></expr></argument>,
+         <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>disconnected_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>)</argument_list></call></expr></argument> )</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Initiating connection to Tor control port %s failed\n"</literal></expr></argument>, <argument><expr><name>_target</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <comment type="line">// Read service private key if cached</comment>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>pkf</name> <init>= <expr><call><name>ReadBinaryFile</name><argument_list>(<argument><expr><call><name>GetPrivateKeyFile</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name><name>pkf</name><operator>.</operator><name>first</name></name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Reading cached private key from %s\n"</literal></expr></argument>, <argument><expr><call><name>GetPrivateKeyFile</name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>private_key</name> <operator>=</operator> <name><name>pkf</name><operator>.</operator><name>second</name></name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>TorController</name><operator>::</operator><name>~TorController</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>reconnect_ev</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>event_free</name><argument_list>(<argument><expr><name>reconnect_ev</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>reconnect_ev</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if <condition>(<expr><call><name><name>service</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>RemoveLocal</name><argument_list>(<argument><expr><name>service</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></destructor>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>add_onion_cb</name></name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>_conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>reply</name><operator>.</operator><name>code</name></name> <operator>==</operator> <literal type="number">250</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: ADD_ONION successful\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>s</name> <range>: <expr><name><name>reply</name><operator>.</operator><name>lines</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>m</name> <init>= <expr><call><name>ParseTorReplyMapping</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>i</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>(</operator><name>i</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="string">"ServiceID"</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <call><name><name>m</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>service_id</name> <operator>=</operator> <name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+            <if_stmt><if>if <condition>(<expr><operator>(</operator><name>i</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="string">"PrivateKey"</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <call><name><name>m</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>private_key</name> <operator>=</operator> <name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+        </block_content>}</block></for>
+        <if_stmt><if>if <condition>(<expr><call><name><name>service_id</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Error parsing ADD_ONION parameters:\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>s</name> <range>: <expr><name><name>reply</name><operator>.</operator><name>lines</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"    %s\n"</literal></expr></argument>, <argument><expr><call><name>SanitizeString</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></for>
+            <return>return;</return>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><name>service</name> <operator>=</operator> <call><name>LookupNumeric</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><name>service_id</name><operator>+</operator><literal type="string">".onion"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>c_str</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetDefaultPort</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Got service ID %s, advertising service %s\n"</literal></expr></argument>, <argument><expr><name>service_id</name></expr></argument>, <argument><expr><call><name><name>service</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name>WriteBinaryFile</name><argument_list>(<argument><expr><call><name>GetPrivateKeyFile</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>private_key</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Cached service private key to %s\n"</literal></expr></argument>, <argument><expr><call><name>GetPrivateKeyFile</name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Error writing service private key to %s\n"</literal></expr></argument>, <argument><expr><call><name>GetPrivateKeyFile</name><argument_list>()</argument_list></call><operator>.</operator><call><name>string</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+        <expr_stmt><expr><call><name>AddLocal</name><argument_list>(<argument><expr><name>service</name></expr></argument>, <argument><expr><name>LOCAL_MANUAL</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <comment type="line">// ... onion requested - keep connection open</comment>
+    </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>reply</name><operator>.</operator><name>code</name></name> <operator>==</operator> <literal type="number">510</literal></expr>)</condition> <block>{<block_content> <comment type="line">// 510 Unrecognized command</comment>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Add onion failed with unrecognized command (You probably need to upgrade Tor)\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Add onion failed; error code %d\n"</literal></expr></argument>, <argument><expr><name><name>reply</name><operator>.</operator><name>code</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>auth_cb</name></name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>_conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>reply</name><operator>.</operator><name>code</name></name> <operator>==</operator> <literal type="number">250</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Authentication successful\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Now that we know Tor is running setup the proxy for onion addresses</comment>
+        <comment type="line">// if -onion isn't set to something else.</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-onion"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call> <operator>==</operator> <literal type="string">""</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name>CService</name></type> <name>resolved</name><argument_list>(<argument><expr><call><name>LookupNumeric</name><argument_list>(<argument><expr><literal type="string">"127.0.0.1"</literal></expr></argument>, <argument><expr><literal type="number">9050</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>proxyType</name></type> <name>addrOnion</name> <init>= <expr><call><name>proxyType</name><argument_list>(<argument><expr><name>resolved</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>SetProxy</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>, <argument><expr><name>addrOnion</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>SetReachable</name><argument_list>(<argument><expr><name>NET_ONION</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+
+        <comment type="line">// Finally - now create the service</comment>
+        <if_stmt><if>if <condition>(<expr><call><name><name>private_key</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content> <comment type="line">// No private key, generate one</comment>
+            <expr_stmt><expr><name>private_key</name> <operator>=</operator> <literal type="string">"NEW:RSA1024"</literal></expr>;</expr_stmt></block_content></block></if></if_stmt> <comment type="line">// Explicitly request RSA1024 - see issue #9214</comment>
+        <comment type="line">// Request hidden service, redirect port.</comment>
+        <comment type="line">// Note that the 'virtual' port is always the default port to avoid decloaking nodes using other ports.</comment>
+        <expr_stmt><expr><call><name><name>_conn</name><operator>.</operator><name>Command</name></name><argument_list>(<argument><expr><call><name>strprintf</name><argument_list>(<argument><expr><literal type="string">"ADD_ONION %s Port=%i,127.0.0.1:%i"</literal></expr></argument>, <argument><expr><name>private_key</name></expr></argument>, <argument><expr><call><name>Params</name><argument_list>()</argument_list></call><operator>.</operator><call><name>GetDefaultPort</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name>GetListenPort</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>,
+            <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>add_onion_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Authentication failed\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/** Compute Tor SAFECOOKIE response.
+ *
+ *    ServerHash is computed as:
+ *      HMAC-SHA256("Tor safe cookie authentication server-to-controller hash",
+ *                  CookieString | ClientNonce | ServerNonce)
+ *    (with the HMAC key as its first argument)
+ *
+ *    After a controller sends a successful AUTHCHALLENGE command, the
+ *    next command sent on the connection must be an AUTHENTICATE command,
+ *    and the only authentication string which that AUTHENTICATE command
+ *    will accept is:
+ *
+ *      HMAC-SHA256("Tor safe cookie authentication controller-to-server hash",
+ *                  CookieString | ClientNonce | ServerNonce)
+ *
+ */</comment>
+<function><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>ComputeResponse</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>key</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type><name>cookie</name></decl></parameter>,  <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type><name>clientNonce</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type><name>serverNonce</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>CHMAC_SHA256</name></type> <name>computeHash</name><argument_list>(<argument><expr><operator>(</operator><specifier>const</specifier> <name>uint8_t</name><operator>*</operator><operator>)</operator><call><name><name>key</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>key</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>computedHash</name><argument_list>(<argument><expr><name><name>CHMAC_SHA256</name><operator>::</operator><name>OUTPUT_SIZE</name></name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>computeHash</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><call><name><name>cookie</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>cookie</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>computeHash</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><call><name><name>clientNonce</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>clientNonce</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>computeHash</name><operator>.</operator><name>Write</name></name><argument_list>(<argument><expr><call><name><name>serverNonce</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>serverNonce</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>computeHash</name><operator>.</operator><name>Finalize</name></name><argument_list>(<argument><expr><call><name><name>computedHash</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><name>computedHash</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>authchallenge_cb</name></name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>_conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>reply</name><operator>.</operator><name>code</name></name> <operator>==</operator> <literal type="number">250</literal></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: SAFECOOKIE authentication challenge successful\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name> <init>= <expr><call><name>SplitTorReplyLine</name><argument_list>(<argument><expr><name><name>reply</name><operator>.</operator><name>lines</name><index>[<expr><literal type="number">0</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>l</name><operator>.</operator><name>first</name></name> <operator>==</operator> <literal type="string">"AUTHCHALLENGE"</literal></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>m</name> <init>= <expr><call><name>ParseTorReplyMapping</name><argument_list>(<argument><expr><name><name>l</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>m</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Error parsing AUTHCHALLENGE parameters: %s\n"</literal></expr></argument>, <argument><expr><call><name>SanitizeString</name><argument_list>(<argument><expr><name><name>l</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return;</return>
+            </block_content>}</block></if></if_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>serverHash</name> <init>= <expr><call><name>ParseHex</name><argument_list>(<argument><expr><name><name>m</name><index>[<expr><literal type="string">"SERVERHASH"</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>serverNonce</name> <init>= <expr><call><name>ParseHex</name><argument_list>(<argument><expr><name><name>m</name><index>[<expr><literal type="string">"SERVERNONCE"</literal></expr>]</index></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: AUTHCHALLENGE ServerHash %s ServerNonce %s\n"</literal></expr></argument>, <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><name>serverHash</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><name>serverNonce</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>serverNonce</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>!=</operator> <literal type="number">32</literal></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: ServerNonce is not 32 bytes, as required by spec\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return;</return>
+            </block_content>}</block></if></if_stmt>
+
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>computedServerHash</name> <init>= <expr><call><name>ComputeResponse</name><argument_list>(<argument><expr><name>TOR_SAFE_SERVERKEY</name></expr></argument>, <argument><expr><name>cookie</name></expr></argument>, <argument><expr><name>clientNonce</name></expr></argument>, <argument><expr><name>serverNonce</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name>computedServerHash</name> <operator>!=</operator> <name>serverHash</name></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: ServerHash %s does not match expected ServerHash %s\n"</literal></expr></argument>, <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><name>serverHash</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>HexStr</name><argument_list>(<argument><expr><name>computedServerHash</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <return>return;</return>
+            </block_content>}</block></if></if_stmt>
+
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name></type> <name>computedClientHash</name> <init>= <expr><call><name>ComputeResponse</name><argument_list>(<argument><expr><name>TOR_SAFE_CLIENTKEY</name></expr></argument>, <argument><expr><name>cookie</name></expr></argument>, <argument><expr><name>clientNonce</name></expr></argument>, <argument><expr><name>serverNonce</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name><name>_conn</name><operator>.</operator><name>Command</name></name><argument_list>(<argument><expr><literal type="string">"AUTHENTICATE "</literal> <operator>+</operator> <call><name>HexStr</name><argument_list>(<argument><expr><name>computedClientHash</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>auth_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Invalid reply to AUTHCHALLENGE\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: SAFECOOKIE authentication challenge failed\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>protocolinfo_cb</name></name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>_conn</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TorControlReply</name><modifier>&amp;</modifier></type> <name>reply</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>reply</name><operator>.</operator><name>code</name></name> <operator>==</operator> <literal type="number">250</literal></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>methods</name></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>cookiefile</name></decl>;</decl_stmt>
+        <comment type="block">/*
+         * 250-AUTH METHODS=COOKIE,SAFECOOKIE COOKIEFILE="/home/x/.tor/control_auth_cookie"
+         * 250-AUTH METHODS=NULL
+         * 250-AUTH METHODS=HASHEDPASSWORD
+         */</comment>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>s</name> <range>: <expr><name><name>reply</name><operator>.</operator><name>lines</name></name></expr></range></decl></init>)</control> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>l</name> <init>= <expr><call><name>SplitTorReplyLine</name><argument_list>(<argument><expr><name>s</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name><name>l</name><operator>.</operator><name>first</name></name> <operator>==</operator> <literal type="string">"AUTH"</literal></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>m</name> <init>= <expr><call><name>ParseTorReplyMapping</name><argument_list>(<argument><expr><name><name>l</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>i</name></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>(</operator><name>i</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="string">"METHODS"</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <call><name><name>m</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>split</name></name><argument_list>(<argument><expr><name>methods</name></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr></argument>, <argument><expr><call><name><name>boost</name><operator>::</operator><name>is_any_of</name></name><argument_list>(<argument><expr><literal type="string">","</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>(</operator><name>i</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="string">"COOKIEFILE"</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <call><name><name>m</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><name>cookiefile</name> <operator>=</operator> <name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr>;</expr_stmt></block_content></block></if></if_stmt>
+            </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name><name>l</name><operator>.</operator><name>first</name></name> <operator>==</operator> <literal type="string">"VERSION"</literal></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>m</name> <init>= <expr><call><name>ParseTorReplyMapping</name><argument_list>(<argument><expr><name><name>l</name><operator>.</operator><name>second</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list><operator>::</operator><name>iterator</name></name></type> <name>i</name></decl>;</decl_stmt>
+                <if_stmt><if>if <condition>(<expr><operator>(</operator><name>i</name> <operator>=</operator> <call><name><name>m</name><operator>.</operator><name>find</name></name><argument_list>(<argument><expr><literal type="string">"Tor"</literal></expr></argument>)</argument_list></call><operator>)</operator> <operator>!=</operator> <call><name><name>m</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Connected to Tor version %s\n"</literal></expr></argument>, <argument><expr><name><name>i</name><operator>-&gt;</operator><name>second</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+        </block_content>}</block></for>
+        <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>s</name> <range>: <expr><name>methods</name></expr></range></decl></init>)</control> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Supported authentication method: %s\n"</literal></expr></argument>, <argument><expr><name>s</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <comment type="line">// Prefer NULL, otherwise SAFECOOKIE. If a password is provided, use HASHEDPASSWORD</comment>
+        <comment type="block">/* Authentication:
+         *   cookie:   hex-encoded ~/.tor/control_auth_cookie
+         *   password: "password"
+         */</comment>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>torpassword</name> <init>= <expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-torpassword"</literal></expr></argument>, <argument><expr><literal type="string">""</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>torpassword</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>methods</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><literal type="string">"HASHEDPASSWORD"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Using HASHEDPASSWORD authentication\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>boost</name><operator>::</operator><name>replace_all</name></name><argument_list>(<argument><expr><name>torpassword</name></expr></argument>, <argument><expr><literal type="string">"\""</literal></expr></argument>, <argument><expr><literal type="string">"\\\""</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>_conn</name><operator>.</operator><name>Command</name></name><argument_list>(<argument><expr><literal type="string">"AUTHENTICATE \""</literal> <operator>+</operator> <name>torpassword</name> <operator>+</operator> <literal type="string">"\""</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>auth_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Password provided with -torpassword, but HASHEDPASSWORD authentication is not available\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>methods</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><literal type="string">"NULL"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Using NULL authentication\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>_conn</name><operator>.</operator><name>Command</name></name><argument_list>(<argument><expr><literal type="string">"AUTHENTICATE"</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>auth_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>methods</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><literal type="string">"SAFECOOKIE"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <comment type="line">// Cookie: hexdump -e '32/1 "%02x""\n"'  ~/.tor/control_auth_cookie</comment>
+            <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Using SAFECOOKIE authentication, reading cookie authentication from %s\n"</literal></expr></argument>, <argument><expr><name>cookiefile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>bool</name></expr></argument>,<argument><expr><name><name>std</name><operator>::</operator><name>string</name></name></expr></argument>&gt;</argument_list></name></type> <name>status_cookie</name> <init>= <expr><call><name>ReadBinaryFile</name><argument_list>(<argument><expr><name>cookiefile</name></expr></argument>, <argument><expr><name>TOR_COOKIE_SIZE</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><name><name>status_cookie</name><operator>.</operator><name>first</name></name> <operator>&amp;&amp;</operator> <call><name><name>status_cookie</name><operator>.</operator><name>second</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>TOR_COOKIE_SIZE</name></expr>)</condition> <block>{<block_content>
+                <comment type="line">// _conn.Command("AUTHENTICATE " + HexStr(status_cookie.second), std::bind(&amp;TorController::auth_cb, this, std::placeholders::_1, std::placeholders::_2));</comment>
+                <expr_stmt><expr><name>cookie</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>status_cookie</name><operator>.</operator><name>second</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>status_cookie</name><operator>.</operator><name>second</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><name>clientNonce</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>uint8_t</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><name>TOR_NONCE_SIZE</name></expr></argument>, <argument><expr><literal type="number">0</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name>GetRandBytes</name><argument_list>(<argument><expr><call><name><name>clientNonce</name><operator>.</operator><name>data</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>TOR_NONCE_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>_conn</name><operator>.</operator><name>Command</name></name><argument_list>(<argument><expr><literal type="string">"AUTHCHALLENGE SAFECOOKIE "</literal> <operator>+</operator> <call><name>HexStr</name><argument_list>(<argument><expr><name>clientNonce</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>authchallenge_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if> <else>else <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><name><name>status_cookie</name><operator>.</operator><name>first</name></name></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Authentication cookie %s is not exactly %i bytes, as is required by the spec\n"</literal></expr></argument>, <argument><expr><name>cookiefile</name></expr></argument>, <argument><expr><name>TOR_COOKIE_SIZE</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if> <else>else <block>{<block_content>
+                    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Authentication cookie %s could not be opened (check permissions)\n"</literal></expr></argument>, <argument><expr><name>cookiefile</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+            </block_content>}</block></else></if_stmt>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><call><name><name>methods</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><literal type="string">"HASHEDPASSWORD"</literal></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: The only supported authentication mechanism left is password, but no password provided with -torpassword\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if> <else>else <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: No supported authentication method\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></else></if_stmt>
+    </block_content>}</block></if> <else>else <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Requesting protocol info failed\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>connected_cb</name></name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>_conn</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name>reconnect_timeout</name> <operator>=</operator> <name>RECONNECT_TIMEOUT_START</name></expr>;</expr_stmt>
+    <comment type="line">// First send a PROTOCOLINFO command to figure out what authentication is expected</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>_conn</name><operator>.</operator><name>Command</name></name><argument_list>(<argument><expr><literal type="string">"PROTOCOLINFO 1"</literal></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>protocolinfo_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Error sending initial protocolinfo command\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>disconnected_cb</name></name><parameter_list>(<parameter><decl><type><name>TorControlConnection</name><modifier>&amp;</modifier></type> <name>_conn</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Stop advertising service when disconnected</comment>
+    <if_stmt><if>if <condition>(<expr><call><name><name>service</name><operator>.</operator><name>IsValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>RemoveLocal</name><argument_list>(<argument><expr><name>service</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>service</name> <operator>=</operator> <call><name>CService</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>reconnect</name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return;</return></block_content></block></if></if_stmt>
+
+    <expr_stmt><expr><call><name>LogPrint</name><argument_list>(<argument><expr><name><name>BCLog</name><operator>::</operator><name>TOR</name></name></expr></argument>, <argument><expr><literal type="string">"tor: Not connected to Tor control port %s, trying to reconnect\n"</literal></expr></argument>, <argument><expr><name>target</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <comment type="line">// Single-shot timer for reconnect. Use exponential backoff.</comment>
+    <decl_stmt><decl><type><name><name>struct</name> <name>timeval</name></name></type> <name>time</name> <init>= <expr><call><name>MillisToTimeval</name><argument_list>(<argument><expr><call><name>int64_t</name><argument_list>(<argument><expr><name>reconnect_timeout</name> <operator>*</operator> <literal type="number">1000.0</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>reconnect_ev</name></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><call><name>event_add</name><argument_list>(<argument><expr><name>reconnect_ev</name></expr></argument>, <argument><expr><operator>&amp;</operator><name>time</name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    <expr_stmt><expr><name>reconnect_timeout</name> <operator>*=</operator> <name>RECONNECT_TIMEOUT_EXP</name></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>Reconnect</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="block">/* Try to reconnect and reestablish if we get booted - for example, Tor
+     * may be restarting.
+     */</comment>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><call><name><name>conn</name><operator>.</operator><name>Connect</name></name><argument_list>(<argument><expr><name>target</name></expr></argument>, <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>connected_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>)</argument_list></call></expr></argument>,
+         <argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TorController</name><operator>::</operator><name>disconnected_cb</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>)</argument_list></call></expr></argument> )</argument_list></call></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Re-initiating connection to Tor control port %s failed\n"</literal></expr></argument>, <argument><expr><name>target</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>fs</name><operator>::</operator><name>path</name></name></type> <name><name>TorController</name><operator>::</operator><name>GetPrivateKeyFile</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <return>return <expr><call><name>GetDataDir</name><argument_list>()</argument_list></call> <operator>/</operator> <literal type="string">"onion_private_key"</literal></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TorController</name><operator>::</operator><name>reconnect_cb</name></name><parameter_list>(<parameter><decl><type><name>evutil_socket_t</name></type> <name>fd</name></decl></parameter>, <parameter><decl><type><name>short</name></type> <name>what</name></decl></parameter>, <parameter><decl><type><name>void</name> <modifier>*</modifier></type><name>arg</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TorController</name> <modifier>*</modifier></type><name>self</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>TorController</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name>arg</name></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>self</name><operator>-&gt;</operator><name>Reconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<comment type="block" format="doxygen">/****** Thread ********/</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>struct</name> <name>event_base</name></name> <modifier>*</modifier></type><name>gBase</name></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>thread</name></name></type> <name>torControlThread</name></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>TorControlThread</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>TorController</name></type> <name>ctrl</name><argument_list>(<argument><expr><name>gBase</name></expr></argument>, <argument><expr><call><name><name>gArgs</name><operator>.</operator><name>GetArg</name></name><argument_list>(<argument><expr><literal type="string">"-torcontrol"</literal></expr></argument>, <argument><expr><name>DEFAULT_TOR_CONTROL</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name>event_base_dispatch</name><argument_list>(<argument><expr><name>gBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StartTorControl</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><operator>!</operator><name>gBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>WIN32</name></cpp:ifdef>
+    <expr_stmt><expr><call><name>evthread_use_windows_threads</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<cpp:else>#<cpp:directive>else</cpp:directive></cpp:else>
+    <expr_stmt><expr><call><name>evthread_use_pthreads</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+    <expr_stmt><expr><name>gBase</name> <operator>=</operator> <call><name>event_base_new</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name>gBase</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Unable to create event_base\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+
+    <expr_stmt><expr><name>torControlThread</name> <operator>=</operator> <call><name><name>std</name><operator>::</operator><name>thread</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><operator>&amp;</operator><name><name>TraceThread</name><argument_list type="generic">&lt;<argument><expr><name>void</name> <operator>(</operator><operator>*</operator><operator>)</operator><operator>(</operator><operator>)</operator></expr></argument>&gt;</argument_list></name></expr></argument>, <argument><expr><literal type="string">"torcontrol"</literal></expr></argument>, <argument><expr><operator>&amp;</operator><name>TorControlThread</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>InterruptTorControl</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>gBase</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"tor: Thread interrupt\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>event_base_once</name><argument_list>(<argument><expr><name>gBase</name></expr></argument>, <argument><expr><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>EV_TIMEOUT</name></expr></argument>, <argument><expr><lambda><capture>[]</capture><parameter_list>(<parameter><decl><type><name>evutil_socket_t</name></type></decl></parameter>, <parameter><decl><type><name>short</name></type></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type></decl></parameter>)</parameter_list> <block>{<block_content>
+            <expr_stmt><expr><call><name>event_base_loopbreak</name><argument_list>(<argument><expr><name>gBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></lambda></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>StopTorControl</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>gBase</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>torControlThread</name><operator>.</operator><name>join</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>event_base_free</name><argument_list>(<argument><expr><name>gBase</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><name>gBase</name> <operator>=</operator> <literal type="null">nullptr</literal></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+</unit>

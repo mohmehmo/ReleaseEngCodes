@@ -1,0 +1,763 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/qt/transactiontablemodel.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/transactiontablemodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/addresstablemodel.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiconstants.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/guiutil.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/optionsmodel.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/platformstyle.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/transactiondesc.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/transactionrecord.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;qt/walletmodel.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;core_io.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;interfaces/handler.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;uint256.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;algorithm&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QColor&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QDateTime&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QDebug&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QIcon&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;QList&gt;</cpp:file></cpp:include>
+
+
+<comment type="line">// Amount column is right-aligned it contains numbers</comment>
+<decl_stmt><decl><type><specifier>static</specifier> <name>int</name></type> <name><name>column_alignments</name><index>[]</index></name> <init>= <expr><block>{
+        <expr><name><name>Qt</name><operator>::</operator><name>AlignLeft</name></name><operator>|</operator><name><name>Qt</name><operator>::</operator><name>AlignVCenter</name></name></expr>, <comment type="block">/* status */</comment>
+        <expr><name><name>Qt</name><operator>::</operator><name>AlignLeft</name></name><operator>|</operator><name><name>Qt</name><operator>::</operator><name>AlignVCenter</name></name></expr>, <comment type="block">/* watchonly */</comment>
+        <expr><name><name>Qt</name><operator>::</operator><name>AlignLeft</name></name><operator>|</operator><name><name>Qt</name><operator>::</operator><name>AlignVCenter</name></name></expr>, <comment type="block">/* date */</comment>
+        <expr><name><name>Qt</name><operator>::</operator><name>AlignLeft</name></name><operator>|</operator><name><name>Qt</name><operator>::</operator><name>AlignVCenter</name></name></expr>, <comment type="block">/* type */</comment>
+        <expr><name><name>Qt</name><operator>::</operator><name>AlignLeft</name></name><operator>|</operator><name><name>Qt</name><operator>::</operator><name>AlignVCenter</name></name></expr>, <comment type="block">/* address */</comment>
+        <expr><name><name>Qt</name><operator>::</operator><name>AlignRight</name></name><operator>|</operator><name><name>Qt</name><operator>::</operator><name>AlignVCenter</name></name></expr> <comment type="block">/* amount */</comment>
+    }</block></expr></init></decl>;</decl_stmt>
+
+<comment type="line">// Comparison operator for sort/binary search of model tx list</comment>
+<struct>struct <name>TxLessThan</name>
+<block>{<public type="default">
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>&amp;</modifier></type><name>b</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+    <block>{<block_content>
+        <return>return <expr><name><name>a</name><operator>.</operator><name>hash</name></name> <operator>&lt;</operator> <name><name>b</name><operator>.</operator><name>hash</name></name></expr>;</return>
+    </block_content>}</block></function>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>b</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+    <block>{<block_content>
+        <return>return <expr><name><name>a</name><operator>.</operator><name>hash</name></name> <operator>&lt;</operator> <name>b</name></expr>;</return>
+    </block_content>}</block></function>
+    <function type="operator"><type><name>bool</name></type> <name>operator<name>()</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>a</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>&amp;</modifier></type><name>b</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+    <block>{<block_content>
+        <return>return <expr><name>a</name> <operator>&lt;</operator> <name><name>b</name><operator>.</operator><name>hash</name></name></expr>;</return>
+    </block_content>}</block></function>
+</public>}</block>;</struct>
+
+<comment type="line">// Private implementation</comment>
+<class>class <name>TransactionTablePriv</name>
+<block>{<private type="default">
+</private><public>public:
+    <constructor><specifier>explicit</specifier> <name>TransactionTablePriv</name><parameter_list>(<parameter><decl><type><name>TransactionTableModel</name> <modifier>*</modifier></type><name>_parent</name></decl></parameter>)</parameter_list> <member_init_list>:
+        <call><name>parent</name><argument_list>(<argument><expr><name>_parent</name></expr></argument>)</argument_list></call>
+    </member_init_list><block>{<block_content>
+    </block_content>}</block></constructor>
+
+    <decl_stmt><decl><type><name>TransactionTableModel</name> <modifier>*</modifier></type><name>parent</name></decl>;</decl_stmt>
+
+    <comment type="block">/* Local cache of wallet.
+     * As it is in the same order as the CWallet, by definition
+     * this is sorted by sha256.
+     */</comment>
+    <decl_stmt><decl><type><name><name>QList</name><argument_list type="generic">&lt;<argument><expr><name>TransactionRecord</name></expr></argument>&gt;</argument_list></name></type> <name>cachedWallet</name></decl>;</decl_stmt>
+
+    <comment type="block">/* Query entire wallet anew from core.
+     */</comment>
+    <function><type><name>void</name></type> <name>refreshWallet</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Wallet</name></name><modifier>&amp;</modifier></type> <name>wallet</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>qDebug</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"TransactionTablePriv::refreshWallet"</literal></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>cachedWallet</name><operator>.</operator><name>clear</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        <block>{<block_content>
+            <for>for <control>(<init><decl><type><specifier>const</specifier> <specifier>auto</specifier><modifier>&amp;</modifier></type> <name>wtx</name> <range>: <expr><call><name><name>wallet</name><operator>.</operator><name>getWalletTxs</name></name><argument_list>()</argument_list></call></expr></range></decl></init>)</control> <block>{<block_content>
+                <if_stmt><if>if <condition>(<expr><call><name><name>TransactionRecord</name><operator>::</operator><name>showTransaction</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                    <expr_stmt><expr><call><name><name>cachedWallet</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name><name>TransactionRecord</name><operator>::</operator><name>decomposeTransaction</name></name><argument_list>(<argument><expr><name>wtx</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></for>
+        </block_content>}</block>
+    </block_content>}</block></function>
+
+    <comment type="block">/* Update our model of the wallet incrementally, to synchronize our model of the wallet
+       with that of the core.
+
+       Call with transaction that was added, removed or changed.
+     */</comment>
+    <function><type><name>void</name></type> <name>updateWallet</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Wallet</name></name><modifier>&amp;</modifier></type> <name>wallet</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>hash</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>status</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>showTransaction</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name>qDebug</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"TransactionTablePriv::updateWallet: "</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" "</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>status</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <comment type="line">// Find bounds of this transaction in model</comment>
+        <decl_stmt><decl><type><name><name><name>QList</name><argument_list type="generic">&lt;<argument><expr><name>TransactionRecord</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>iterator</name></name></type> <name>lower</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>lower_bound</name></name><argument_list>(
+            <argument><expr><call><name><name>cachedWallet</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>cachedWallet</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>hash</name></expr></argument>, <argument><expr><call><name>TxLessThan</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name><name><name>QList</name><argument_list type="generic">&lt;<argument><expr><name>TransactionRecord</name></expr></argument>&gt;</argument_list></name><operator>::</operator><name>iterator</name></name></type> <name>upper</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>upper_bound</name></name><argument_list>(
+            <argument><expr><call><name><name>cachedWallet</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>cachedWallet</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>hash</name></expr></argument>, <argument><expr><call><name>TxLessThan</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>lowerIndex</name> <init>= <expr><operator>(</operator><name>lower</name> <operator>-</operator> <call><name><name>cachedWallet</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>upperIndex</name> <init>= <expr><operator>(</operator><name>upper</name> <operator>-</operator> <call><name><name>cachedWallet</name><operator>.</operator><name>begin</name></name><argument_list>()</argument_list></call><operator>)</operator></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>inModel</name> <init>= <expr><operator>(</operator><name>lower</name> <operator>!=</operator> <name>upper</name><operator>)</operator></expr></init></decl>;</decl_stmt>
+
+        <if_stmt><if>if<condition>(<expr><name>status</name> <operator>==</operator> <name>CT_UPDATED</name></expr>)</condition>
+        <block>{<block_content>
+            <if_stmt><if>if<condition>(<expr><name>showTransaction</name> <operator>&amp;&amp;</operator> <operator>!</operator><name>inModel</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>status</name> <operator>=</operator> <name>CT_NEW</name></expr>;</expr_stmt></block_content></block></if></if_stmt> <comment type="block">/* Not in model, but want to show, treat as new */</comment>
+            <if_stmt><if>if<condition>(<expr><operator>!</operator><name>showTransaction</name> <operator>&amp;&amp;</operator> <name>inModel</name></expr>)</condition><block type="pseudo"><block_content>
+                <expr_stmt><expr><name>status</name> <operator>=</operator> <name>CT_DELETED</name></expr>;</expr_stmt></block_content></block></if></if_stmt> <comment type="block">/* In model, but want to hide, treat as deleted */</comment>
+        </block_content>}</block></if></if_stmt>
+
+        <expr_stmt><expr><call><name>qDebug</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"    inModel="</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>inModel</name></expr></argument>)</argument_list></call> <operator>+</operator>
+                    <literal type="string">" Index="</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>lowerIndex</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">"-"</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>upperIndex</name></expr></argument>)</argument_list></call> <operator>+</operator>
+                    <literal type="string">" showTransaction="</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>showTransaction</name></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" derivedStatus="</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>status</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <switch>switch<condition>(<expr><name>status</name></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>CT_NEW</name></expr>:</case>
+            <if_stmt><if>if<condition>(<expr><name>inModel</name></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>qWarning</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"TransactionTablePriv::updateWallet: Warning: Got CT_NEW, but transaction is already in model"</literal></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if<condition>(<expr><name>showTransaction</name></expr>)</condition>
+            <block>{<block_content>
+                <comment type="line">// Find transaction in wallet</comment>
+                <decl_stmt><decl><type><name><name>interfaces</name><operator>::</operator><name>WalletTx</name></name></type> <name>wtx</name> <init>= <expr><call><name><name>wallet</name><operator>.</operator><name>getWalletTx</name></name><argument_list>(<argument><expr><name>hash</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <if_stmt><if>if<condition>(<expr><operator>!</operator><name><name>wtx</name><operator>.</operator><name>tx</name></name></expr>)</condition>
+                <block>{<block_content>
+                    <expr_stmt><expr><call><name>qWarning</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"TransactionTablePriv::updateWallet: Warning: Got CT_NEW, but transaction is not in wallet"</literal></expr>;</expr_stmt>
+                    <break>break;</break>
+                </block_content>}</block></if></if_stmt>
+                <comment type="line">// Added -- insert at the right position</comment>
+                <decl_stmt><decl><type><name><name>QList</name><argument_list type="generic">&lt;<argument><expr><name>TransactionRecord</name></expr></argument>&gt;</argument_list></name></type> <name>toInsert</name> <init>=
+                        <expr><call><name><name>TransactionRecord</name><operator>::</operator><name>decomposeTransaction</name></name><argument_list>(<argument><expr><name>wtx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>toInsert</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition> <comment type="block">/* only if something to insert */</comment>
+                <block>{<block_content>
+                    <expr_stmt><expr><call><name><name>parent</name><operator>-&gt;</operator><name>beginInsertRows</name></name><argument_list>(<argument><expr><call><name>QModelIndex</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>lowerIndex</name></expr></argument>, <argument><expr><name>lowerIndex</name><operator>+</operator><call><name><name>toInsert</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <decl_stmt><decl><type><name>int</name></type> <name>insert_idx</name> <init>= <expr><name>lowerIndex</name></expr></init></decl>;</decl_stmt>
+                    <for>for <control>(<init><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>&amp;</modifier></type><name>rec</name> <range>: <expr><name>toInsert</name></expr></range></decl></init>)</control>
+                    <block>{<block_content>
+                        <expr_stmt><expr><call><name><name>cachedWallet</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>insert_idx</name></expr></argument>, <argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                        <expr_stmt><expr><name>insert_idx</name> <operator>+=</operator> <literal type="number">1</literal></expr>;</expr_stmt>
+                    </block_content>}</block></for>
+                    <expr_stmt><expr><call><name><name>parent</name><operator>-&gt;</operator><name>endInsertRows</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></if></if_stmt>
+            </block_content>}</block></if></if_stmt>
+            <break>break;</break>
+        <case>case <expr><name>CT_DELETED</name></expr>:</case>
+            <if_stmt><if>if<condition>(<expr><operator>!</operator><name>inModel</name></expr>)</condition>
+            <block>{<block_content>
+                <expr_stmt><expr><call><name>qWarning</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"TransactionTablePriv::updateWallet: Warning: Got CT_DELETED, but transaction is not in model"</literal></expr>;</expr_stmt>
+                <break>break;</break>
+            </block_content>}</block></if></if_stmt>
+            <comment type="line">// Removed -- remove entire transaction from table</comment>
+            <expr_stmt><expr><call><name><name>parent</name><operator>-&gt;</operator><name>beginRemoveRows</name></name><argument_list>(<argument><expr><call><name>QModelIndex</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>lowerIndex</name></expr></argument>, <argument><expr><name>upperIndex</name><operator>-</operator><literal type="number">1</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>cachedWallet</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>lower</name></expr></argument>, <argument><expr><name>upper</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>parent</name><operator>-&gt;</operator><name>endRemoveRows</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+            <break>break;</break>
+        <case>case <expr><name>CT_UPDATED</name></expr>:</case>
+            <comment type="line">// Miscellaneous updates -- nothing to do, status update will take care of this, and is only computed for</comment>
+            <comment type="line">// visible transactions.</comment>
+            <for>for <control>(<init><decl><type><name>int</name></type> <name>i</name> <init>= <expr><name>lowerIndex</name></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <name>upperIndex</name></expr>;</condition> <incr><expr><name>i</name><operator>++</operator></expr></incr>)</control> <block>{<block_content>
+                <decl_stmt><decl><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>rec</name> <init>= <expr><operator>&amp;</operator><name><name>cachedWallet</name><index>[<expr><name>i</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>needsUpdate</name></name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt>
+            </block_content>}</block></for>
+            <break>break;</break>
+        </block_content>}</block></switch>
+    </block_content>}</block></function>
+
+    <function><type><name>int</name></type> <name>size</name><parameter_list>()</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><call><name><name>cachedWallet</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>index</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Wallet</name></name><modifier>&amp;</modifier></type> <name>wallet</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>idx</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <if_stmt><if>if<condition>(<expr><name>idx</name> <operator>&gt;=</operator> <literal type="number">0</literal> <operator>&amp;&amp;</operator> <name>idx</name> <operator>&lt;</operator> <call><name><name>cachedWallet</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>rec</name> <init>= <expr><operator>&amp;</operator><name><name>cachedWallet</name><index>[<expr><name>idx</name></expr>]</index></name></expr></init></decl>;</decl_stmt>
+
+            <comment type="line">// Get required locks upfront. This avoids the GUI from getting</comment>
+            <comment type="line">// stuck if the core is holding the locks for a longer time - for</comment>
+            <comment type="line">// example, during a wallet rescan.</comment>
+            <comment type="line">//</comment>
+            <comment type="line">// If a status update is needed (blocks came in since last check),</comment>
+            <comment type="line">//  update the status of this transaction from the wallet. Otherwise,</comment>
+            <comment type="line">// simply re-use the cached status.</comment>
+            <decl_stmt><decl><type><name><name>interfaces</name><operator>::</operator><name>WalletTxStatus</name></name></type> <name>wtx</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int</name></type> <name>numBlocks</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>int64_t</name></type> <name>block_time</name></decl>;</decl_stmt>
+            <if_stmt><if>if <condition>(<expr><call><name><name>wallet</name><operator>.</operator><name>tryGetTxStatus</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>hash</name></name></expr></argument>, <argument><expr><name>wtx</name></expr></argument>, <argument><expr><name>numBlocks</name></expr></argument>, <argument><expr><name>block_time</name></expr></argument>)</argument_list></call> <operator>&amp;&amp;</operator> <call><name><name>rec</name><operator>-&gt;</operator><name>statusUpdateNeeded</name></name><argument_list>(<argument><expr><name>numBlocks</name></expr></argument>)</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>rec</name><operator>-&gt;</operator><name>updateStatus</name></name><argument_list>(<argument><expr><name>wtx</name></expr></argument>, <argument><expr><name>numBlocks</name></expr></argument>, <argument><expr><name>block_time</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <return>return <expr><name>rec</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <return>return <expr><literal type="null">nullptr</literal></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><type><name>QString</name></type> <name>describe</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Node</name></name><modifier>&amp;</modifier></type> <name>node</name></decl></parameter>, <parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Wallet</name></name><modifier>&amp;</modifier></type> <name>wallet</name></decl></parameter>, <parameter><decl><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>rec</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>unit</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <return>return <expr><call><name><name>TransactionDesc</name><operator>::</operator><name>toHTML</name></name><argument_list>(<argument><expr><name>node</name></expr></argument>, <argument><expr><name>wallet</name></expr></argument>, <argument><expr><name>rec</name></expr></argument>, <argument><expr><name>unit</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+
+    <function><type><name>QString</name></type> <name>getTxHex</name><parameter_list>(<parameter><decl><type><name><name>interfaces</name><operator>::</operator><name>Wallet</name></name><modifier>&amp;</modifier></type> <name>wallet</name></decl></parameter>, <parameter><decl><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>rec</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>auto</name></type> <name>tx</name> <init>= <expr><call><name><name>wallet</name><operator>.</operator><name>getTx</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>hash</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><name>tx</name></expr>)</condition> <block>{<block_content>
+            <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>strHex</name> <init>= <expr><call><name>EncodeHexTx</name><argument_list>(<argument><expr><operator>*</operator><name>tx</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name>strHex</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <return>return <expr><call><name>QString</name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+</public>}</block>;</class>
+
+<constructor><name><name>TransactionTableModel</name><operator>::</operator><name>TransactionTableModel</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>PlatformStyle</name> <modifier>*</modifier></type><name>_platformStyle</name></decl></parameter>, <parameter><decl><type><name>WalletModel</name> <modifier>*</modifier></type><name>parent</name></decl></parameter>)</parameter_list><member_init_list>:
+        <call><name>QAbstractTableModel</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>,
+        <call><name>walletModel</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call>,
+        <call><name>priv</name><argument_list>(<argument><expr><operator>new</operator> <call><name>TransactionTablePriv</name><argument_list>(<argument><expr><name>this</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call>,
+        <call><name>fProcessingQueuedTransactions</name><argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call>,
+        <call><name>platformStyle</name><argument_list>(<argument><expr><name>_platformStyle</name></expr></argument>)</argument_list></call>
+</member_init_list><block>{<block_content>
+    <expr_stmt><expr><name>columns</name> <operator>&lt;&lt;</operator> <call><name>QString</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <call><name>QString</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Date"</literal></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Type"</literal></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Label"</literal></expr></argument>)</argument_list></call> <operator>&lt;&lt;</operator> <call><name><name>BitcoinUnits</name><operator>::</operator><name>getAmountColumnTitle</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getOptionsModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>getDisplayUnit</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>priv</name><operator>-&gt;</operator><name>refreshWallet</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>connect</name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getOptionsModel</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>OptionsModel</name><operator>::</operator><name>displayUnitChanged</name></name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><operator>&amp;</operator><name><name>TransactionTableModel</name><operator>::</operator><name>updateDisplayUnit</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name>subscribeToCoreSignals</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></constructor>
+
+<destructor><name><name>TransactionTableModel</name><operator>::</operator><name>~TransactionTableModel</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>unsubscribeFromCoreSignals</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><operator>delete</operator> <name>priv</name></expr>;</expr_stmt>
+</block_content>}</block></destructor>
+
+<comment type="block" format="doxygen">/** Updates the column title to "Amount (DisplayUnit)" and emits headerDataChanged() signal for table headers to react. */</comment>
+<function><type><name>void</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>updateAmountColumnTitle</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><name><name>columns</name><index>[<expr><name>Amount</name></expr>]</index></name> <operator>=</operator> <call><name><name>BitcoinUnits</name><operator>::</operator><name>getAmountColumnTitle</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getOptionsModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>getDisplayUnit</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>headerDataChanged</name><argument_list>(<argument><expr><name><name>Qt</name><operator>::</operator><name>Horizontal</name></name></expr></argument>,<argument><expr><name>Amount</name></expr></argument>,<argument><expr><name>Amount</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>updateTransaction</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QString</name> <modifier>&amp;</modifier></type><name>hash</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>status</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>showTransaction</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>uint256</name></type> <name>updated</name></decl>;</decl_stmt>
+    <expr_stmt><expr><call><name><name>updated</name><operator>.</operator><name>SetHex</name></name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>toStdString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <expr_stmt><expr><call><name><name>priv</name><operator>-&gt;</operator><name>updateWallet</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>updated</name></expr></argument>, <argument><expr><name>status</name></expr></argument>, <argument><expr><name>showTransaction</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>updateConfirmations</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Blocks came in since last poll.</comment>
+    <comment type="line">// Invalidate status (number of confirmations) and (possibly) description</comment>
+    <comment type="line">//  for all rows. Qt is smart enough to only actually request the data for the</comment>
+    <comment type="line">//  visible rows.</comment>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>dataChanged</name><argument_list>(<argument><expr><call><name>index</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>Status</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>index</name><argument_list>(<argument><expr><call><name><name>priv</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>Status</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>dataChanged</name><argument_list>(<argument><expr><call><name>index</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>ToAddress</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>index</name><argument_list>(<argument><expr><call><name><name>priv</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>ToAddress</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>rowCount</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Q_UNUSED</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>priv</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>int</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>columnCount</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Q_UNUSED</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <return>return <expr><call><name><name>columns</name><operator>.</operator><name>length</name></name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>formatTxStatus</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>status</name></decl>;</decl_stmt>
+
+    <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>status</name></name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>OpenUntilBlock</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Open for %n more block(s)"</literal></expr></argument>,<argument><expr><literal type="string">""</literal></expr></argument>,<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>open_for</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>OpenUntilDate</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Open until %1"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><call><name><name>GUIUtil</name><operator>::</operator><name>dateTimeStr</name></name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>open_for</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Unconfirmed</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Unconfirmed"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Abandoned</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Abandoned"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Confirming</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Confirming (%1 of %2 recommended confirmations)"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name><name>TransactionRecord</name><operator>::</operator><name>RecommendedNumConfirmations</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Confirmed</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Confirmed (%1 confirmations)"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Conflicted</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Conflicted"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Immature</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Immature (%1 confirmations, will be available after %2)"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name> <operator>+</operator> <name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>matures_in</name></name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>NotAccepted</name></name></expr>:</case>
+        <expr_stmt><expr><name>status</name> <operator>=</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Generated but not accepted"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <break>break;</break>
+    </block_content>}</block></switch>
+
+    <return>return <expr><name>status</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>formatTxDate</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>time</name></name></expr>)</condition>
+    <block>{<block_content>
+        <return>return <expr><call><name><name>GUIUtil</name><operator>::</operator><name>dateTimeStr</name></name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>time</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>QString</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<comment type="block">/* Look up address in address book, if found return label (address)
+   otherwise just return (address)
+ */</comment>
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>lookupAddress</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>address</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>tooltip</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>label</name> <init>= <expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getAddressTableModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>labelForAddress</name><argument_list>(<argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>QString</name></type> <name>description</name></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>label</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>description</name> <operator>+=</operator> <name>label</name></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <if_stmt><if>if<condition>(<expr><call><name><name>label</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call> <operator>||</operator> <name>tooltip</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>description</name> <operator>+=</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">" ("</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name>address</name></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">")"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>description</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>formatTxType</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>type</name></name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvWithAddress</name></name></expr>:</case>
+        <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Received with"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvFromOther</name></name></expr>:</case>
+        <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Received from"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToOther</name></name></expr>:</case>
+        <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Sent to"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToSelf</name></name></expr>:</case>
+        <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Payment to yourself"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>Generated</name></name></expr>:</case>
+        <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Mined"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <default>default:</default>
+        <return>return <expr><call><name>QString</name><argument_list>()</argument_list></call></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>txAddressDecoration</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>type</name></name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>Generated</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/tx_mined"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvWithAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvFromOther</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/tx_input"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToOther</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/tx_output"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <default>default:</default>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/tx_inout"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>formatTxToAddress</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>tooltip</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>watchAddress</name></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><name>tooltip</name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// Mark transactions involving watch-only addresses by adding " (watch-only)"</comment>
+        <expr_stmt><expr><name>watchAddress</name> <operator>=</operator> <ternary><condition><expr><name><name>wtx</name><operator>-&gt;</operator><name>involvesWatchAddress</name></name></expr> ?</condition><then> <expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">" ("</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>tr</name><argument_list>(<argument><expr><literal type="string">"watch-only"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">")"</literal></expr></argument>)</argument_list></call></expr> </then><else>: <expr><literal type="string">""</literal></expr></else></ternary></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+
+    <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>type</name></name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvFromOther</name></name></expr>:</case>
+        <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call> <operator>+</operator> <name>watchAddress</name></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvWithAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>Generated</name></name></expr>:</case>
+        <return>return <expr><call><name>lookupAddress</name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>address</name></name></expr></argument>, <argument><expr><name>tooltip</name></expr></argument>)</argument_list></call> <operator>+</operator> <name>watchAddress</name></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToOther</name></name></expr>:</case>
+        <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call> <operator>+</operator> <name>watchAddress</name></expr>;</return>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToSelf</name></name></expr>:</case>
+        <return>return <expr><call><name>lookupAddress</name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>address</name></name></expr></argument>, <argument><expr><name>tooltip</name></expr></argument>)</argument_list></call> <operator>+</operator> <name>watchAddress</name></expr>;</return>
+    <default>default:</default>
+        <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"(n/a)"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <name>watchAddress</name></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>addressColor</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <comment type="line">// Show addresses without label in a less visible color</comment>
+    <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>type</name></name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>RecvWithAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToAddress</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>Generated</name></name></expr>:</case>
+        <block>{<block_content>
+        <decl_stmt><decl><type><name>QString</name></type> <name>label</name> <init>= <expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getAddressTableModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>labelForAddress</name><argument_list>(<argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if<condition>(<expr><call><name><name>label</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <return>return <expr><name>COLOR_BAREADDRESS</name></expr>;</return></block_content></block></if></if_stmt>
+        </block_content>}</block> <break>break;</break>
+    <case>case <expr><name><name>TransactionRecord</name><operator>::</operator><name>SendToSelf</name></name></expr>:</case>
+        <return>return <expr><name>COLOR_BAREADDRESS</name></expr>;</return>
+    <default>default:</default>
+        <break>break;</break>
+    </block_content>}</block></switch>
+    <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>formatTxAmount</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>showUnconfirmed</name></decl></parameter>, <parameter><decl><type><name><name>BitcoinUnits</name><operator>::</operator><name>SeparatorStyle</name></name></type> <name>separators</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>str</name> <init>= <expr><call><name><name>BitcoinUnits</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getOptionsModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>getDisplayUnit</name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name><name>wtx</name><operator>-&gt;</operator><name>credit</name></name> <operator>+</operator> <name><name>wtx</name><operator>-&gt;</operator><name>debit</name></name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><name>separators</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><name>showUnconfirmed</name></expr>)</condition>
+    <block>{<block_content>
+        <if_stmt><if>if<condition>(<expr><operator>!</operator><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>countsForBalance</name></name></expr>)</condition>
+        <block>{<block_content>
+            <expr_stmt><expr><name>str</name> <operator>=</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">"["</literal></expr></argument>)</argument_list></call> <operator>+</operator> <name>str</name> <operator>+</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">"]"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>QString</name><argument_list>(<argument><expr><name>str</name></expr></argument>)</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>txStatusDecoration</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>status</name></name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>OpenUntilBlock</name></name></expr>:</case>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>OpenUntilDate</name></name></expr>:</case>
+        <return>return <expr><name>COLOR_TX_STATUS_OPENUNTILDATE</name></expr>;</return>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Unconfirmed</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_0"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Abandoned</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_abandoned"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Confirming</name></name></expr>:</case>
+        <switch>switch<condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><literal type="number">1</literal></expr>:</case> <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_1"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><literal type="number">2</literal></expr>:</case> <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_2"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><literal type="number">3</literal></expr>:</case> <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_3"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><literal type="number">4</literal></expr>:</case> <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_4"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <default>default:</default> <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_5"</literal></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></switch><empty_stmt>;</empty_stmt>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Confirmed</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_confirmed"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Conflicted</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_conflicted"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>Immature</name></name></expr>:</case> <block>{<block_content>
+        <decl_stmt><decl><type><name>int</name></type> <name>total</name> <init>= <expr><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name> <operator>+</operator> <name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>matures_in</name></name></expr></init></decl>;</decl_stmt>
+        <decl_stmt><decl><type><name>int</name></type> <name>part</name> <init>= <expr><operator>(</operator><name><name>wtx</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>depth</name></name> <operator>*</operator> <literal type="number">4</literal> <operator>/</operator> <name>total</name><operator>)</operator> <operator>+</operator> <literal type="number">1</literal></expr></init></decl>;</decl_stmt>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><call><name>QString</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_%1"</literal></expr></argument>)</argument_list></call><operator>.</operator><call><name>arg</name><argument_list>(<argument><expr><name>part</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block>
+    <case>case <expr><name><name>TransactionStatus</name><operator>::</operator><name>NotAccepted</name></name></expr>:</case>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/transaction_0"</literal></expr></argument>)</argument_list></call></expr>;</return>
+    <default>default:</default>
+        <return>return <expr><name>COLOR_BLACK</name></expr>;</return>
+    </block_content>}</block></switch>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>txWatchonlyDecoration</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>wtx</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name><name>wtx</name><operator>-&gt;</operator><name>involvesWatchAddress</name></name></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>QIcon</name><argument_list>(<argument><expr><literal type="string">":/icons/eye"</literal></expr></argument>)</argument_list></call></expr>;</return></block_content></block></if>
+    <else>else<block type="pseudo"><block_content>
+        <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></else></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>QString</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>formatTooltip</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>TransactionRecord</name> <modifier>*</modifier></type><name>rec</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>QString</name></type> <name>tooltip</name> <init>= <expr><call><name>formatTxStatus</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">"\n"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>formatTxType</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><name><name>rec</name><operator>-&gt;</operator><name>type</name></name><operator>==</operator><name><name>TransactionRecord</name><operator>::</operator><name>RecvFromOther</name></name> <operator>||</operator> <name><name>rec</name><operator>-&gt;</operator><name>type</name></name><operator>==</operator><name><name>TransactionRecord</name><operator>::</operator><name>SendToOther</name></name> <operator>||</operator>
+       <name><name>rec</name><operator>-&gt;</operator><name>type</name></name><operator>==</operator><name><name>TransactionRecord</name><operator>::</operator><name>SendToAddress</name></name> <operator>||</operator> <name><name>rec</name><operator>-&gt;</operator><name>type</name></name><operator>==</operator><name><name>TransactionRecord</name><operator>::</operator><name>RecvWithAddress</name></name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>tooltip</name> <operator>+=</operator> <call><name>QString</name><argument_list>(<argument><expr><literal type="string">" "</literal></expr></argument>)</argument_list></call> <operator>+</operator> <call><name>formatTxToAddress</name><argument_list>(<argument><expr><name>rec</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><name>tooltip</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>data</name></name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type><name>index</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>role</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>index</name><operator>.</operator><name>isValid</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+        <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return></block_content></block></if></if_stmt>
+    <decl_stmt><decl><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>rec</name> <init>= <expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>TransactionRecord</name><operator>*</operator></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><call><name><name>index</name><operator>.</operator><name>internalPointer</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></cast></expr></init></decl>;</decl_stmt>
+
+    <switch>switch<condition>(<expr><name>role</name></expr>)</condition>
+    <block>{<block_content>
+    <case>case <expr><name>RawDecorationRole</name></expr>:</case>
+        <switch>switch<condition>(<expr><call><name><name>index</name><operator>.</operator><name>column</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>Status</name></expr>:</case>
+            <return>return <expr><call><name>txStatusDecoration</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Watchonly</name></expr>:</case>
+            <return>return <expr><call><name>txWatchonlyDecoration</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>ToAddress</name></expr>:</case>
+            <return>return <expr><call><name>txAddressDecoration</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></switch>
+        <break>break;</break>
+    <case>case <expr><name><name>Qt</name><operator>::</operator><name>DecorationRole</name></name></expr>:</case>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>QIcon</name></type> <name>icon</name> <init>= <expr><call><name><name>qvariant_cast</name><argument_list type="generic">&lt;<argument><expr><name>QIcon</name></expr></argument>&gt;</argument_list></name><argument_list>(<argument><expr><call><name><name>index</name><operator>.</operator><name>data</name></name><argument_list>(<argument><expr><name>RawDecorationRole</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <return>return <expr><call><name><name>platformStyle</name><operator>-&gt;</operator><name>TextColorIcon</name></name><argument_list>(<argument><expr><name>icon</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block>
+    <case>case <expr><name><name>Qt</name><operator>::</operator><name>DisplayRole</name></name></expr>:</case>
+        <switch>switch<condition>(<expr><call><name><name>index</name><operator>.</operator><name>column</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>Date</name></expr>:</case>
+            <return>return <expr><call><name>formatTxDate</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Type</name></expr>:</case>
+            <return>return <expr><call><name>formatTxType</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>ToAddress</name></expr>:</case>
+            <return>return <expr><call><name>formatTxToAddress</name><argument_list>(<argument><expr><name>rec</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Amount</name></expr>:</case>
+            <return>return <expr><call><name>formatTxAmount</name><argument_list>(<argument><expr><name>rec</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>, <argument><expr><name><name>BitcoinUnits</name><operator>::</operator><name>separatorAlways</name></name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></switch>
+        <break>break;</break>
+    <case>case <expr><name><name>Qt</name><operator>::</operator><name>EditRole</name></name></expr>:</case>
+        <comment type="line">// Edit role is used for sorting, so return the unformatted values</comment>
+        <switch>switch<condition>(<expr><call><name><name>index</name><operator>.</operator><name>column</name></name><argument_list>()</argument_list></call></expr>)</condition>
+        <block>{<block_content>
+        <case>case <expr><name>Status</name></expr>:</case>
+            <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>sortKey</name></name></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Date</name></expr>:</case>
+            <return>return <expr><name><name>rec</name><operator>-&gt;</operator><name>time</name></name></expr>;</return>
+        <case>case <expr><name>Type</name></expr>:</case>
+            <return>return <expr><call><name>formatTxType</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Watchonly</name></expr>:</case>
+            <return>return <expr><operator>(</operator><ternary><condition><expr><name><name>rec</name><operator>-&gt;</operator><name>involvesWatchAddress</name></name></expr> ?</condition><then> <expr><literal type="number">1</literal></expr> </then><else>: <expr><literal type="number">0</literal></expr></else></ternary><operator>)</operator></expr>;</return>
+        <case>case <expr><name>ToAddress</name></expr>:</case>
+            <return>return <expr><call><name>formatTxToAddress</name><argument_list>(<argument><expr><name>rec</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr>;</return>
+        <case>case <expr><name>Amount</name></expr>:</case>
+            <return>return <expr><call><name>qint64</name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>credit</name></name> <operator>+</operator> <name><name>rec</name><operator>-&gt;</operator><name>debit</name></name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></switch>
+        <break>break;</break>
+    <case>case <expr><name><name>Qt</name><operator>::</operator><name>ToolTipRole</name></name></expr>:</case>
+        <return>return <expr><call><name>formatTooltip</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name><name>Qt</name><operator>::</operator><name>TextAlignmentRole</name></name></expr>:</case>
+        <return>return <expr><name><name>column_alignments</name><index>[<expr><call><name><name>index</name><operator>.</operator><name>column</name></name><argument_list>()</argument_list></call></expr>]</index></name></expr>;</return>
+    <case>case <expr><name><name>Qt</name><operator>::</operator><name>ForegroundRole</name></name></expr>:</case>
+        <comment type="line">// Use the "danger" color for abandoned transactions</comment>
+        <if_stmt><if>if<condition>(<expr><name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>status</name></name> <operator>==</operator> <name><name>TransactionStatus</name><operator>::</operator><name>Abandoned</name></name></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><name>COLOR_TX_STATUS_DANGER</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <comment type="line">// Non-confirmed (but not immature) as transactions are grey</comment>
+        <if_stmt><if>if<condition>(<expr><operator>!</operator><name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>countsForBalance</name></name> <operator>&amp;&amp;</operator> <name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>status</name></name> <operator>!=</operator> <name><name>TransactionStatus</name><operator>::</operator><name>Immature</name></name></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><name>COLOR_UNCONFIRMED</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if<condition>(<expr><call><name><name>index</name><operator>.</operator><name>column</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>Amount</name> <operator>&amp;&amp;</operator> <operator>(</operator><name><name>rec</name><operator>-&gt;</operator><name>credit</name></name><operator>+</operator><name><name>rec</name><operator>-&gt;</operator><name>debit</name></name><operator>)</operator> <operator>&lt;</operator> <literal type="number">0</literal></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><name>COLOR_NEGATIVE</name></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if<condition>(<expr><call><name><name>index</name><operator>.</operator><name>column</name></name><argument_list>()</argument_list></call> <operator>==</operator> <name>ToAddress</name></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><call><name>addressColor</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+        </block_content>}</block></if></if_stmt>
+        <break>break;</break>
+    <case>case <expr><name>TypeRole</name></expr>:</case>
+        <return>return <expr><name><name>rec</name><operator>-&gt;</operator><name>type</name></name></expr>;</return>
+    <case>case <expr><name>DateRole</name></expr>:</case>
+        <return>return <expr><call><name><name>QDateTime</name><operator>::</operator><name>fromTime_t</name></name><argument_list>(<argument><expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>time</name></name></expr></argument>)</argument_list></cast></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>WatchonlyRole</name></expr>:</case>
+        <return>return <expr><name><name>rec</name><operator>-&gt;</operator><name>involvesWatchAddress</name></name></expr>;</return>
+    <case>case <expr><name>WatchonlyDecorationRole</name></expr>:</case>
+        <return>return <expr><call><name>txWatchonlyDecoration</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>LongDescriptionRole</name></expr>:</case>
+        <return>return <expr><call><name><name>priv</name><operator>-&gt;</operator><name>describe</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>node</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>rec</name></expr></argument>, <argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getOptionsModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>getDisplayUnit</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>AddressRole</name></expr>:</case>
+        <return>return <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>LabelRole</name></expr>:</case>
+        <return>return <expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getAddressTableModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>labelForAddress</name><argument_list>(<argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>AmountRole</name></expr>:</case>
+        <return>return <expr><call><name>qint64</name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>credit</name></name> <operator>+</operator> <name><name>rec</name><operator>-&gt;</operator><name>debit</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>TxHashRole</name></expr>:</case>
+        <return>return <expr><call><name><name>rec</name><operator>-&gt;</operator><name>getTxHash</name></name><argument_list>()</argument_list></call></expr>;</return>
+    <case>case <expr><name>TxHexRole</name></expr>:</case>
+        <return>return <expr><call><name><name>priv</name><operator>-&gt;</operator><name>getTxHex</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>TxPlainTextRole</name></expr>:</case>
+        <block>{<block_content>
+            <decl_stmt><decl><type><name>QString</name></type> <name>details</name></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>QDateTime</name></type> <name>date</name> <init>= <expr><call><name><name>QDateTime</name><operator>::</operator><name>fromTime_t</name></name><argument_list>(<argument><expr><cast type="static">static_cast<argument_list type="generic">&lt;<argument><expr><name>uint</name></expr></argument>&gt;</argument_list><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>time</name></name></expr></argument>)</argument_list></cast></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <decl_stmt><decl><type><name>QString</name></type> <name>txLabel</name> <init>= <expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>getAddressTableModel</name></name><argument_list>()</argument_list></call><operator>-&gt;</operator><call><name>labelForAddress</name><argument_list>(<argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+
+            <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name><name>date</name><operator>.</operator><name>toString</name></name><argument_list>(<argument><expr><literal type="string">"M/d/yy HH:mm"</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">" "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name>formatTxStatus</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">". "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name>formatTxType</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call><operator>.</operator><call><name>isEmpty</name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name>formatTxType</name><argument_list>(<argument><expr><name>rec</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">" "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <if_stmt><if>if<condition>(<expr><operator>!</operator><call><name><name>rec</name><operator>-&gt;</operator><name>address</name><operator>.</operator><name>empty</name></name><argument_list>()</argument_list></call></expr>)</condition> <block>{<block_content>
+                <if_stmt><if>if<condition>(<expr><call><name><name>txLabel</name><operator>.</operator><name>isEmpty</name></name><argument_list>()</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+                    <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"(no label)"</literal></expr></argument>)</argument_list></call> <operator>+</operator> <literal type="string">" "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if>
+                <else>else <block>{<block_content>
+                    <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">"("</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><name>txLabel</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                    <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">") "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                </block_content>}</block></else></if_stmt>
+                <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><name><name>rec</name><operator>-&gt;</operator><name>address</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+                <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><literal type="string">" "</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+            <expr_stmt><expr><call><name><name>details</name><operator>.</operator><name>append</name></name><argument_list>(<argument><expr><call><name>formatTxAmount</name><argument_list>(<argument><expr><name>rec</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><name><name>BitcoinUnits</name><operator>::</operator><name>separatorNever</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <return>return <expr><name>details</name></expr>;</return>
+        </block_content>}</block>
+    <case>case <expr><name>ConfirmedRole</name></expr>:</case>
+        <return>return <expr><name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>countsForBalance</name></name></expr>;</return>
+    <case>case <expr><name>FormattedAmountRole</name></expr>:</case>
+        <comment type="line">// Used for copy/export, so don't include separators</comment>
+        <return>return <expr><call><name>formatTxAmount</name><argument_list>(<argument><expr><name>rec</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><name><name>BitcoinUnits</name><operator>::</operator><name>separatorNever</name></name></expr></argument>)</argument_list></call></expr>;</return>
+    <case>case <expr><name>StatusRole</name></expr>:</case>
+        <return>return <expr><name><name>rec</name><operator>-&gt;</operator><name>status</name><operator>.</operator><name>status</name></name></expr>;</return>
+    </block_content>}</block></switch>
+    <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QVariant</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>headerData</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>section</name></decl></parameter>, <parameter><decl><type><name><name>Qt</name><operator>::</operator><name>Orientation</name></name></type> <name>orientation</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>role</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <if_stmt><if>if<condition>(<expr><name>orientation</name> <operator>==</operator> <name><name>Qt</name><operator>::</operator><name>Horizontal</name></name></expr>)</condition>
+    <block>{<block_content>
+        <if_stmt><if>if<condition>(<expr><name>role</name> <operator>==</operator> <name><name>Qt</name><operator>::</operator><name>DisplayRole</name></name></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><name><name>columns</name><index>[<expr><name>section</name></expr>]</index></name></expr>;</return>
+        </block_content>}</block></if>
+        <if type="elseif">else if <condition>(<expr><name>role</name> <operator>==</operator> <name><name>Qt</name><operator>::</operator><name>TextAlignmentRole</name></name></expr>)</condition>
+        <block>{<block_content>
+            <return>return <expr><name><name>column_alignments</name><index>[<expr><name>section</name></expr>]</index></name></expr>;</return>
+        </block_content>}</block></if> <if type="elseif">else if <condition>(<expr><name>role</name> <operator>==</operator> <name><name>Qt</name><operator>::</operator><name>ToolTipRole</name></name></expr>)</condition>
+        <block>{<block_content>
+            <switch>switch<condition>(<expr><name>section</name></expr>)</condition>
+            <block>{<block_content>
+            <case>case <expr><name>Status</name></expr>:</case>
+                <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Transaction status. Hover over this field to show number of confirmations."</literal></expr></argument>)</argument_list></call></expr>;</return>
+            <case>case <expr><name>Date</name></expr>:</case>
+                <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Date and time that the transaction was received."</literal></expr></argument>)</argument_list></call></expr>;</return>
+            <case>case <expr><name>Type</name></expr>:</case>
+                <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Type of transaction."</literal></expr></argument>)</argument_list></call></expr>;</return>
+            <case>case <expr><name>Watchonly</name></expr>:</case>
+                <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Whether or not a watch-only address is involved in this transaction."</literal></expr></argument>)</argument_list></call></expr>;</return>
+            <case>case <expr><name>ToAddress</name></expr>:</case>
+                <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"User-defined intent/purpose of the transaction."</literal></expr></argument>)</argument_list></call></expr>;</return>
+            <case>case <expr><name>Amount</name></expr>:</case>
+                <return>return <expr><call><name>tr</name><argument_list>(<argument><expr><literal type="string">"Amount removed from or added to balance."</literal></expr></argument>)</argument_list></call></expr>;</return>
+            </block_content>}</block></switch>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>QVariant</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>QModelIndex</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>index</name></name><parameter_list>(<parameter><decl><type><name>int</name></type> <name>row</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>column</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>QModelIndex</name> <modifier>&amp;</modifier></type><name>parent</name></decl></parameter>)</parameter_list> <specifier>const</specifier>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>Q_UNUSED</name><argument_list>(<argument><expr><name>parent</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>TransactionRecord</name> <modifier>*</modifier></type><name>data</name> <init>= <expr><call><name><name>priv</name><operator>-&gt;</operator><name>index</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>row</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if<condition>(<expr><name>data</name></expr>)</condition>
+    <block>{<block_content>
+        <return>return <expr><call><name>createIndex</name><argument_list>(<argument><expr><name>row</name></expr></argument>, <argument><expr><name>column</name></expr></argument>, <argument><expr><call><name><name>priv</name><operator>-&gt;</operator><name>index</name></name><argument_list>(<argument><expr><call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call></expr></argument>, <argument><expr><name>row</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></if></if_stmt>
+    <return>return <expr><call><name>QModelIndex</name><argument_list>()</argument_list></call></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>updateDisplayUnit</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// emit dataChanged to update Amount column with the current unit</comment>
+    <expr_stmt><expr><call><name>updateAmountColumnTitle</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <decl_stmt><decl><type><name>Q_EMIT</name></type> <name>dataChanged</name><argument_list>(<argument><expr><call><name>index</name><argument_list>(<argument><expr><literal type="number">0</literal></expr></argument>, <argument><expr><name>Amount</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><call><name>index</name><argument_list>(<argument><expr><call><name><name>priv</name><operator>-&gt;</operator><name>size</name></name><argument_list>()</argument_list></call><operator>-</operator><literal type="number">1</literal></expr></argument>, <argument><expr><name>Amount</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></decl>;</decl_stmt>
+</block_content>}</block></function>
+
+<comment type="line">// queue notifications to show a non freezing progress dialog e.g. for rescan</comment>
+<struct>struct <name>TransactionNotification</name>
+<block>{<public type="default">
+</public><public>public:
+    <constructor><name>TransactionNotification</name><parameter_list>()</parameter_list> <block>{<block_content/>}</block></constructor>
+    <constructor><name>TransactionNotification</name><parameter_list>(<parameter><decl><type><name>uint256</name></type> <name>_hash</name></decl></parameter>, <parameter><decl><type><name>ChangeType</name></type> <name>_status</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>_showTransaction</name></decl></parameter>)</parameter_list><member_init_list>:
+        <call><name>hash</name><argument_list>(<argument><expr><name>_hash</name></expr></argument>)</argument_list></call>, <call><name>status</name><argument_list>(<argument><expr><name>_status</name></expr></argument>)</argument_list></call>, <call><name>showTransaction</name><argument_list>(<argument><expr><name>_showTransaction</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+
+    <function><type><name>void</name></type> <name>invoke</name><parameter_list>(<parameter><decl><type><name>QObject</name> <modifier>*</modifier></type><name>ttm</name></decl></parameter>)</parameter_list>
+    <block>{<block_content>
+        <decl_stmt><decl><type><name>QString</name></type> <name>strHash</name> <init>= <expr><call><name><name>QString</name><operator>::</operator><name>fromStdString</name></name><argument_list>(<argument><expr><call><name><name>hash</name><operator>.</operator><name>GetHex</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>qDebug</name><argument_list>()</argument_list></call> <operator>&lt;&lt;</operator> <literal type="string">"NotifyTransactionChanged: "</literal> <operator>+</operator> <name>strHash</name> <operator>+</operator> <literal type="string">" status= "</literal> <operator>+</operator> <call><name><name>QString</name><operator>::</operator><name>number</name></name><argument_list>(<argument><expr><name>status</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>ttm</name></expr></argument>, <argument><expr><literal type="string">"updateTransaction"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>QString</name></expr></argument>, <argument><expr><name>strHash</name></expr></argument>)</argument_list></call></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>int</name></expr></argument>, <argument><expr><name>status</name></expr></argument>)</argument_list></call></expr></argument>,
+                                  <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>bool</name></expr></argument>, <argument><expr><name>showTransaction</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></function>
+</public><private>private:
+    <decl_stmt><decl><type><name>uint256</name></type> <name>hash</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>ChangeType</name></type> <name>status</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>bool</name></type> <name>showTransaction</name></decl>;</decl_stmt>
+</private>}</block>;</struct>
+
+<decl_stmt><decl><type><specifier>static</specifier> <name>bool</name></type> <name>fQueueNotifications</name> <init>= <expr><literal type="boolean">false</literal></expr></init></decl>;</decl_stmt>
+<decl_stmt><decl><type><specifier>static</specifier> <name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt; <argument><expr><name>TransactionNotification</name></expr></argument> &gt;</argument_list></name></type> <name>vQueueNotifications</name></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>NotifyTransactionChanged</name><parameter_list>(<parameter><decl><type><name>TransactionTableModel</name> <modifier>*</modifier></type><name>ttm</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>uint256</name> <modifier>&amp;</modifier></type><name>hash</name></decl></parameter>, <parameter><decl><type><name>ChangeType</name></type> <name>status</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Find transaction in wallet</comment>
+    <comment type="line">// Determine whether to show transaction or not (determine this here so that no relocking is needed in GUI thread)</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>showTransaction</name> <init>= <expr><call><name><name>TransactionRecord</name><operator>::</operator><name>showTransaction</name></name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+
+    <decl_stmt><decl><type><name>TransactionNotification</name></type> <name>notification</name><argument_list>(<argument><expr><name>hash</name></expr></argument>, <argument><expr><name>status</name></expr></argument>, <argument><expr><name>showTransaction</name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>fQueueNotifications</name></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><call><name><name>vQueueNotifications</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><name>notification</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <expr_stmt><expr><call><name><name>notification</name><operator>.</operator><name>invoke</name></name><argument_list>(<argument><expr><name>ttm</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>ShowProgress</name><parameter_list>(<parameter><decl><type><name>TransactionTableModel</name> <modifier>*</modifier></type><name>ttm</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name> <modifier>&amp;</modifier></type><name>title</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nProgress</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <if_stmt><if>if <condition>(<expr><name>nProgress</name> <operator>==</operator> <literal type="number">0</literal></expr>)</condition><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>fQueueNotifications</name> <operator>=</operator> <literal type="boolean">true</literal></expr>;</expr_stmt></block_content></block></if></if_stmt>
+
+    <if_stmt><if>if <condition>(<expr><name>nProgress</name> <operator>==</operator> <literal type="number">100</literal></expr>)</condition>
+    <block>{<block_content>
+        <expr_stmt><expr><name>fQueueNotifications</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>vQueueNotifications</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>&gt;</operator> <literal type="number">10</literal></expr>)</condition> <block>{<block_content> <comment type="line">// prevent balloon spam, show maximum 10 balloons</comment>
+            <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>ttm</name></expr></argument>, <argument><expr><literal type="string">"setProcessingQueuedTransactions"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>, <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>bool</name></expr></argument>, <argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+            <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+        <for>for <control>(<init><decl><type><name>unsigned</name> <name>int</name></type> <name>i</name> <init>= <expr><literal type="number">0</literal></expr></init></decl>;</init> <condition><expr><name>i</name> <operator>&lt;</operator> <call><name><name>vQueueNotifications</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call></expr>;</condition> <incr><expr><operator>++</operator><name>i</name></expr></incr>)</control>
+        <block>{<block_content>
+            <if_stmt><if>if <condition>(<expr><call><name><name>vQueueNotifications</name><operator>.</operator><name>size</name></name><argument_list>()</argument_list></call> <operator>-</operator> <name>i</name> <operator>&lt;=</operator> <literal type="number">10</literal></expr>)</condition> <block>{<block_content>
+                <decl_stmt><decl><type><name>bool</name></type> <name>invoked</name> <init>= <expr><call><name><name>QMetaObject</name><operator>::</operator><name>invokeMethod</name></name><argument_list>(<argument><expr><name>ttm</name></expr></argument>, <argument><expr><literal type="string">"setProcessingQueuedTransactions"</literal></expr></argument>, <argument><expr><name><name>Qt</name><operator>::</operator><name>QueuedConnection</name></name></expr></argument>, <argument><expr><call><name>Q_ARG</name><argument_list>(<argument><expr><name>bool</name></expr></argument>, <argument><expr><literal type="boolean">false</literal></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+                <expr_stmt><expr><call><name>assert</name><argument_list>(<argument><expr><name>invoked</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            </block_content>}</block></if></if_stmt>
+
+            <expr_stmt><expr><name><name>vQueueNotifications</name><index>[<expr><name>i</name></expr>]</index></name><operator>.</operator><call><name>invoke</name><argument_list>(<argument><expr><name>ttm</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></for>
+        <expr_stmt><expr><call><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name>TransactionNotification</name></expr></argument> &gt;</argument_list></name><argument_list>()</argument_list></call><operator>.</operator><call><name>swap</name><argument_list>(<argument><expr><name>vQueueNotifications</name></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="line">// clear</comment>
+    </block_content>}</block></if></if_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>subscribeToCoreSignals</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Connect signals to wallet</comment>
+    <expr_stmt><expr><name>m_handler_transaction_changed</name> <operator>=</operator> <call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>handleTransactionChanged</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>NotifyTransactionChanged</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><name>m_handler_show_progress</name> <operator>=</operator> <call><name><name>walletModel</name><operator>-&gt;</operator><name>wallet</name></name><argument_list>()</argument_list></call><operator>.</operator><call><name>handleShowProgress</name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>bind</name></name><argument_list>(<argument><expr><name>ShowProgress</name></expr></argument>, <argument><expr><name>this</name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_1</name></name></expr></argument>, <argument><expr><name><name>std</name><operator>::</operator><name>placeholders</name><operator>::</operator><name>_2</name></name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name><name>TransactionTableModel</name><operator>::</operator><name>unsubscribeFromCoreSignals</name></name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <comment type="line">// Disconnect signals from wallet</comment>
+    <expr_stmt><expr><call><name><name>m_handler_transaction_changed</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name><name>m_handler_show_progress</name><operator>-&gt;</operator><name>disconnect</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+</unit>

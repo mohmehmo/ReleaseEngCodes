@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<unit xmlns="http://www.srcML.org/srcML/src" xmlns:cpp="http://www.srcML.org/srcML/cpp" revision="1.0.0" language="C++" filename="/home/mmm/Projects/bitcoin/src/sync.cpp"><comment type="line">// Copyright (c) 2011-2018 The Bitcoin Core developers</comment>
+<comment type="line">// Distributed under the MIT software license, see the accompanying</comment>
+<comment type="line">// file COPYING or http://www.opensource.org/licenses/mit-license.php.</comment>
+
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_CONFIG_H</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;config/bitcoin-config.h&gt;</cpp:file></cpp:include>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;sync.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;tinyformat.h&gt;</cpp:file></cpp:include>
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;logging.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/strencodings.h&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;util/threadnames.h&gt;</cpp:file></cpp:include>
+
+
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;map&gt;</cpp:file></cpp:include>
+<cpp:include>#<cpp:directive>include</cpp:directive> <cpp:file>&lt;set&gt;</cpp:file></cpp:include>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKCONTENTION</name></cpp:ifdef>
+<cpp:if>#<cpp:directive>if</cpp:directive> <expr><operator>!</operator><call><name>defined</name><argument_list>(<argument><expr><name>HAVE_THREAD_LOCAL</name></expr></argument>)</argument_list></call></expr></cpp:if>
+<assert type="static">static_assert<argument_list>(<argument><expr><literal type="boolean">false</literal></expr></argument>, <argument><expr><literal type="string">"thread_local is not supported"</literal></expr></argument>)</argument_list>;</assert>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif>
+<function><type><name>void</name></type> <name>PrintLockContention</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"LOCKCONTENTION: %s\n"</literal></expr></argument>, <argument><expr><name>pszName</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Locker: %s:%d\n"</literal></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* DEBUG_LOCKCONTENTION */</comment>
+
+<cpp:ifdef>#<cpp:directive>ifdef</cpp:directive> <name>DEBUG_LOCKORDER</name></cpp:ifdef>
+<comment type="line">//</comment>
+<comment type="line">// Early deadlock detection.</comment>
+<comment type="line">// Problem being solved:</comment>
+<comment type="line">//    Thread 1 locks A, then B, then C</comment>
+<comment type="line">//    Thread 2 locks D, then C, then A</comment>
+<comment type="line">//     --&gt; may result in deadlock between the two threads, depending on when they run.</comment>
+<comment type="line">// Solution implemented here:</comment>
+<comment type="line">// Keep track of pairs of locks: (A before B), (A before C), etc.</comment>
+<comment type="line">// Complain if any thread tries to lock in a different order.</comment>
+<comment type="line">//</comment>
+
+<struct>struct <name>CLockLocation</name> <block>{<public type="default">
+    <constructor><name>CLockLocation</name><parameter_list>(
+        <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>,
+        <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>,
+        <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>,
+        <parameter><decl><type><name>bool</name></type> <name>fTryIn</name></decl></parameter>,
+        <parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>thread_name</name></decl></parameter>)</parameter_list>
+        <member_init_list>: <call><name>fTry</name><argument_list>(<argument><expr><name>fTryIn</name></expr></argument>)</argument_list></call>,
+          <call><name>mutexName</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>)</argument_list></call>,
+          <call><name>sourceFile</name><argument_list>(<argument><expr><name>pszFile</name></expr></argument>)</argument_list></call>,
+          <call><name>m_thread_name</name><argument_list>(<argument><expr><name>thread_name</name></expr></argument>)</argument_list></call>,
+          <call><name>sourceLine</name><argument_list>(<argument><expr><name>nLine</name></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+
+    <function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>ToString</name><parameter_list>()</parameter_list> <specifier>const</specifier>
+    <block>{<block_content>
+        <return>return <expr><call><name>strprintf</name><argument_list>(
+            <argument><expr><literal type="string">"%s %s:%s%s (in thread %s)"</literal></expr></argument>,
+            <argument><expr><name>mutexName</name></expr></argument>, <argument><expr><name>sourceFile</name></expr></argument>, <argument><expr><call><name>itostr</name><argument_list>(<argument><expr><name>sourceLine</name></expr></argument>)</argument_list></call></expr></argument>, <argument><expr><operator>(</operator><ternary><condition><expr><name>fTry</name></expr> ?</condition><then> <expr><literal type="string">" (TRY)"</literal></expr> </then><else>: <expr><literal type="string">""</literal></expr></else></ternary><operator>)</operator></expr></argument>, <argument><expr><name>m_thread_name</name></expr></argument>)</argument_list></call></expr>;</return>
+    </block_content>}</block></function>
+
+</public><private>private:
+    <decl_stmt><decl><type><name>bool</name></type> <name>fTry</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>mutexName</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>sourceFile</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>string</name></name><modifier>&amp;</modifier></type> <name>m_thread_name</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>int</name></type> <name>sourceLine</name></decl>;</decl_stmt>
+</private>}</block>;</struct>
+
+<typedef>typedef <type><name><name>std</name><operator>::</operator><name>vector</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>LockStack</name>;</typedef>
+<typedef>typedef <type><name><name>std</name><operator>::</operator><name>map</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></expr></argument>, <argument><expr><name>LockStack</name></expr></argument>&gt;</argument_list></name></type> <name>LockOrders</name>;</typedef>
+<typedef>typedef <type><name><name>std</name><operator>::</operator><name>set</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></expr></argument> &gt;</argument_list></name></type> <name>InvLockOrders</name>;</typedef>
+
+<struct>struct <name>LockData</name> <block>{<public type="default">
+    <comment type="line">// Very ugly hack: as the global constructs and destructors run single</comment>
+    <comment type="line">// threaded, we use this boolean to know whether LockData still exists,</comment>
+    <comment type="line">// as DeleteLock can get called by global CCriticalSection destructors</comment>
+    <comment type="line">// after LockData disappears.</comment>
+    <decl_stmt><decl><type><name>bool</name></type> <name>available</name></decl>;</decl_stmt>
+    <constructor><name>LockData</name><parameter_list>()</parameter_list> <member_init_list>: <call><name>available</name><argument_list>(<argument><expr><literal type="boolean">true</literal></expr></argument>)</argument_list></call> </member_init_list><block>{<block_content/>}</block></constructor>
+    <destructor><name>~LockData</name><parameter_list>()</parameter_list> <block>{<block_content> <expr_stmt><expr><name>available</name> <operator>=</operator> <literal type="boolean">false</literal></expr>;</expr_stmt> </block_content>}</block></destructor>
+
+    <decl_stmt><decl><type><name>LockOrders</name></type> <name>lockorders</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name>InvLockOrders</name></type> <name>invlockorders</name></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>mutex</name></name></type> <name>dd_mutex</name></decl>;</decl_stmt>
+</public>}</block>;</struct>
+<function><type><name>LockData</name><modifier>&amp;</modifier></type> <name>GetLockData</name><parameter_list>()</parameter_list> <block>{<block_content>
+    <decl_stmt><decl><type><specifier>static</specifier> <name>LockData</name></type> <name>lockdata</name></decl>;</decl_stmt>
+    <return>return <expr><name>lockdata</name></expr>;</return>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><specifier>static</specifier> <specifier>thread_local</specifier> <name>LockStack</name></type> <name>g_lockstack</name></decl>;</decl_stmt>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>potential_deadlock_detected</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>mismatch</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>LockStack</name><modifier>&amp;</modifier></type> <name>s1</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>LockStack</name><modifier>&amp;</modifier></type> <name>s2</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"POTENTIAL DEADLOCK DETECTED\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Previous lock order was:\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>s2</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name><name>mismatch</name><operator>.</operator><name>first</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">" (1)"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name><name>mismatch</name><operator>.</operator><name>second</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">" (2)"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">" %s\n"</literal></expr></argument>, <argument><expr><call><name><name>i</name><operator>.</operator><name>second</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">"Current lock order is:\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name> <modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>s1</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name><name>mismatch</name><operator>.</operator><name>first</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">" (1)"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+        </block_content>}</block></if></if_stmt>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name><name>mismatch</name><operator>.</operator><name>second</name></name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">" (2)"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt> <comment type="block">/* Continued */</comment>
+        </block_content>}</block></if></if_stmt>
+        <expr_stmt><expr><call><name>LogPrintf</name><argument_list>(<argument><expr><literal type="string">" %s\n"</literal></expr></argument>, <argument><expr><call><name><name>i</name><operator>.</operator><name>second</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></for>
+    <if_stmt><if>if <condition>(<expr><name>g_debug_lockorder_abort</name></expr>)</condition> <block>{<block_content>
+        <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></argument>, <argument><expr><literal type="string">"Assertion failed: detected inconsistent lock order at %s:%i, details in debug log.\n"</literal></expr></argument>, <argument><expr><name>__FILE__</name></expr></argument>, <argument><expr><name>__LINE__</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name>abort</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></if></if_stmt>
+    <throw>throw <expr><call><name><name>std</name><operator>::</operator><name>logic_error</name></name><argument_list>(<argument><expr><literal type="string">"potential deadlock detected"</literal></expr></argument>)</argument_list></call></expr>;</throw>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>push_lock</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>c</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>CLockLocation</name><modifier>&amp;</modifier></type> <name>locklocation</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>LockData</name><modifier>&amp;</modifier></type> <name>lockdata</name> <init>= <expr><call><name>GetLockData</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>lock_guard</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name><name>lockdata</name><operator>.</operator><name>dd_mutex</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+
+    <expr_stmt><expr><call><name><name>g_lockstack</name><operator>.</operator><name>push_back</name></name><argument_list>(<argument><expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>c</name></expr></argument>, <argument><expr><name>locklocation</name></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>g_lockstack</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>c</name></expr>)</condition><block type="pseudo"><block_content>
+            <break>break;</break></block_content></block></if></if_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>p1</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>i</name><operator>.</operator><name>first</name></name></expr></argument>, <argument><expr><name>c</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>p1</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <continue>continue;</continue></block_content></block></if></if_stmt>
+        <expr_stmt><expr><call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>emplace</name></name><argument_list>(<argument><expr><name>p1</name></expr></argument>, <argument><expr><name>g_lockstack</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>p2</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>c</name></expr></argument>, <argument><expr><name><name>i</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>lockdata</name><operator>.</operator><name>invlockorders</name><operator>.</operator><name>insert</name></name><argument_list>(<argument><expr><name>p2</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <if_stmt><if>if <condition>(<expr><call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>count</name></name><argument_list>(<argument><expr><name>p2</name></expr></argument>)</argument_list></call></expr>)</condition><block type="pseudo"><block_content>
+            <expr_stmt><expr><call><name>potential_deadlock_detected</name><argument_list>(<argument><expr><name>p1</name></expr></argument>, <argument><expr><name><name>lockdata</name><operator>.</operator><name>lockorders</name><index>[<expr><name>p2</name></expr>]</index></name></expr></argument>, <argument><expr><name><name>lockdata</name><operator>.</operator><name>lockorders</name><index>[<expr><name>p1</name></expr>]</index></name></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></if></if_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><specifier>static</specifier> <name>void</name></type> <name>pop_lock</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name><name>g_lockstack</name><operator>.</operator><name>pop_back</name></name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>EnterCritical</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>, <parameter><decl><type><name>bool</name></type> <name>fTry</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>push_lock</name><argument_list>(<argument><expr><name>cs</name></expr></argument>, <argument><expr><call><name>CLockLocation</name><argument_list>(<argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>, <argument><expr><name>fTry</name></expr></argument>, <argument><expr><call><name><name>util</name><operator>::</operator><name>ThreadGetInternalName</name></name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>LeaveCritical</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <expr_stmt><expr><call><name>pop_lock</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>LocksHeld</name><parameter_list>()</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>string</name></name></type> <name>result</name></decl>;</decl_stmt>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>g_lockstack</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <expr_stmt><expr><name>result</name> <operator>+=</operator> <call><name><name>i</name><operator>.</operator><name>second</name><operator>.</operator><name>ToString</name></name><argument_list>()</argument_list></call> <operator>+</operator> <call><name><name>std</name><operator>::</operator><name>string</name></name><argument_list>(<argument><expr><literal type="string">"\n"</literal></expr></argument>)</argument_list></call></expr>;</expr_stmt></block_content></block></for>
+    <return>return <expr><name>result</name></expr>;</return>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>AssertLockHeldInternal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>g_lockstack</name></expr></range></decl></init>)</control><block type="pseudo"><block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>cs</name></expr>)</condition><block type="pseudo"><block_content>
+            <return>return;</return></block_content></block></if></if_stmt></block_content></block></for>
+    <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></argument>, <argument><expr><literal type="string">"Assertion failed: lock %s not held in %s:%i; locks held:\n%s"</literal></expr></argument>, <argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>, <argument><expr><call><name>LocksHeld</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    <expr_stmt><expr><call><name>abort</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>AssertLockNotHeldInternal</name><parameter_list>(<parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszName</name></decl></parameter>, <parameter><decl><type><specifier>const</specifier> <name>char</name><modifier>*</modifier></type> <name>pszFile</name></decl></parameter>, <parameter><decl><type><name>int</name></type> <name>nLine</name></decl></parameter>, <parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <for>for <control>(<init><decl><type><specifier>const</specifier> <name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><operator>*</operator></expr></argument>, <argument><expr><name>CLockLocation</name></expr></argument>&gt;</argument_list></name><modifier>&amp;</modifier></type> <name>i</name> <range>: <expr><name>g_lockstack</name></expr></range></decl></init>)</control> <block>{<block_content>
+        <if_stmt><if>if <condition>(<expr><name><name>i</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>cs</name></expr>)</condition> <block>{<block_content>
+            <expr_stmt><expr><call><name><name>tfm</name><operator>::</operator><name>format</name></name><argument_list>(<argument><expr><name><name>std</name><operator>::</operator><name>cerr</name></name></expr></argument>, <argument><expr><literal type="string">"Assertion failed: lock %s held in %s:%i; locks held:\n%s"</literal></expr></argument>, <argument><expr><name>pszName</name></expr></argument>, <argument><expr><name>pszFile</name></expr></argument>, <argument><expr><name>nLine</name></expr></argument>, <argument><expr><call><name>LocksHeld</name><argument_list>()</argument_list></call></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+            <expr_stmt><expr><call><name>abort</name><argument_list>()</argument_list></call></expr>;</expr_stmt>
+        </block_content>}</block></if></if_stmt>
+    </block_content>}</block></for>
+</block_content>}</block></function>
+
+<function><type><name>void</name></type> <name>DeleteLock</name><parameter_list>(<parameter><decl><type><name>void</name><modifier>*</modifier></type> <name>cs</name></decl></parameter>)</parameter_list>
+<block>{<block_content>
+    <decl_stmt><decl><type><name>LockData</name><modifier>&amp;</modifier></type> <name>lockdata</name> <init>= <expr><call><name>GetLockData</name><argument_list>()</argument_list></call></expr></init></decl>;</decl_stmt>
+    <if_stmt><if>if <condition>(<expr><operator>!</operator><name><name>lockdata</name><operator>.</operator><name>available</name></name></expr>)</condition> <block>{<block_content>
+        <comment type="line">// We're already shutting down.</comment>
+        <return>return;</return>
+    </block_content>}</block></if></if_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>lock_guard</name><argument_list type="generic">&lt;<argument><expr><name><name>std</name><operator>::</operator><name>mutex</name></name></expr></argument>&gt;</argument_list></name></type> <name>lock</name><argument_list>(<argument><expr><name><name>lockdata</name><operator>.</operator><name>dd_mutex</name></name></expr></argument>)</argument_list></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>item</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name>cs</name></expr></argument>, <argument><expr><literal type="null">nullptr</literal></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <decl_stmt><decl><type><name><name>LockOrders</name><operator>::</operator><name>iterator</name></name></type> <name>it</name> <init>= <expr><call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>lower_bound</name></name><argument_list>(<argument><expr><name>item</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>it</name> <operator>!=</operator> <call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>it</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>first</name></name> <operator>==</operator> <name>cs</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>invitem</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>it</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>second</name></name></expr></argument>, <argument><expr><name><name>it</name><operator>-&gt;</operator><name>first</name><operator>.</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>lockdata</name><operator>.</operator><name>invlockorders</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>invitem</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>it</name><operator>++</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+    <decl_stmt><decl><type><name><name>InvLockOrders</name><operator>::</operator><name>iterator</name></name></type> <name>invit</name> <init>= <expr><call><name><name>lockdata</name><operator>.</operator><name>invlockorders</name><operator>.</operator><name>lower_bound</name></name><argument_list>(<argument><expr><name>item</name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+    <while>while <condition>(<expr><name>invit</name> <operator>!=</operator> <call><name><name>lockdata</name><operator>.</operator><name>invlockorders</name><operator>.</operator><name>end</name></name><argument_list>()</argument_list></call> <operator>&amp;&amp;</operator> <name><name>invit</name><operator>-&gt;</operator><name>first</name></name> <operator>==</operator> <name>cs</name></expr>)</condition> <block>{<block_content>
+        <decl_stmt><decl><type><name><name>std</name><operator>::</operator><name>pair</name><argument_list type="generic">&lt;<argument><expr><name>void</name><modifier>*</modifier></expr></argument>, <argument><expr><name>void</name><modifier>*</modifier></expr></argument>&gt;</argument_list></name></type> <name>invinvitem</name> <init>= <expr><call><name><name>std</name><operator>::</operator><name>make_pair</name></name><argument_list>(<argument><expr><name><name>invit</name><operator>-&gt;</operator><name>second</name></name></expr></argument>, <argument><expr><name><name>invit</name><operator>-&gt;</operator><name>first</name></name></expr></argument>)</argument_list></call></expr></init></decl>;</decl_stmt>
+        <expr_stmt><expr><call><name><name>lockdata</name><operator>.</operator><name>lockorders</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>invinvitem</name></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+        <expr_stmt><expr><call><name><name>lockdata</name><operator>.</operator><name>invlockorders</name><operator>.</operator><name>erase</name></name><argument_list>(<argument><expr><name>invit</name><operator>++</operator></expr></argument>)</argument_list></call></expr>;</expr_stmt>
+    </block_content>}</block></while>
+</block_content>}</block></function>
+
+<decl_stmt><decl><type><name>bool</name></type> <name>g_debug_lockorder_abort</name> <init>= <expr><literal type="boolean">true</literal></expr></init></decl>;</decl_stmt>
+
+<cpp:endif>#<cpp:directive>endif</cpp:directive></cpp:endif> <comment type="block">/* DEBUG_LOCKORDER */</comment>
+</unit>
