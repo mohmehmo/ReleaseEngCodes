@@ -1,0 +1,390 @@
+"Remove further deprecated methods
+
+- com.sun.jna.Platform#isAix
+- com.sun.jna.platform.win32.Ole32#CoCreateGuid(GUID.ByReference pguid)
+- com.sun.jna.platform.win32.Ole32#CLSIDFromString(WString lpsz, CLSID.ByReference pclsid)"
+revise string encoding
+"Direct mapping does not support wrapper mappings
+
+For direct mapped methods the java value is directly passed to the C
+side. For wrappers this means, that the object pointer is passed and
+not the primitive values.
+
+This changeset removes the mappings for the Wrapper classes and makes
+it possible to use a type converter to make the call possible, at the
+cost of higher calling costs.
+
+Closes: #918"
+move jnalib up to top level
+clean up before merge
+"merge win64 branch
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@683 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+functional detach switch from callback
+amd64/linux pthread investigations
+"Jump ahead to current codebase
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@7 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"pass options to native library at interface definition
+update javadoc to include direct mapping info
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@844 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+w32ce-arm library load on wince 5 (WM6.1)
+"merge direct branch to trunk
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@913 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Consolidate Structure.ByReference reads
+Cache native library options as well as alignments/type mappers
+Ensure library options are passed to callbacks
+Add protection around remaining Pointer read/write calls
+Consolidate wide character reads/writes
+Avoid stack overflow reading self-referential structures or loops
+More prettification of Structure.toString
+Add size_t/off_t standard types
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@435 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+fix varargs on ARM
+"make unpacked path available as a system property, track down JVM error in System.load"
+"accommodate long path names, fixes #243"
+"Pass objects into JNI code in addition to raw pointer value (prevent premature GC)
+
+The Memory/Pointer object delegates the native calls to static methods
+in the Native class. This causes the Memory/Pointer object to become
+prematurely eligable for GC for this case:
+
+----------------------------
+
+Memory pointer = <init>;
+<do something and work on Memory>
+String result = pointer.getWideString(0)
+<do nothing more with Memory>
+
+----------------------------
+
+getWideString(0) calls back into the JVM and allocates a new java string.
+In this case the GC can become active and collect the Memory object.
+After this it is possible to run the finalizer, that in turn frees the
+native memory backing the memory object. The native function now
+possibly accesses freed memory.
+
+The native code needs to hold references to the relevant object itself,
+this is implemented here.
+
+Changes:
+
+API relevant changes:
+- Deprecate Native#getDirectByteBuffer(long, long)
+  it is functional, but discouraged to be used and should be removed in
+  future
+
+JNI-Layer (Native.java + dispatch.c):
+- All set<Type> and get<Type>, write and read methods that took a
+  pointer address are modified to take a pointer object, the raw pointer
+  value and an offset
+- All invoke<ReturnType> methods that took a pointer adress (function
+  pointer) are modified to take a function object and the raw function
+  pointer value
+
+Build-System/Native:
+- the jni api version as bumped from 5.0.0 to 5.1.0 (the major version
+  was raised in the 4.3.0 development cycle, so not modified)
+- all prebuild native libraries were replaced with the ""OUT_OF_DATE""
+  marker, where no replacement could be build immediately
+
+getDirectByteBuffer(long, long) is the only API relevant method, allother
+methods modified are package private and so are not considered API.
+getDirectByteBuffer is overloaded with a package private variant
+getDirectByteBuffer(Pointer, long, long, long) that reflects the above
+described changes.
+
+Executed tests:
+
+- linux-amd64:   all unittests of jna pass
+- linux-arm:     1 unittest fails (unload of jnalib, emulated
+                 environment (qemu), slow execution leads to timeout)
+- linux-x86:     all unittests of jna pass (32bit chroot on 64bit kernel)
+- windows-64bit: 2 tests fail (before and after: DirectTypeMapperTest
+                 and NativeTest#testSizeOf (bool should be 1, is 4)
+- windows-32bit: 2 tests fails (one less that before the change
+                 (testLongStringGeneration), other errors see x64)
+
+Performance:
+
+Check was done with JMH - the comparison was between master and the
+proposed pointer_native_direct branch:
+
+java -jar benchmarks-master.jar -i 10 -wi 10 -f 5
+
+The benchmarks initialize a Memory block and access it via getInt and
+getString, one with an offset of 0 and on with an offset of 5 bytes.
+
+The testmatrix:
+
+              testInt testIntWithOffset testString testStringWithOffset
+linux64-jdk7     108%              108%       100%                 101%
+linux64-jdk8     107%              108%       100%                 100%
+linux32-jdk8      97%               97%       112%                 112%
+win32-jdk8        90%               95%        98%                  98%
+win64-jdk8        95%               95%        97%                  97%"
+Use MethodResultContext in direct mapping (as done in interface mapping)
+fix amd64 native thread cleanup test
+"Fix compiler warnings on OSX, remove no-longer-supported JAWT operations from OSX"
+"move all native functions into Native class, reduce JNI crossings where possible
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@1191 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+down to 24 failures (4 crashes) on w32ce-arm
+"add tests for type-mapping of enums
+
+Add changelog entry, fixes #467"
+"Handle last error as an exception if declared
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@886 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Fixes issue #496, handle typemapper-returned String/WString with associated tests"
+"Enable type mapping for callbacks
+Avoid static instance variables in tests
+Fill out wide character support
+Fix osx/ppc struct alignment bug
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@149 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Add native long support (issue #12) from wmeissner branch
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@84 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Add auto-conversion for custom types
+Fix X11 lib for 64-bit use
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@257 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Write memory for initialized structure array arguments
+
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@170 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Add callback tests for smaller int types
+Copy generic java.nio.Buffer support from v3 branch + tests
+Copy missed sparc-isms from v3 branch for building sunos variants
+Add stubs for platform-specific jars
+Include libffi testsuite
+Remove /lib64 references as per v3 branch
+Auto-generate os prefix from os.name (as per v3 branch) to automatically handle new targets
+Update overview to include Buffer, function pointer info
+Include src.zip and doc.zip in dist generation
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@243 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"add structure, string, NIO Buffer and primitive array support to direct type mapping
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@841 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+fix more tests
+down to two failing tests on w32ce-arm
+improve performance saving last error (per thread)
+"Ensure TLS index is cleared after storage freed
+update w32 natives"
+"Move w32 JAWT load into native code
+Fix Structure.ByValue for callback arg/return
+Perform better type checking on callback arg/return types
+Propagate library/symbol lookup error messages
+Enable loading of libraries with non-ascii names
+Tighten type checking in native code
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@425 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"improve win32 dependent library loading
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@723 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Ensure libraries loaded only once
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@69 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Allow customization of mapping between java and native types (wmeissner).  Type mapping is applied on function calls and structure read/write.
+Allow global specification of a library's native structure alignment.
+Allow more extensive customization of function name mapping.
+Provide default type/alignment/function mappings for w32 APIs (including stdcall decoration).  W32 examples have been updated to use the unicode version of functions by default (the w32.ascii system property may be set true to use ASCII versions instead).
+Support packed structures.
+Fix linux wide character support.
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@128 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Simplify varargs handling, fix arg copy bug
+Clean up javah handling
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@109 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix compilation warnings/errors on win64
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@947 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"update w32ce-arm build, native"
+fix library load error w/unicode
+Call Native.dispose when DLL unloaded
+"Fix windows builds under MSVC, 32- and 64-bit
+
+w64 doesn't suport complex either"
+"Use libffi instead of custom assembly (tested for darwin (universal), linux-i386, win32-x86
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@240 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"optionally allow Java objects in native calls
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@785 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"jna.encoding controls native encoding, if set.
+Remove superfluous comparison cruft from NativeString.
+Update overview doc.
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@176 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix failing test on osx
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@930 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"allow callbacks in direct mappings
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@848 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Fix bug in stdcall function mapping when using struct by value
+Defer size_t/off_t definition, for now
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@436 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+fix some more failing tests
+initial callback behavior flags setup and test harness
+enable callback threads on windows
+"enable accessing current process on w32
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@942 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+ensure separated buffer tests still work
+add callback thread initializer
+"Fix GetLastError bug
+Make ByReference derive from Memory
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@299 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"add dll callbacks, tests, explicit flags for dlopen"
+"Use type-safe pointers for w32 APIs
+Simplify type-safe pointer declarations
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@271 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+fixed direct-mapping type-mapped pointer result types
+"Consolidate structure ffi type info initialization and avoid premature GC
+Enable union by-value by using largest field's type info
+Explicitly throw IllegalArgument on bad type info
+Throw IllegalState on missing type info
+Explicitly write version/md5 info into Makefile from ant (to avoid platform-specific variances in sed)
+Make Structure.ByValue/ByReference public to allow client code comparisons
+Consolidate Structure field get/set operations
+Avoid extra Pointer peer lookup from native code (wmeissner)
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@421 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"improve test coverage, structure field error messages
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@928 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"implement struct by value
+add missing Pointer char function
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@395 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Copy proper varargs handling/test from v3 branch
+Handle void callback return type in native code
+Do not use java.library.path for JNA library lookups (from v3)
+Make some internal Function methods private instead of public
+Clean up Function.invokeString variants
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@141 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Add union support
+Fix bug clearing OSX window mask
+Add access to ByteBuffer direct address as Pointer
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@157 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"allow NativeMapped[] as function arguments
+respect autoread/write structure setting in direct calls
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@893 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+fix load from current module
+"include error string in LastErrorException, if available, update wince native"
+"Enable VM crash protection on w32, linux
+Move native library init from Pointer to Native
+Fix Pointer.setNativeLong bug
+Make library initialization explicit in Pointer/NativeLibrary
+Javadoc cleanup
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@279 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+revise thread termination flag logic
+add thread termination flags and checking
+avoid crash with really long strings
+"use long offsets and sizes for pointer arithmetic
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@381 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"use tls for callback detach indication, avoid potential conflict with last error"
+w32 implementation
+auto-cleanup of attached callback threads
+"JNA port for AIX on PowerPC
+
+The port has been made with GCC v4.6.2 on AIX 6.1 PowerPC.
+Both aix-ppc and aix-ppc64 have been generated.
+
+All JUNIT test runs successfuly, except DirectTest.registerMethod(),
+because the standard /usr/libm.a is a static library.
+You can install GCC libmpc.so.2 for AIX, and use it instead of libm.a, if
+you want to run this test."
+"add raw calling convention
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@806 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"add last error exception for direct calls
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@887 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Use UTF8 encoding for OSX library names
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@502 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"defer AWT toolkit initialization until actual JAWT use
+Make w32 dynamically load JAWT to avoid forcing toolkit init on JNA load
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@418 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"provide sizeof native function, update checksum
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@797 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Restore state of CVS HEAD
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@5 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Embed version and checksum into native library
+Print version information for 'java -jar jna.jar'
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@414 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Allow handling of uncaught callback exceptions
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@769 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+clean up
+"fix building under newer xcode, fix compiler warning"
+"unions require a structure-based ffi_type
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@801 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix cacheing of union type information
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@775 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+NativeTest passes
+"Fix stdcall callbacks
+catch all exceptions when invoking callback
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@370 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+w32 thread auto-cleanup
+"add docs for lasterror, fix last error failure"
+"update change log, account for NIO buffer position"
+merge wince branch into master
+"Use simpler workaround for loading AWT/JAWT on X11-based platforms
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@392 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"add array wrapping tests
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@968 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"add test for NativeLibrary.getProcess()
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@941 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix issue 125
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@975 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix tests on windows
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@915 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix indexOf return value
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@382 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"fix compiler warnings
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@868 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Fix callbacks when DEP is enabled
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@540 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Properly handle default boolean mapping (int) in Structure read/write
+Provide Pointer.share(offset) (allow omission of 'size')
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@429 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Avoid error loading JAWT when running headless
+Use primary colors in window shape test (Dan)
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@412 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
+"Ensure TCHAR*[] gets encoded properly on w32, wchar_t*[] on others
+
+git-svn-id: https://svn.java.net/svn/jna~svn/trunk@292 2f8a963e-d2e4-e7d0-97bf-ccb7fcea9d80"
