@@ -104,25 +104,31 @@ def randomForest():
     trainData = pd.read_csv('results/TrainData.csv', low_memory=False)
     testData = pd.read_csv('results/TestData.csv', low_memory=False)
 
-    feature_names = ["release",
-                     # "addedLOC", "deletedLOC",
+    feature_names = [#"release", "addedLOC", "deletedLOC",
                      "churnLOC", "entropy","changeAge", "changedFiles",
-                     "contributors", "developerExp", "maxPreviousBug", "maxPreviousCrossLangBug"]
+                     "contributors", "developerExp", "maxPreviousBug"
+                                                     ''', "maxPreviousCrossLangBug"'''
+    ]
 
     y_train = trainData["crossLang"]
-    X_train = trainData.drop(["crossLang", "addedLOC","deletedLOC"], axis=1)
+    X_train = trainData.drop(["release","crossLang", "addedLOC","deletedLOC","maxPreviousCrossLangBug"], axis=1)
 
     y_test = testData["crossLang"]
-    X_test = testData.drop(["crossLang", "addedLOC","deletedLOC"], axis=1)
+    X_test = testData.drop(["release","crossLang", "addedLOC","deletedLOC","maxPreviousCrossLangBug"], axis=1)
 
+    # print(X_test.head())
+    # print(y_test.head())
+    #
+    # print(X_test.columns.values)
+    # print(y_test.columns.values)
     clf = RandomForestClassifier(n_estimators=433, criterion="gini")
     clf.fit(X_train, y_train)
     y_pred = clf.predict(X_test)
     print("Accuracy:", metrics.accuracy_score(y_test, y_pred))
-
+    #
     print(confusion_matrix(y_test, y_pred))
     print(classification_report(y_test, y_pred))
-
+    #
     feature_imp = pd.Series(clf.feature_importances_, index=feature_names).sort_values(ascending=False)
     print(feature_imp)
 
@@ -131,10 +137,11 @@ def main():
     # repositories = ["omim", "react-native", "libgdx", "openj9", "rocksdb", "realm-java", "jmonkeyengine", "arrow",
     #                 # "conscrypt",
     #                 "jna"]
-    #
+    # #
     # for repo in repositories:
     #     separateTestTrain(repo)
     #     resampling(repo)
+    #     combineTrainsTests(repo)
     #
     #
     # testData = open(f'results/TestData.csv', 'w')
@@ -155,6 +162,7 @@ def main():
     #     combineTrainsTests(repo)
 
     # /////////////////////
+    # separateTestTrain("conscrypt")
     # resampling("conscrypt")
     # combineTrainsTests("conscrypt")
 
